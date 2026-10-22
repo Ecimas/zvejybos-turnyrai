@@ -1,0 +1,12 @@
+{
+  "name": "zvejybos-turnyrai",
+  "private": true,
+  "type": "module",
+  "description": "Nuotolinių žvejybos turnyrų platforma",
+  "scripts": {
+    "test": "node --test tests/unit/*.test.js",
+    "test:db": "bash tests/db/run.sh",
+    "test:e2e": "python3 tests/e2e/run.py",
+    "serve": "python3 -m http.server 8080"
+  }
+}

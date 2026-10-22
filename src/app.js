@@ -1,0 +1,189 @@
+import { createBackend } from './backend/index.js';
+import { Outbox, idbStore, memoryStore } from './lib/outbox.js';
+import { html } from './lib/html.js';
+import { icon } from './icons.js';
+import { count } from './lib/format.js';
+import { tournamentsView, standingsView } from './views/tournaments.js';
+import { tournamentView, boardView } from './views/tournament.js';
+import { captureView } from './views/capture.js';
+import { diaryView } from './views/diary.js';
+import { profileView, anglerView } from './views/profile.js';
+import { createView } from './views/create.js';
+import { moderationView } from './views/moderation.js';
+import { loginView } from './views/login.js';
+
+const ROUTES = [
+  [/^\/$/, tournamentsView],
+  [/^\/t\/([\w-]+)$/, tournamentView],
+  [/^\/t\/([\w-]+)\/lentele$/, boardView],
+  [/^\/laimikis$/, captureView],
+  [/^\/dienorastis$/, diaryView],
+  [/^\/lenteles$/, standingsView],
+  [/^\/profilis$/, profileView],
+  [/^\/zvejys\/([\w-]+)$/, anglerView],
+  [/^\/naujas$/, createView],
+  [/^\/moderavimas$/, moderationView],
+  [/^\/prisijungti$/, loginView]
+];
+
+const NAV = [
+  ['turnyrai', '#/', 'trophy', 'Turnyrai'],
+  ['dienorastis', '#/dienorastis', 'book', 'Dienoraštis'],
+  ['laimikis', '#/laimikis', 'plus', 'Registruoti laimikį'],
+  ['lenteles', '#/lenteles', 'bars', 'Lentelės'],
+  ['profilis', '#/profilis', 'user', 'Profilis']
+];
+
+const $ = (s) => document.querySelector(s);
+
+function applyTheme() {
+  let t = 'auto';
+  try { t = localStorage.getItem('zt-theme') || 'auto'; } catch { /* nėra saugyklos */ }
+  document.documentElement.dataset.theme = t;
+}
+
+async function main() {
+  applyTheme();
+  const backend = await createBackend();
+  await backend.init();
+  if (/[?&]code=/.test(location.search)) history.replaceState(null, '', location.pathname + location.hash);
+
+  const ctx = {
+    backend,
+    state: { user: backend.getUser(), profile: null, species: [], outboxPending: 0, outboxFailed: 0 },
+    navigate: (path) => { location.hash = path; },
+    toast,
+    refreshStatus,
+    applyTheme,
+    rerender: () => render(true)
+  };
+
+  let store;
+  try { store = typeof indexedDB !== 'undefined' ? idbStore() : memoryStore(); } catch { store = memoryStore(); }
+  ctx.outbox = new Outbox(store, { onChange: refreshStatus });
+  ctx.flush = async () => {
+    if (!ctx.state.user) return;
+    const r = await ctx.outbox.flush((item) => backend.submitCatch(item));
+    if (r.sent) toast(r.sent === 1 ? 'Laimikis išsiųstas' : `Išsiųsta: ${r.sent}`);
+    if (r.failed) toast('Ne visus laimikius pavyko išsiųsti – žiūrėk dienoraštyje');
+    if ((r.sent || r.failed) && typeof ctx.onSynced === 'function') ctx.onSynced();
+  };
+
+  async function loadUser() {
+    ctx.state.user = backend.getUser();
+    ctx.state.profile = ctx.state.user ? await backend.myProfile().catch(() => null) : null;
+  }
+
+  ctx.state.species = await backend.species().catch(() => []);
+  await loadUser();
+  backend.onAuth(async () => {
+    await loadUser();
+    render(true);
+    ctx.flush();
+  });
+
+  async function refreshStatus() {
+    const items = await ctx.outbox.list().catch(() => []);
+    ctx.state.outboxPending = items.filter((x) => x.state === 'queued').length;
+    ctx.state.outboxFailed = items.filter((x) => x.state === 'failed').length;
+    const el = $('#status');
+    const { outboxPending: p, outboxFailed: f } = ctx.state;
+    if (!p && !f) {
+      el.hidden = true;
+      el.innerHTML = '';
+      return;
+    }
+    el.hidden = false;
+    el.innerHTML = String(html`<a href="#/dienorastis" class="status-bar ${f ? 'status-bad' : ''}">
+      ${icon(f ? 'alert' : 'cloudOff', 18)}
+      <span>${p ? `${count(p, 'laimikis laukia', 'laimikiai laukia', 'laimikių laukia')} išsiuntimo` : ''}${p && f ? ' · ' : ''}${f ? `${f} neišsiųsta` : ''}</span>
+    </a>`);
+  }
+
+  let toastTimer;
+  function toast(msg) {
+    const el = $('#toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+  }
+
+  let cleanup = null;
+  let token = 0;
+  async function render(keepScroll = false) {
+    const my = ++token;
+    const raw = location.hash.replace(/^#/, '') || '/';
+    const [path, qs] = raw.split('?');
+    const query = new URLSearchParams(qs || '');
+    let match = null;
+    let view = null;
+    for (const [re, v] of ROUTES) {
+      match = path.match(re);
+      if (match) { view = v; break; }
+    }
+    if (!view) { location.hash = '#/'; return; }
+
+    const main = $('#view');
+    main.setAttribute('aria-busy', 'true');
+    let result;
+    try {
+      result = await view(ctx, match.slice(1), query);
+    } catch (err) {
+      console.error(err);
+      result = {
+        nav: 'turnyrai',
+        html: html`<div class="screen"><div class="empty">
+          <div class="empty-icon">${icon('alert', 32)}</div>
+          <p class="empty-title">Nepavyko įkelti</p>
+          <p class="muted">${navigator.onLine ? 'Bandyk dar kartą po akimirkos.' : 'Nėra interneto ryšio.'}</p>
+          <button class="btn" data-retry>${icon('refresh', 18)}Bandyti dar kartą</button>
+        </div></div>`,
+        mount: (root) => root.querySelector('[data-retry]').addEventListener('click', () => render(true))
+      };
+    }
+    if (my !== token) return;
+
+    if (typeof cleanup === 'function') cleanup();
+    cleanup = null;
+    const y = window.scrollY;
+    main.innerHTML = String(result.html);
+    main.removeAttribute('aria-busy');
+    document.title = result.title ? `${result.title} · Žvejybos turnyrai` : 'Žvejybos turnyrai';
+    renderNav(result.nav);
+    document.body.classList.toggle('no-nav', !result.nav);
+    document.body.classList.toggle('dark-screen', !!result.dark);
+    window.scrollTo(0, keepScroll ? y : 0);
+    if (result.mount) cleanup = result.mount(main) || null;
+    if (!keepScroll) main.querySelector('h1')?.focus({ preventScroll: true });
+  }
+
+  function renderNav(active) {
+    const nav = $('#nav');
+    if (!active) { nav.hidden = true; return; }
+    nav.hidden = false;
+    nav.innerHTML = NAV.map(([key, href, ic, label]) => key === 'laimikis'
+      ? String(html`<a class="fab" href="${href}" aria-label="${label}">${icon(ic, 28, 2.6)}</a>`)
+      : String(html`<a class="nav-item${active === key ? ' active' : ''}" href="${href}"${active === key ? html` aria-current="page"` : ''}>${icon(ic, 24)}<span>${label}</span></a>`)
+    ).join('');
+  }
+
+  window.addEventListener('hashchange', () => render());
+  window.addEventListener('online', () => ctx.flush());
+  setInterval(() => { if (ctx.state.outboxPending && navigator.onLine) ctx.flush(); }, 60000);
+
+  await refreshStatus();
+  await render();
+  ctx.flush();
+
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+  window.__zt = ctx; // testams ir derinimui
+}
+
+main().catch((err) => {
+  console.error(err);
+  document.getElementById('view').innerHTML =
+    '<div class="screen"><p class="empty-title">Programėlės paleisti nepavyko.</p><p class="muted">Patikrink ryšį ir perkrauk puslapį.</p></div>';
+});
