@@ -159,6 +159,9 @@ def main():
         page.evaluate("() => { window.__zt.backend.submitCatch = window.__realSubmit; }")
         page.get_by_role("button", name="Siųsti dabar").click()
         expect(page.locator("#status")).to_be_hidden()
+        expect(page.locator("#toast")).to_have_text("Laimikis išsiųstas")
+        page.wait_for_timeout(300)
+        expect(page.locator("#toast")).to_have_text("Laimikis išsiųstas")
         step("offline eilė išsaugo ir vėliau išsiunčia")
 
         # 5. Pakartota nuotrauka atmetama visam laikui ir rodoma vartotojui

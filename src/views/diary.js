@@ -72,7 +72,8 @@ export async function diaryView(ctx) {
       root.querySelector('[data-sync]')?.addEventListener('click', async (e) => {
         e.currentTarget.disabled = true;
         await ctx.flush();
-        if (ctx.state.outboxPending) ctx.toast(navigator.onLine ? 'Nepavyko išsiųsti – bandysime vėliau' : 'Nėra ryšio');
+        // Tikrinam pačią eilę, ne ctx.state – jis atnaujinamas asinchroniškai ir gali būti pasenęs.
+        if (await ctx.outbox.pendingCount()) ctx.toast(navigator.onLine ? 'Nepavyko išsiųsti – bandysime vėliau' : 'Nėra ryšio');
         ctx.rerender();
       });
       ctx.onSynced = () => ctx.rerender();
