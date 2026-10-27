@@ -182,4 +182,20 @@ do $$ begin
   assert (select count(*) from public.tournament_announcements) = 1, 'neprisijungęs turi matyti viešo turnyro pranešimą';
 end $$;
 reset role;
+\echo 'C4. Paskyrų ištrynimas su visais duomenų tipais (0006c + 0009 + 0010)'
+-- a1: laimikiai, pranešimai apie juos, organizuoja turnyrus su pranešimais; a2: pranešėjas, išvykos; a3: moderatorius.
+do $$ declare u uuid; begin
+  foreach u in array array['a1000000-0000-4000-8000-0000000000a1', 'a2000000-0000-4000-8000-0000000000a2',
+                           'a3000000-0000-4000-8000-0000000000a3']::uuid[] loop
+    perform set_config('request.jwt.claim.sub', u::text, true);
+    perform public.begin_account_deletion();
+    perform public.finish_account_deletion();
+    assert not exists (select 1 from auth.users where id = u), format('paskyra %s neištrinta', u);
+  end loop;
+  assert not exists (select 1 from public.catch_reports), 'liko pranešimų';
+  assert not exists (select 1 from public.blank_trips where user_id = 'a2000000-0000-4000-8000-0000000000a2'), 'liko išvykų';
+  assert not exists (select 1 from public.tournament_announcements where author_id = 'a1000000-0000-4000-8000-0000000000a1'), 'liko organizatoriaus pranešimų';
+  assert not exists (select 1 from public.tournaments where organizer_id = 'a1000000-0000-4000-8000-0000000000a1'), 'liko turnyrų';
+end $$;
+reset request.jwt.claim.sub;
 \echo 'VISI BENDRUOMENĖS TESTAI PRAĖJO'
