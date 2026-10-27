@@ -2,6 +2,7 @@ import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { phase, timeLabel, describeFormat, cm, longDate, count, gapText } from '../lib/format.js';
 import { phaseBadge, empty } from '../ui.js';
+import { eur } from '../lib/prizes.js';
 
 const SEGMENTS = [
   ['mano', 'Mano'],
@@ -34,7 +35,8 @@ export function card(t, species) {
       <span>${icon('clock', 16)}${timeLabel(t)}</span>
       <span>${icon('users', 16)}${t.participants}</span>
       ${t.min_length_mm ? html`<span>nuo ${cm(t.min_length_mm)}</span>` : ''}
-      ${t.prizes ? html`<span>${icon('trophy', 16)}Prizai</span>` : ''}
+      ${t.prize_fund_cents ? html`<span class="accent strong">${icon('trophy', 16)}${eur(t.prize_fund_cents)}</span>`
+        : t.prizes ? html`<span>${icon('trophy', 16)}Prizai</span>` : ''}
     </div>
     ${t.joined ? html`<span class="accent strong">${phase(t) === 'soon' ? 'Užsiregistravai' : 'Dalyvauji'}</span>` : ''}
   </a>`;

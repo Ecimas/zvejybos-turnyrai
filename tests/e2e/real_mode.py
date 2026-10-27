@@ -156,14 +156,32 @@ def more_real_tests(page, base):
     # Turnyro redagavimas ir ištrynimas (savo, iki starto); svetimo – ne
     tid = fake(page, "return db.tournaments.find(t => t.title === 'Ešerių savaitgalis').id;")
     go(page, base + f"#/t/{tid}/redaguoti")
-    page.get_by_label("Pavadinimas").fill("Ešerių savaitgalis+")
+    page.get_by_label("Pavadinimas", exact=True).fill("Ešerių savaitgalis+")
     page.get_by_role("button", name="Tik su kvietimu").click()
-    page.get_by_label("Prizai (nebūtina)").fill("Kepurė")
+    page.get_by_label("Daiktiniai prizai (nebūtina)").fill("Kepurė")
+    page.get_by_label("Fondo suma, €").fill("250,50")
+    page.get_by_role("button", name="Trims: 50 / 30 / 20").click()
+    page.get_by_role("button", name="Pridėti rėmėją").click()
+    page.get_by_label("Rėmėjo 1 pavadinimas").fill("  Žvejų klubas  ")
+    page.get_by_label("Rėmėjo 1 įnašas, €").fill("100")
+    page.get_by_role("button", name="Pridėti rėmėją").click()
+    page.get_by_label("Rėmėjo 2 pavadinimas").fill("Ežero parduotuvė")
+    page.get_by_label("Rėmėjo 2 svetainė").fill("https://example.com")
     page.locator("[data-form]").get_by_role("button", name="Lydeka").click()
     page.get_by_role("button", name="Išsaugoti pakeitimus").click()
     expect(page.get_by_role("heading", name="Ešerių savaitgalis+")).to_be_visible()
+    expect(page.locator("[data-fund]")).to_have_text("250,50 €")
+    expect(page.locator(".prize-card .list-row").nth(0)).to_contain_text("125,25 €")
+    expect(page.locator(".prize-card .list-row").nth(2)).to_contain_text("50,10 €")
     t = fake(page, "return db.tournaments.find(t => t.id === arg);", tid)
     assert t["visibility"] == "private" and t["prizes"] == "Kepurė", t
+    assert t["prize_fund_cents"] == 25050 and t["prize_split"] == [50, 30, 20], t
+    assert "sponsor_name" not in [k for k, v in t.items() if v], "senų rėmėjo laukų nebenaudojam"
+    sp = fake(page, "return db.tournament_sponsors.filter(x => x.tournament_id === arg).sort((a, b) => a.sort - b.sort);", tid)
+    assert [(x["name"], x["url"], x["amount_cents"], x["sort"]) for x in sp] == [
+        ("Žvejų klubas", None, 10000, 0), ("Ežero parduotuvė", "https://example.com", None, 1)], sp
+    res = page.evaluate("(id) => window.__zt.backend.updateTournament(id, { sponsors: [{ name: 'X', url: 'javascript:1' }] }).then(() => 'ok', e => e.code)", T1)
+    assert res != "ok", "svetimo prasidėjusio turnyro rėmėjų keisti negalima"
     assert sorted(x["species_id"] for x in fake(page, "return db.tournament_species.filter(x => x.tournament_id === arg);", tid)) == [1, 2]
     go(page, base + f"#/t/{T1}/redaguoti")
     expect(page.get_by_text("Redaguoti negalima")).to_be_visible()
@@ -381,7 +399,7 @@ def main():
 
         # 9. Turnyro kūrimas su rūšimis
         page.goto(base + "#/naujas")
-        page.get_by_label("Pavadinimas").fill("Ešerių savaitgalis")
+        page.get_by_label("Pavadinimas", exact=True).fill("Ešerių savaitgalis")
         page.evaluate("""() => { const d = new Date(), p = (n) => String(n).padStart(2, '0');
             document.querySelector('[name=starts_at]').value =
               `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; }""")

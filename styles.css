@@ -534,3 +534,14 @@ body:not(.no-nav) .cta-bar {
   border-top: 0;
 }
 body:not(.no-nav) .screen.has-cta { padding-bottom: 130px; }
+
+/* Prizinis fondas */
+.split-row { gap: 8px; }
+.split-row .place { min-width: 58px; }
+.field .split-row input.pct { width: 64px; min-height: 44px; padding: 8px; text-align: center; flex: none; }
+.small-btn { width: 44px; height: 44px; min-height: 44px; flex: none; }
+.prize-card .list-row { gap: 10px; }
+.prize-col { min-width: 76px; }
+.prize-amt { display: inline-block; font-size: 13px; font-weight: 800; color: var(--accent-ink); }
+.medal-sm { display: inline-block; width: 24px; }
+.sponsor-row input { width: 100%; }

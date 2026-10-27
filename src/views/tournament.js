@@ -3,6 +3,9 @@ import { icon } from '../icons.js';
 import { phase, timeLabel, describeFormat, cm, dateTime, duration, count, gapText } from '../lib/format.js';
 import { fitReason, REASON_LT } from '../lib/scoring.js';
 import { phaseBadge, statusChip, backButton, thumb, hydratePhotos, empty, avatar, loginPrompt, notFound } from '../ui.js';
+import { eur, placeAmounts, payouts } from '../lib/prizes.js';
+
+const prizeMap = (t, board) => payouts(board, t.prize_fund_cents || 0, t.prize_split);
 
 export const inviteUrl = (t) => `${location.origin}${location.pathname}#/kvietimas/${t.invite_code}`;
 
@@ -21,28 +24,55 @@ async function share(ctx, title, url) {
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
-function winners(board, me) {
-  const top = board.filter((r) => r.rank !== null && r.rank <= 3).slice(0, 3);
+function winners(t, board, me) {
+  const pay = prizeMap(t, board);
+  const places = Math.max(3, (t.prize_split || []).length);
+  const top = board.filter((r) => r.rank !== null && (r.rank <= 3 || pay.has(r.user_id))).slice(0, places);
   if (!top.length) return '';
   return html`<section class="card winners stack" aria-label="Nugalėtojai">
     <div class="row gap-8">${icon('trophy', 22)}<h2 class="h2">Nugalėtojai</h2></div>
     <ol class="plain stack-2">${top.map((r) => html`<li class="row gap-10">
-      <span class="medal" aria-hidden="true">${MEDALS[r.rank - 1]}</span>
+      <span class="medal" aria-hidden="true">${MEDALS[r.rank - 1] || r.rank}</span>
       <a class="grow strong" href="#/zvejys/${r.user_id}">${r.nickname}${r.user_id === me ? ' (tu)' : ''}</a>
-      <span class="num-sm">${cm(r.score_mm)}</span>
+      <span class="stack-1 right"><span class="num-sm">${cm(r.score_mm)}</span>
+        ${pay.get(r.user_id) ? html`<span class="prize-amt">${eur(pay.get(r.user_id))}</span>` : ''}</span>
     </li>`)}</ol>
+    ${pay.size ? html`<p class="small muted">Prizus išmoka organizatorius arba rėmėjai.</p>` : ''}
   </section>`;
 }
 
+const SAFE_URL = /^https:\/\/[^\s<>"']{3,200}$/;
+
 // Rėmėjo nuoroda rodoma tik su https:// (serveris tai tikrina, bet tikrinam ir čia – jokių javascript: nuorodų).
+function sponsorName(s) {
+  return SAFE_URL.test(s.url || '')
+    ? html`<a class="link strong" href="${s.url}" target="_blank" rel="noopener noreferrer sponsored">${s.name}</a>`
+    : html`<span class="strong">${s.name}</span>`;
+}
+
 function prizesBlock(t) {
-  if (!t.prizes && !t.sponsor_name) return '';
-  return html`<section class="stack">
-    <h2 class="h2">Prizai${t.sponsor_name ? ' ir rėmėjas' : ''}</h2>
+  const fund = t.prize_fund_cents || 0;
+  const sponsors = t.sponsors || [];
+  if (!fund && !t.prizes && !sponsors.length) return '';
+  const amounts = placeAmounts(fund, t.prize_split);
+  return html`<section class="stack" aria-label="Prizai ir rėmėjai">
+    <h2 class="h2">Prizai</h2>
+    ${fund ? html`<div class="card stack prize-card">
+      <div class="row-between baseline"><span class="small muted strong">Prizinis fondas</span><span class="display-md accent" data-fund>${eur(fund)}</span></div>
+      <dl class="list">${amounts.map((a, i) => html`<div class="list-row">
+        <dt class="grow strong"><span class="medal-sm" aria-hidden="true">${MEDALS[i] || ''}</span>${i + 1} vieta</dt>
+        <dd class="muted">${t.prize_split[i]} %</dd>
+        <dd class="num-sm right prize-col">${eur(a)}</dd>
+      </div>`)}</dl>
+    </div>` : ''}
     ${t.prizes ? html`<div class="card"><p class="prewrap">${t.prizes}</p></div>` : ''}
-    ${t.sponsor_name ? html`<p class="small muted">Rėmėjas: ${/^https:\/\/[^\s<>"']{3,200}$/.test(t.sponsor_url || '')
-      ? html`<a class="link" href="${t.sponsor_url}" target="_blank" rel="noopener noreferrer sponsored">${t.sponsor_name}</a>`
-      : html`<span class="strong">${t.sponsor_name}</span>`}</p>` : ''}
+    ${sponsors.length ? html`<div class="stack-2">
+      <span class="small muted strong">Rėmėjai</span>
+      <div class="list sponsor-list">${sponsors.map((s) => html`<div class="list-row">
+        ${icon('star', 18)}<span class="grow">${sponsorName(s)}</span>
+        ${s.amount_cents ? html`<span class="num-sm">${eur(s.amount_cents)}</span>` : ''}
+      </div>`)}</div>
+    </div>` : ''}
   </section>`;
 }
 
@@ -117,7 +147,7 @@ export async function tournamentView(ctx, [id]) {
         ${t.description ? html`<p>${t.description}</p>` : ''}
       </section>
 
-      ${p === 'done' && !hidden ? winners(board, me) : ''}
+      ${p === 'done' && !hidden ? winners(t, board, me) : ''}
 
       ${organizer || (t.visibility === 'private' && t.joined) ? html`<section class="row gap-10 wrap">
         ${t.invite_code && p !== 'done' ? html`<button class="btn" data-invite>${icon('users', 18)}Kviesti draugus</button>` : ''}
@@ -284,6 +314,8 @@ export async function boardView(ctx, [id]) {
   const myIdx = board.findIndex((r) => r.user_id === me);
   const mine = board[myIdx];
   const above = myIdx > 0 ? board[myIdx - 1] : null;
+  const pay = prizeMap(t, board);
+  const prizeTag = (r) => (pay.get(r.user_id) ? html`<span class="prize-amt">${eur(pay.get(r.user_id))}</span>` : '');
 
   const row = (r) => html`<li>
     <a class="list-row board-row ${r.user_id === me ? 'mine' : ''}" href="#/zvejys/${r.user_id}">
@@ -293,7 +325,7 @@ export async function boardView(ctx, [id]) {
         <span class="strong ellipsis">${r.user_id === me ? 'Tu' : r.nickname}</span>
         <span class="small muted">${count(Number(r.counted), 'žuvis', 'žuvys', 'žuvų')}${r.region ? ` · ${r.region}` : ''}</span>
       </span>
-      <span class="num-md">${cm(r.score_mm)}</span>
+      <span class="stack-1 right"><span class="num-md">${cm(r.score_mm)}</span>${prizeTag(r)}</span>
     </a>
   </li>`;
 
@@ -316,10 +348,11 @@ export async function boardView(ctx, [id]) {
             ${avatar(r.nickname, `ring-${r.rank}`)}
             <span class="small strong ellipsis">${r.user_id === me ? 'Tu' : r.nickname}</span>
             <span class="num-md">${cm(r.score_mm)}</span>
+            ${prizeTag(r)}
             <span class="rank r${r.rank}">${r.rank}</span>
           </a>`)}</div>
         ${rest.length ? html`<ol class="stack-6 plain">${rest.map(row)}</ol>` : ''}
-        <p class="center small muted">${count(board.length, 'dalyvis', 'dalyviai', 'dalyvių')} su įskaitytais laimikiais · vietos nerodomos</p>
+        <p class="center small muted">${count(board.length, 'dalyvis', 'dalyviai', 'dalyvių')} su įskaitytais laimikiais · vietos nerodomos${pay.size && p !== 'done' ? ' · sumos – jei turnyras baigtųsi dabar' : ''}</p>
       ` : empty('Lentelė dar tuščia', p === 'soon' ? `Turnyras prasidės ${dateTime(t.starts_at)}.` : 'Kai moderatorius patvirtins pirmus laimikius, jie atsiras čia.')}
     </div>
     ${mine ? html`<div class="my-sticky">

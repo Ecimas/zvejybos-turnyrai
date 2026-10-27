@@ -29,6 +29,7 @@ with t as (insert into public.tournaments (organizer_id, title, format, starts_a
            values ('b0000000-0000-4000-8000-00000000000b', 'B privatus', 'biggest', now() - interval '1 hour', now() + interval '3 days', 'private', true) returning id)
 insert into fx select 'b_priv', id from t;
 insert into public.tournament_species values ((select id from fx where k = 'b_pub'), 1);
+insert into public.tournament_sponsors (tournament_id, name, url, amount_cents) select id, 'B rėmėjas', 'https://example.com', 10000 from fx where k = 'b_pub';
 insert into public.entries (tournament_id, user_id) select id, 'b0000000-0000-4000-8000-00000000000b' from fx where k in ('b_pub', 'b_priv');
 with c as (insert into public.catches (client_id, species_id, length_mm, captured_at_device, photo_path, photo_sha256)
            values (gen_random_uuid(), 1, 700, now() - interval '10 minutes', 'b0000000-0000-4000-8000-00000000000b/p1.jpg', repeat('b1', 32)) returning id)
@@ -125,6 +126,7 @@ select who, format('update %I.%I set %I = %I where %s', s, t, c.column_name, c.c
                ('public', 'tournaments',     $$organizer_id = 'b0000000-0000-4000-8000-00000000000b'$$),
                ('public', 'tournament_species', $$tournament_id in (select id from fx where k like 'b_%')$$),
                ('public', 'entries',         $$user_id = 'b0000000-0000-4000-8000-00000000000b'$$),
+               ('public', 'tournament_sponsors', $$tournament_id in (select id from fx where k like 'b_%')$$),
                ('public', 'catches',         $$user_id = 'b0000000-0000-4000-8000-00000000000b'$$),
                ('public', 'catch_locations', $$catch_id in (select id from fx where k like 'b_%')$$),
                ('public', 'disputes',        $$user_id = 'b0000000-0000-4000-8000-00000000000b'$$),
@@ -166,6 +168,7 @@ select who, format('delete from %I.%I where %s', s, t, w), 'nochange'
   from (values ('public', 'profiles', $$id = 'b0000000-0000-4000-8000-00000000000b'$$),
                ('public', 'tournaments', $$organizer_id = 'b0000000-0000-4000-8000-00000000000b'$$),
                ('public', 'tournament_species', $$true$$),
+               ('public', 'tournament_sponsors', $$true$$),
                ('public', 'entries', $$user_id = 'b0000000-0000-4000-8000-00000000000b'$$),
                ('public', 'catches', $$true$$),
                ('public', 'catch_locations', $$true$$),
@@ -173,11 +176,13 @@ select who, format('delete from %I.%I where %s', s, t, w), 'nochange'
                ('public', 'species', $$true$$),
                ('storage', 'objects', $$true$$)) as x(s, t, w)
  cross join (values ('anon'), ('A'), ('B')) as who(who)
- where not (who = 'B' and t in ('tournaments', 'tournament_species', 'entries')); -- B savo būsimą turnyrą trinti gali
+ where not (who = 'B' and t in ('tournaments', 'tournament_species', 'tournament_sponsors', 'entries')); -- B savo būsimą turnyrą trinti gali
 insert into pg_temp.attempts (who, sql, kind) values
   ('A', $$insert into public.entries (tournament_id, user_id) values ((select id from fx where k = 'b_priv'), 'a0000000-0000-4000-8000-00000000000a')$$, 'error'),
   ('A', $$insert into public.entries (tournament_id, user_id) values ((select id from fx where k = 'a_pub'), 'b0000000-0000-4000-8000-00000000000b')$$, 'error'),
   ('A', $$insert into public.tournament_species values ((select id from fx where k = 'b_pub'), 2)$$, 'error'),
+  ('A', $$insert into public.tournament_sponsors (tournament_id, name) values ((select id from fx where k = 'b_pub'), 'Įsibrovėlis')$$, 'error'),
+  ('anon', $$insert into public.tournament_sponsors (tournament_id, name) values ((select id from fx where k = 'b_pub'), 'Anon')$$, 'error'),
   ('A', $$insert into public.tournaments (organizer_id, title, format, starts_at, ends_at) values ('b0000000-0000-4000-8000-00000000000b', 'Apsimetėlis', 'biggest', now() + interval '1 day', now() + interval '2 days')$$, 'error'),
   ('A', $$insert into public.catch_locations (catch_id, lat, lng, accuracy_m) values ((select id from fx where k = 'b_rejected'), 1, 1, 1)$$, 'error'),
   ('A', $$insert into public.disputes (catch_id, message) values ((select id from fx where k = 'b_rejected'), 'svetimas')$$, 'error'),

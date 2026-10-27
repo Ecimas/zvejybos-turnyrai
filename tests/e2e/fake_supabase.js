@@ -43,7 +43,8 @@ function seed() {
       photo_path: `${other}/y.jpg`, photo_sha256: 'e'.repeat(64), status: 'approved', reject_reason: null, created_at: iso(-1 * H)
     }],
     catch_locations: [],
-    disputes: []
+    disputes: [],
+    tournament_sponsors: []
   };
 }
 
@@ -82,6 +83,9 @@ function embed(table, row, spec) {
   for (const part of spec) {
     if (table === 'tournaments' && part === 'tournament_species(species_id)') {
       out.tournament_species = db.tournament_species.filter((x) => x.tournament_id === row.id).map((x) => ({ species_id: x.species_id }));
+    } else if (table === 'tournaments' && part.startsWith('tournament_sponsors(')) {
+      out.tournament_sponsors = (db.tournament_sponsors || []).filter((x) => x.tournament_id === row.id)
+        .map((x) => pick(x, part.slice(20, -1).split(',').map((c) => c.trim())));
     } else if (table === 'tournaments' && part === 'entries(count)') {
       out.entries = [{ count: db.entries.filter((e) => e.tournament_id === row.id).length }];
     } else if (table === 'entries' && part.startsWith('profiles(')) {
@@ -134,7 +138,7 @@ function canEditTournament(id) {
 // RLS atitikmuo rašymui: eilutės, kurių taisyklė neleidžia, tiesiog nepaliečiamos (kaip PostgREST).
 function writable(table, row) {
   if (table === 'tournaments') return row.organizer_id === uid() && beforeStart(row);
-  if (table === 'tournament_species') return canEditTournament(row.tournament_id);
+  if (table === 'tournament_species' || table === 'tournament_sponsors') return canEditTournament(row.tournament_id);
   if (table === 'entries') return row.user_id === uid() && beforeStart(db.tournaments.find((x) => x.id === row.tournament_id));
   if (table === 'catches') return row.user_id === uid();
   if (table === 'profiles') return row.id === uid();
@@ -225,6 +229,15 @@ class Query {
           Object.assign(row, { id: uuid(), visibility: row.visibility || 'public', leaderboard_hidden: !!row.leaderboard_hidden,
             fee_cents: 0, created_at: new Date().toISOString(), invite_code: uuid().replace(/-/g, '').slice(0, 10) });
         }
+        if (this.table === 'tournament_sponsors') {
+          if (!canEditTournament(row.tournament_id)) return { data: null, error: err('42501', 'new row violates row-level security policy for table "tournament_sponsors"') };
+          if (row.url && !/^https:\/\/[^\s<>"']{3,200}$/.test(row.url)) return { data: null, error: err('23514', 'check constraint tournament_sponsors_url') };
+          if (db.tournament_sponsors.filter((x) => x.tournament_id === row.tournament_id).length >= 10) return { data: null, error: err('P0001', 'sponsor_limit') };
+          Object.assign(row, { id: uuid(), name: String(row.name).trim(), created_at: new Date().toISOString() });
+        }
+        if (this.table === 'tournaments' && row.prize_fund_cents && !Array.isArray(row.prize_split)) {
+          return { data: null, error: err('23514', 'tournaments_prize_split_required') };
+        }
         if (this.table === 'tournament_species' && !canEditTournament(row.tournament_id)) {
           return { data: null, error: err('42501', 'new row violates row-level security policy for table "tournament_species"') };
         }
@@ -264,6 +277,7 @@ class Query {
       if (this.table === 'tournaments') {
         const gone = new Set(data.map((r) => r.id));
         db.tournament_species = db.tournament_species.filter((x) => !gone.has(x.tournament_id));
+        db.tournament_sponsors = db.tournament_sponsors.filter((x) => !gone.has(x.tournament_id));
         db.entries = db.entries.filter((x) => !gone.has(x.tournament_id));
       }
       save();

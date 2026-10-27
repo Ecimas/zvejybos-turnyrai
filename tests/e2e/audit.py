@@ -42,6 +42,7 @@ POISON = """(X) => {
     if (i % 5 === 0 && c.user_id === ids[0]) { c.status = 'rejected'; c.reject_reason = X; }
     if (i % 7 === 0 && c.user_id !== ids[0]) { c.status = 'pending'; }
   });
+  (db.tournament_sponsors || []).forEach((sp) => { sp.name = X.slice(0, 60); sp.url = 'javascript:window.__xss=4'; sp.amount_cents = 12345; });
   const rej = db.catches.find((c) => c.user_id === ids[0] && c.status === 'rejected');
   if (rej) db.disputes = [{ id: 'd-x', catch_id: rej.id, user_id: ids[0], message: X, status: 'open', resolution: X, created_at: new Date().toISOString() }];
   db.catches.filter((c) => c.status === 'pending').forEach((c) => { db.locations[c.id] = { lat: 54.9, lng: 23.9, accuracy: 15 }; });
@@ -194,6 +195,11 @@ def main():
                     if r == "#/profilis":
                         page.get_by_role("button", name="Redaguoti profilį").click()
                         page.get_by_role("button", name="Ištrinti paskyrą").first.click()
+                    if r == "#/naujas":  # atidarom prizinio fondo ir rėmėjų laukus
+                        page.get_by_label("Fondo suma, €").fill("1000")
+                        page.get_by_role("button", name="Penkiems: 40 / 25 / 15 / 12 / 8").click()
+                        page.get_by_role("button", name="Pridėti rėmėją").click()
+                        page.get_by_role("button", name="Pridėti rėmėją").click()
                     if r == "#/moderavimas":
                         page.get_by_role("button", name="Atmesti").first.click()
                     page.wait_for_timeout(150)

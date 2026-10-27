@@ -9,6 +9,7 @@ export const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2
 // Viešai skaitomi laimikio stulpeliai. Masalas ir pastabos – tik savininkui per my_catch_notes() (0008).
 export const CATCH_COLS = 'id, user_id, client_id, species_id, length_mm, weight_g, weather, captured_at_device, received_at, ' +
   'photo_path, photo_sha256, status, reject_reason, reviewed_by, reviewed_at, created_at';
+const TOURNAMENT_SEL = '*, tournament_species(species_id), entries(count), tournament_sponsors(id, name, url, amount_cents, sort)';
 const PERMANENT_CODES = new Set(['42501', '23514', '23503', '22P02', 'P0001', '42883']);
 
 // Funkcijos dar nėra serveryje (migracija neįdiegta).
@@ -49,6 +50,7 @@ export async function createSupabaseBackend(url, anonKey) {
   const decorate = (t, mine) => ({
     ...t,
     species_ids: (t.tournament_species || []).map((x) => x.species_id),
+    sponsors: (t.tournament_sponsors || []).slice().sort((a, b) => a.sort - b.sort),
     participants: t.entries?.[0]?.count ?? 0,
     joined: mine.has(t.id)
   });
@@ -118,38 +120,47 @@ export async function createSupabaseBackend(url, anonKey) {
     },
     async tournaments() {
       const [rows, mine] = await Promise.all([
-        sb.from('tournaments').select('*, tournament_species(species_id), entries(count)').order('starts_at'),
+        sb.from('tournaments').select(TOURNAMENT_SEL).order('starts_at'),
         myEntries()
       ]);
       return check(rows).map((t) => decorate(t, mine));
     },
     async tournament(id) {
       const [row, mine] = await Promise.all([
-        sb.from('tournaments').select('*, tournament_species(species_id), entries(count)').eq('id', id).maybeSingle(),
+        sb.from('tournaments').select(TOURNAMENT_SEL).eq('id', id).maybeSingle(),
         myEntries()
       ]);
       const t = check(row);
       return t ? decorate(t, mine) : null;
     },
     async createTournament(data) {
-      const { species_ids, ...rest } = data;
+      const { species_ids, sponsors = [], ...rest } = data;
       const ins = await sb.from('tournaments').insert({ ...rest, organizer_id: uid() }).select('id').single();
       if (ins.error) throw friendly(ins.error, [[/tournament_limit/, 'Per parą galima sukurti ne daugiau kaip 10 turnyrų']]);
       const t = ins.data;
       if (species_ids.length) {
         check(await sb.from('tournament_species').insert(species_ids.map((species_id) => ({ tournament_id: t.id, species_id }))));
       }
+      if (sponsors.length) {
+        check(await sb.from('tournament_sponsors').insert(sponsors.map((s, i) => ({ ...s, tournament_id: t.id, sort: i }))));
+      }
       check(await sb.from('entries').insert({ tournament_id: t.id, user_id: uid() }));
       return t.id;
     },
     async updateTournament(id, data) {
-      const { species_ids, ...rest } = data;
+      const { species_ids, sponsors, ...rest } = data;
       const rows = check(await sb.from('tournaments').update(rest).eq('id', id).select('id'));
       if (!rows?.length) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
       if (species_ids) {
         check(await sb.from('tournament_species').delete().eq('tournament_id', id));
         if (species_ids.length) {
           check(await sb.from('tournament_species').insert(species_ids.map((species_id) => ({ tournament_id: id, species_id }))));
+        }
+      }
+      if (sponsors) {
+        check(await sb.from('tournament_sponsors').delete().eq('tournament_id', id));
+        if (sponsors.length) {
+          check(await sb.from('tournament_sponsors').insert(sponsors.map((s, i) => ({ ...s, tournament_id: id, sort: i }))));
         }
       }
     },

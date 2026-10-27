@@ -37,13 +37,13 @@ function seed() {
     T('t-taure', { title: 'Rudens lydekų taurė', format: 'top_n_sum', top_n: 3, min_length_mm: 500,
       starts_at: iso(-4 * D), ends_at: iso(2 * D + 14 * H),
       description: 'Trys ilgiausios lydekos sumuojamos. Nuotrauka su matavimo liniuote, matomas visas žuvies ilgis.',
-      prizes: '1 vieta – spiningas\n2 vieta – ritė\n3 vieta – masalų rinkinys', sponsor_name: 'Ežero žvejybos parduotuvė' }),
+      prizes: 'Rėmėjų dovanos: spiningas, ritė, masalų rinkinys', prize_fund_cents: 50000, prize_split: [50, 30, 20] }),
     T('t-sezonas', { title: 'Sezono iššūkis', format: 'biggest', starts_at: iso(-60 * D), ends_at: iso(39 * D),
       description: 'Didžiausia bet kurios rūšies žuvis per sezoną.' }),
     T('t-eseriai', { title: 'Ešerių savaitgalis', format: 'biggest', min_length_mm: 200,
       starts_at: iso(30 * H), ends_at: iso(30 * H + 2 * D) }),
     T('t-plesrunai', { title: 'Rugsėjo plėšrūnai', format: 'top_n_sum', top_n: 3, min_length_mm: 400,
-      starts_at: iso(-40 * D), ends_at: iso(-22 * D), prizes: '1 vieta – 50 € dovanų kuponas' }),
+      starts_at: iso(-40 * D), ends_at: iso(-22 * D), prize_fund_cents: 10000, prize_split: [60, 40] }),
     T('t-slaptas', { title: 'Draugų iššūkis', format: 'biggest', organizer_id: ME, visibility: 'private',
       leaderboard_hidden: true, starts_at: iso(-2 * D), ends_at: iso(5 * D),
       description: 'Privatus turnyras tik su kvietimu. Lentelė paslėpta iki pabaigos.' })
@@ -86,7 +86,12 @@ function seed() {
   add(ME, 'eserys', 340, -50 * D);
   add(ME, 'karsis', 520, -70 * D);
 
-  return { profiles, tournaments, tournament_species, entries, catches, locations: {}, disputes: [] };
+  const tournament_sponsors = [
+    { id: 's1', tournament_id: 't-taure', name: 'Ežero žvejybos parduotuvė', url: 'https://example.com', amount_cents: 30000, sort: 0 },
+    { id: 's2', tournament_id: 't-taure', name: 'Kauno žvejų klubas', url: null, amount_cents: 20000, sort: 1 },
+    { id: 's3', tournament_id: 't-plesrunai', name: 'Plėšrūnų bendrija', url: null, amount_cents: 10000, sort: 0 }
+  ];
+  return { profiles, tournaments, tournament_species, tournament_sponsors, entries, catches, locations: {}, disputes: [] };
 }
 
 export function createDemoBackend({ photos } = {}) {
@@ -94,6 +99,7 @@ export function createDemoBackend({ photos } = {}) {
   try { db = JSON.parse(localStorage.getItem(KEY)); } catch { db = null; }
   if (!db) { db = seed(); }
   db.disputes ||= [];
+  db.tournament_sponsors ||= [];
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* pilna atmintis */ } };
   save();
   const photoStore = photos || (typeof indexedDB !== 'undefined' ? idbStore('zvejybos-turnyrai-demo', 'photos') : memoryStore());
@@ -107,6 +113,7 @@ export function createDemoBackend({ photos } = {}) {
   const decorate = (t) => ({
     ...t,
     species_ids: db.tournament_species.filter((x) => x.tournament_id === t.id).map((x) => x.species_id),
+    sponsors: db.tournament_sponsors.filter((x) => x.tournament_id === t.id).sort((a, b) => a.sort - b.sort),
     participants: db.entries.filter((e) => e.tournament_id === t.id).length,
     joined: db.entries.some((e) => e.tournament_id === t.id && e.user_id === ME)
   });
@@ -140,12 +147,13 @@ export function createDemoBackend({ photos } = {}) {
     },
     async createTournament(data) {
       const id = `t-${Date.now().toString(36)}`;
-      const { species_ids, ...rest } = data;
+      const { species_ids, sponsors = [], ...rest } = data;
       const recent = db.tournaments.filter((t) => t.organizer_id === ME && Date.now() - new Date(t.created_at) < D).length;
       if (recent >= 10) throw new Error('Per parą galima sukurti ne daugiau kaip 10 turnyrų');
       db.tournaments.push({ id, organizer_id: ME, visibility: 'public', fee_cents: 0, leaderboard_hidden: false,
         invite_code: code10(), created_at: new Date().toISOString(), ...rest });
       species_ids.forEach((species_id) => db.tournament_species.push({ tournament_id: id, species_id }));
+      sponsors.forEach((s, i) => db.tournament_sponsors.push({ ...s, id: `s-${id}-${i}`, tournament_id: id, sort: i }));
       db.entries.push({ tournament_id: id, user_id: ME, joined_at: new Date().toISOString() });
       save();
       return id;
@@ -153,8 +161,12 @@ export function createDemoBackend({ photos } = {}) {
     async updateTournament(id, data) {
       const t = db.tournaments.find((x) => x.id === id);
       if (!isOrganizerBeforeStart(t)) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
-      const { species_ids, ...rest } = data;
+      const { species_ids, sponsors, ...rest } = data;
       Object.assign(t, rest);
+      if (sponsors) {
+        db.tournament_sponsors = db.tournament_sponsors.filter((x) => x.tournament_id !== id)
+          .concat(sponsors.map((s, i) => ({ ...s, id: `s-${id}-${i}`, tournament_id: id, sort: i })));
+      }
       if (species_ids) {
         db.tournament_species = db.tournament_species.filter((x) => x.tournament_id !== id)
           .concat(species_ids.map((species_id) => ({ tournament_id: id, species_id })));
@@ -166,6 +178,7 @@ export function createDemoBackend({ photos } = {}) {
       if (!isOrganizerBeforeStart(t)) throw new Error('Prasidėjusio turnyro ištrinti negalima');
       db.tournaments = db.tournaments.filter((x) => x.id !== id);
       db.tournament_species = db.tournament_species.filter((x) => x.tournament_id !== id);
+      db.tournament_sponsors = db.tournament_sponsors.filter((x) => x.tournament_id !== id);
       db.entries = db.entries.filter((x) => x.tournament_id !== id);
       save();
     },

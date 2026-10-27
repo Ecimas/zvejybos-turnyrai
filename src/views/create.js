@@ -2,6 +2,7 @@ import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { phase } from '../lib/format.js';
 import { backButton, loginPrompt, empty } from '../ui.js';
+import { PRESETS, eur, parseEur, validateSplit, placeAmounts, sponsorTotal } from '../lib/prizes.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 const local = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -88,15 +89,33 @@ export async function createView(ctx, [editId] = []) {
         <label class="check-row"><input type="checkbox" name="leaderboard_hidden" ${t?.leaderboard_hidden ? 'checked' : ''}>
           <span class="stack-1"><span class="strong">Slėpti lentelę iki pabaigos</span><span class="small muted">Dalyviai mato tik savo rezultatą – intriga iki paskutinės minutės.</span></span></label>
 
-        <label class="field"><span class="small muted strong">Prizai (nebūtina)</span>
-          <textarea name="prizes" rows="3" maxlength="500" placeholder="1 vieta – spiningas&#10;2 vieta – ritė">${t?.prizes || ''}</textarea></label>
+        <fieldset class="field card stack">
+          <legend class="small muted strong">Prizinis fondas (nebūtina)</legend>
+          <label class="field"><span class="small muted strong">Fondo suma, €</span>
+            <input name="prize_fund" inputmode="decimal" maxlength="10" autocomplete="off" placeholder="pvz. 500"
+                   value="${t?.prize_fund_cents ? String(t.prize_fund_cents / 100).replace('.', ',') : ''}"></label>
+          <div class="stack" data-split-wrap ${t?.prize_fund_cents ? '' : 'hidden'}>
+            <span class="small muted strong">Kaip padalinti vietoms</span>
+            <div class="chips">${PRESETS.map((pr) => html`<button type="button" class="sp-chip" data-preset="${pr.key}">${pr.label}</button>`)}</div>
+            <div class="list" data-split-rows></div>
+            <button type="button" class="btn-text" data-add-place>${icon('plus', 16, 2.6)}Pridėti vietą</button>
+            <p class="small" data-split-msg aria-live="polite"></p>
+          </div>
+          <p class="small muted">Pinigų programėlė neperveda – fondą išmoka organizatorius arba rėmėjai.</p>
+        </fieldset>
 
-        <div class="grid-2">
-          <label class="field"><span class="small muted strong">Rėmėjas (nebūtina)</span>
-            <input name="sponsor_name" maxlength="60" placeholder="Pavadinimas" value="${t?.sponsor_name || ''}"></label>
-          <label class="field"><span class="small muted strong">Rėmėjo svetainė</span>
-            <input name="sponsor_url" type="url" maxlength="200" inputmode="url" placeholder="https://…" value="${t?.sponsor_url || ''}"></label>
-        </div>
+        <fieldset class="field stack">
+          <legend class="small muted strong">Rėmėjai (nebūtina, iki 10)</legend>
+          <div class="stack" data-sponsor-rows></div>
+          <button type="button" class="btn btn-ghost" data-add-sponsor>${icon('plus', 18, 2.6)}Pridėti rėmėją</button>
+          <div class="row-between gap-8" data-sponsor-sum hidden>
+            <span class="small muted" data-sponsor-sum-text></span>
+            <button type="button" class="btn-text" data-use-sum>Naudoti kaip fondą</button>
+          </div>
+        </fieldset>
+
+        <label class="field"><span class="small muted strong">Daiktiniai prizai (nebūtina)</span>
+          <textarea name="prizes" rows="3" maxlength="500" placeholder="pvz. 1 vieta – spiningas, 2 vieta – ritė">${t?.prizes || ''}</textarea></label>
 
         <label class="field"><span class="small muted strong">Aprašymas (nebūtina)</span>
           <textarea name="description" rows="3" maxlength="2000" placeholder="Papildomos taisyklės">${t?.description || ''}</textarea></label>
@@ -128,6 +147,119 @@ export async function createView(ctx, [editId] = []) {
       const errorEl = root.querySelector('[data-error]');
       const fail = (msg) => { errorEl.hidden = false; errorEl.textContent = msg; errorEl.scrollIntoView({ block: 'center' }); };
 
+      // --- Prizinis fondas ir padalijimas ---
+      let split = Array.isArray(t?.prize_split) && t.prize_split.length ? t.prize_split.slice() : [50, 30, 20];
+      const fundInput = form.prize_fund;
+      const splitWrap = root.querySelector('[data-split-wrap]');
+      const splitRows = root.querySelector('[data-split-rows]');
+      const splitMsg = root.querySelector('[data-split-msg]');
+      const fundCents = () => parseEur(fundInput.value);
+
+      function renderSplit() {
+        const fund = fundCents();
+        const amounts = Number.isFinite(fund) ? placeAmounts(fund, split) : [];
+        splitRows.innerHTML = String(html`${split.map((pct, i) => html`<div class="list-row split-row">
+          <span class="strong place">${i + 1} vieta</span>
+          <input class="pct" data-pct="${i}" inputmode="numeric" maxlength="3" value="${pct}" aria-label="${i + 1} vietos procentas">
+          <span class="muted">%</span>
+          <span class="grow right num-sm" data-amount="${i}">${amounts[i] !== undefined ? eur(amounts[i]) : ''}</span>
+          ${i === split.length - 1 && split.length > 1
+            ? html`<button type="button" class="icon-btn small-btn" data-remove-place aria-label="Pašalinti ${i + 1} vietą">${icon('x', 16, 2.4)}</button>`
+            : html`<span class="small-btn"></span>`}
+        </div>`)}`);
+        root.querySelectorAll('[data-preset]').forEach((b) => {
+          const pr = PRESETS.find((x) => x.key === b.dataset.preset);
+          b.setAttribute('aria-pressed', String(pr.split.join() === split.join()));
+        });
+        updateSplitMsg();
+      }
+      function updateSplitMsg() {
+        const err = validateSplit(split);
+        const sum = split.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
+        splitMsg.textContent = err || `Viso 100 % · ${split.length} ${split.length === 1 ? 'prizinė vieta' : 'prizinės vietos'}`;
+        splitMsg.className = `small ${err ? 'bad' : 'ok'}`;
+        if (!err && sum === 100) {
+          const amounts = placeAmounts(fundCents() || 0, split);
+          root.querySelectorAll('[data-amount]').forEach((el) => { el.textContent = amounts[el.dataset.amount] !== undefined ? eur(amounts[el.dataset.amount]) : ''; });
+        }
+      }
+      splitRows.addEventListener('input', (e) => {
+        const i = e.target.dataset.pct;
+        if (i === undefined) return;
+        e.target.value = e.target.value.replace(/\D/g, '').slice(0, 3);
+        split[Number(i)] = Number(e.target.value || 0);
+        root.querySelectorAll('[data-preset]').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+        updateSplitMsg();
+      });
+      splitRows.addEventListener('click', (e) => {
+        if (e.target.closest('[data-remove-place]')) { split.pop(); renderSplit(); }
+      });
+      root.querySelector('[data-add-place]').addEventListener('click', () => {
+        if (split.length >= 10) { ctx.toast('Daugiausia 10 prizinių vietų'); return; }
+        split.push(0);
+        renderSplit();
+        splitRows.querySelector(`[data-pct="${split.length - 1}"]`).focus();
+      });
+      root.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => {
+        split = PRESETS.find((x) => x.key === b.dataset.preset).split.slice();
+        renderSplit();
+      }));
+      fundInput.addEventListener('input', () => {
+        splitWrap.hidden = !(fundCents() > 0);
+        if (!splitWrap.hidden) updateSplitMsg();
+        updateSponsorSum();
+      });
+      renderSplit();
+
+      // --- Rėmėjai ---
+      let sponsors = (t?.sponsors || []).map((x) => ({
+        name: x.name || '', url: x.url || '', amount: x.amount_cents ? String(x.amount_cents / 100).replace('.', ',') : ''
+      }));
+      const sponsorRows = root.querySelector('[data-sponsor-rows]');
+      function renderSponsors() {
+        sponsorRows.innerHTML = String(html`${sponsors.map((sp, i) => html`<div class="card stack-2 sponsor-row" data-sponsor="${i}">
+          <div class="row-between"><span class="small muted strong">Rėmėjas ${i + 1}</span>
+            <button type="button" class="btn-text bad" data-remove-sponsor="${i}" aria-label="Pašalinti rėmėją ${i + 1}">Pašalinti</button></div>
+          <input data-f="name" maxlength="60" placeholder="Pavadinimas" value="${sp.name}" aria-label="Rėmėjo ${i + 1} pavadinimas">
+          <input data-f="url" maxlength="200" inputmode="url" placeholder="Svetainė https://… (nebūtina)" value="${sp.url}" aria-label="Rėmėjo ${i + 1} svetainė">
+          <input data-f="amount" inputmode="decimal" maxlength="10" placeholder="Įnašas į fondą, € (nebūtina)" value="${sp.amount}" aria-label="Rėmėjo ${i + 1} įnašas, €">
+        </div>`)}`);
+        root.querySelector('[data-add-sponsor]').hidden = sponsors.length >= 10;
+        updateSponsorSum();
+      }
+      function updateSponsorSum() {
+        const total = sponsorTotal(sponsors.map((x) => ({ amount_cents: parseEur(x.amount) || 0 })));
+        const box = root.querySelector('[data-sponsor-sum]');
+        box.hidden = !total;
+        if (!total) return;
+        const fund = fundCents();
+        root.querySelector('[data-sponsor-sum-text]').textContent = Number.isFinite(fund) && fund > 0
+          ? `Rėmėjų įnašai: ${eur(total)} iš ${eur(fund)} fondo`
+          : `Rėmėjų įnašai: ${eur(total)}`;
+        root.querySelector('[data-use-sum]').hidden = fund === total;
+      }
+      sponsorRows.addEventListener('input', (e) => {
+        const row = e.target.closest('[data-sponsor]');
+        if (!row || !e.target.dataset.f) return;
+        sponsors[Number(row.dataset.sponsor)][e.target.dataset.f] = e.target.value;
+        if (e.target.dataset.f === 'amount') updateSponsorSum();
+      });
+      sponsorRows.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-remove-sponsor]');
+        if (b) { sponsors.splice(Number(b.dataset.removeSponsor), 1); renderSponsors(); }
+      });
+      root.querySelector('[data-add-sponsor]').addEventListener('click', () => {
+        sponsors.push({ name: '', url: '', amount: '' });
+        renderSponsors();
+        sponsorRows.querySelector(`[data-sponsor="${sponsors.length - 1}"] [data-f=name]`).focus();
+      });
+      root.querySelector('[data-use-sum]').addEventListener('click', () => {
+        const total = sponsorTotal(sponsors.map((x) => ({ amount_cents: parseEur(x.amount) || 0 })));
+        fundInput.value = String(total / 100).replace('.', ',');
+        fundInput.dispatchEvent(new Event('input'));
+      });
+      renderSponsors();
+
       root.querySelector('[data-delete]')?.addEventListener('click', async (e) => {
         if (!confirm('Ištrinti turnyrą? Dalyvių registracijos bus panaikintos.')) return;
         e.currentTarget.disabled = true;
@@ -147,7 +279,7 @@ export async function createView(ctx, [editId] = []) {
         let startsAt = new Date(form.starts_at.value);
         const endsAt = new Date(form.ends_at.value);
         const minCm = Number(form.min_cm.value || 0);
-        const sponsorUrl = form.sponsor_url.value.trim();
+        const fund = fundCents();
         if (title.length < 3) return fail('Pavadinimas per trumpas.');
         if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) return fail('Nurodyk pradžią ir pabaigą.');
         if (endsAt <= startsAt) return fail('Pabaiga turi būti vėliau nei pradžia.');
@@ -158,7 +290,23 @@ export async function createView(ctx, [editId] = []) {
         if (startsAt < soonest) startsAt = soonest;
         if (endsAt <= startsAt) return fail('Pabaiga turi būti vėliau nei pradžia.');
         if (!Number.isFinite(minCm) || minCm < 0 || minCm > 200) return fail('Minimalus ilgis turi būti 0–200 cm.');
-        if (sponsorUrl && !SPONSOR_URL.test(sponsorUrl)) return fail('Rėmėjo svetainė turi prasidėti https://');
+        if (!Number.isFinite(fund)) return fail('Prizinis fondas: įrašyk sumą eurais, pvz. 500 arba 250,50.');
+        if (fund > 10000000) return fail('Prizinis fondas negali viršyti 100 000 €.');
+        if (fund > 0) {
+          const splitErr = validateSplit(split);
+          if (splitErr) return fail(`Prizinis fondas: ${splitErr.charAt(0).toLowerCase()}${splitErr.slice(1)}.`);
+        }
+        const cleanSponsors = [];
+        for (const [i, sp] of sponsors.entries()) {
+          const name = sp.name.trim();
+          const url = sp.url.trim();
+          const amount = parseEur(sp.amount);
+          if (!name && !url && !sp.amount.trim()) continue;
+          if (!name) return fail(`Rėmėjas ${i + 1}: įrašyk pavadinimą.`);
+          if (url && !SPONSOR_URL.test(url)) return fail(`Rėmėjas ${i + 1}: svetainė turi prasidėti https://`);
+          if (!Number.isFinite(amount) || amount > 10000000) return fail(`Rėmėjas ${i + 1}: įnašą įrašyk eurais, pvz. 200.`);
+          cleanSponsors.push({ name, url: url || null, amount_cents: amount || null });
+        }
         const data = {
           title,
           description: form.description.value.trim() || null,
@@ -170,8 +318,9 @@ export async function createView(ctx, [editId] = []) {
           visibility,
           leaderboard_hidden: form.leaderboard_hidden.checked,
           prizes: form.prizes.value.trim() || null,
-          sponsor_name: form.sponsor_name.value.trim() || null,
-          sponsor_url: sponsorUrl || null,
+          prize_fund_cents: fund,
+          prize_split: fund > 0 ? split.slice() : null,
+          sponsors: cleanSponsors,
           species_ids: [...picked]
         };
         const btn = e.currentTarget;
@@ -189,7 +338,8 @@ export async function createView(ctx, [editId] = []) {
         } catch (err) {
           console.error(err);
           btn.disabled = false;
-          fail(/limit|prasid|parą/i.test(err.message || '') ? err.message : `Nepavyko ${t ? 'išsaugoti' : 'sukurti turnyro'}. Bandyk dar kartą.`);
+          fail(/sponsor_limit/.test(err.message || '') ? 'Daugiausia 10 rėmėjų.'
+            : /limit|prasid|parą/i.test(err.message || '') ? err.message : `Nepavyko ${t ? 'išsaugoti' : 'sukurti turnyro'}. Bandyk dar kartą.`);
         }
       });
     }
