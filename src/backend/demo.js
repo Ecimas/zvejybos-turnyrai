@@ -105,6 +105,7 @@ export function createDemoBackend({ photos } = {}) {
     getUser: () => user,
     onAuth(cb) { listeners.add(cb); return () => listeners.delete(cb); },
     async signIn() {},
+    async verifyCode() {},
     async signOut() {
       localStorage.removeItem(KEY);
       db = seed();

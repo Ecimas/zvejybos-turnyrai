@@ -1,9 +1,8 @@
-// Supabase projekto duomenys. Kol tušti – programėlė veikia demonstraciniu režimu
-// su pavyzdiniais duomenimis, saugomais tik šiame telefone.
+// Supabase projekto duomenys. Kai tušti – programėlė veikia demonstraciniu režimu
+// su pavyzdiniais duomenimis, saugomais tik tame telefone.
 //
-// Kur rasti: Supabase -> Project Settings -> API.
-// „anon public“ raktas skirtas naršyklei ir yra saugus viešai – duomenis saugo RLS taisyklės.
-// NIEKADA čia nedėk „service_role“ rakto.
+// Raktas „publishable“ skirtas naršyklei ir yra saugus viešai – duomenis saugo RLS taisyklės.
+// NIEKADA čia nedėk „secret“ ar „service_role“ rakto.
 
-export const SUPABASE_URL = '';
-export const SUPABASE_ANON_KEY = '';
+export const SUPABASE_URL = 'https://nhegygtobrgilwthtkel.supabase.co';
+export const SUPABASE_ANON_KEY = 'sb_publishable_dG1Dt5ZSV-tuY28iywORPw__1ExOGqv';

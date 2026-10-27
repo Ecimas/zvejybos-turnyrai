@@ -47,6 +47,15 @@ Kiekvienas naujas kodas GitHub'e Vercel'yje atsinaujina automatiškai.
 
 Supabase nemokamas el. pašto siuntimas leidžia tik kelis laiškus per valandą. Prieš kviečiant daugiau nei kelis žmones, prijunk savo SMTP (pvz. Resend, kuris turi nemokamą planą): **Authentication → Emails → SMTP Settings**.
 
+## Prisijungimas
+
+Prisijungiama kodu iš el. laiško (veikia ir į pradžios ekraną įdiegtoje programėlėje). Kad laiške būtų kodas,
+Supabase **Authentication → Emails** šablonuose „Magic Link“ ir „Confirm signup“ turi būti `{{ .Token }}`.
+
+## Testai be tinklo
+
+`tests/e2e/real_mode.py` tikrina tikro režimo kodą su Supabase kliento imitacija (`tests/e2e/fake_supabase.js`).
+
 ## Saugumas
 
 - Laimikio po įkėlimo nekeičia niekas, išskyrus moderatorių per `review_catch()`.
@@ -76,5 +85,6 @@ Kompiliavimo žingsnio nėra – failai atiduodami tokie, kokie yra.
 ```
 node --test tests/unit/*.test.js   # taškų skaičiavimas, eilė, formatavimas, XSS
 bash tests/db/run.sh               # schema ir teisės su tikru PostgreSQL 16
-python3 tests/e2e/run.py           # visas vartotojo kelias naršyklėje (Playwright)
+python3 tests/e2e/run.py           # visas vartotojo kelias naršyklėje (Playwright, demo režimas)
+python3 tests/e2e/real_mode.py     # tikras režimas su Supabase imitacija
 ```

@@ -26,3 +26,9 @@ create policy catch_photos_select on storage.objects for select
   );
 
 -- Keisti ar trinti įkeltų nuotraukų negali niekas: tai įrodymas.
+
+-- Tik JPEG iki 5 MB: programėlė siunčia ~0,3–1 MB kadrus.
+update storage.buckets
+   set file_size_limit = 5242880,
+       allowed_mime_types = array['image/jpeg']
+ where id = 'catch-photos';

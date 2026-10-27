@@ -333,6 +333,7 @@ ol.plain { list-style: none; margin: 0; padding: 0; }
 .field textarea { min-height: 96px; resize: vertical; }
 .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); outline: none; }
 .login { padding-top: 12px; }
+.field input.code-input { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 34px; letter-spacing: 8px; text-align: center; min-height: 64px; }
 .profile-head { display: flex; align-items: center; gap: 14px; }
 
 /* ---------- Grafikas ---------- */

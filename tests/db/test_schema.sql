@@ -44,7 +44,13 @@ values ('aaaaaaaa-0000-0000-0000-000000000001', (select id from public.species w
 insert into public.entries (tournament_id) values ('aaaaaaaa-0000-0000-0000-000000000001');
 set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
 insert into public.entries (tournament_id) values ('aaaaaaaa-0000-0000-0000-000000000001');
+-- Turnyras, prasidedantis „dabar“: rūšis vis tiek galima priskirti iškart po sukūrimo.
+set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+insert into public.tournaments (id, title, format, starts_at, ends_at)
+values ('aaaaaaaa-0000-0000-0000-000000000002', 'Dabar', 'biggest', now() - interval '2 minutes', now() + interval '1 day');
+insert into public.tournament_species (tournament_id, species_id) values ('aaaaaaaa-0000-0000-0000-000000000002', 1);
 reset role;
+delete from public.tournaments where id = 'aaaaaaaa-0000-0000-0000-000000000002';
 -- Turnyras „prasideda“: perkeliam pradžią į praeitį.
 update public.tournaments set starts_at = now() - interval '1 day'
  where id = 'aaaaaaaa-0000-0000-0000-000000000001';
@@ -206,6 +212,40 @@ do $$ begin
   begin
     insert into storage.objects (bucket_id, name) values ('catch-photos', '11111111-1111-1111-1111-111111111111/blogai.jpg');
     raise exception 'FAIL: įkelta į svetimą aplanką';
+  exception when insufficient_privilege then null; end;
+end $$;
+reset role;
+
+-- ---------------------------------------------------------------
+\echo '10. Senų vietų valymas po 90 dienų'
+-- a820 vieta: laimikis šviežias -> lieka. Pasendinam laimikį ir turnyrą.
+do $$
+declare n int;
+begin
+  n := public.purge_old_locations();
+  assert n = 0 and (select count(*) from public.catch_locations) = 1, 'ištrinta per anksti';
+
+  -- Laimikis senas, bet turnyras baigėsi prieš 30 d. -> vis dar saugoma.
+  update public.tournaments set starts_at = now() - interval '130 days', ends_at = now() - interval '30 days'
+   where id = 'aaaaaaaa-0000-0000-0000-000000000001';
+  update public.catches set captured_at_device = now() - interval '100 days'
+   where user_id = '11111111-1111-1111-1111-111111111111';
+  n := public.purge_old_locations();
+  assert n = 0 and (select count(*) from public.catch_locations) = 1, 'ištrinta, nors turnyras baigėsi < 90 d.';
+
+  -- Turnyras baigėsi prieš 95 d. -> ištrinama.
+  update public.tournaments set starts_at = now() - interval '150 days', ends_at = now() - interval '95 days'
+   where id = 'aaaaaaaa-0000-0000-0000-000000000001';
+  n := public.purge_old_locations();
+  assert n = 1 and (select count(*) from public.catch_locations) = 0, 'sena vieta neištrinta';
+end $$;
+
+set role authenticated;
+set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
+do $$ begin
+  begin
+    perform public.purge_old_locations();
+    raise exception 'FAIL: vartotojas gali kviesti valymą';
   exception when insufficient_privilege then null; end;
 end $$;
 reset role;

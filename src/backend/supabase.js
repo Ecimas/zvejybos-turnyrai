@@ -61,6 +61,16 @@ export async function createSupabaseBackend(url, anonKey) {
         options: { emailRedirectTo: location.origin + location.pathname }
       }));
     },
+    async verifyCode(email, token) {
+      let r = await sb.auth.verifyOtp({ email, token, type: 'email' });
+      // Senesnės Supabase versijos naujam vartotojui laukia tipo „signup“.
+      if (r.error) {
+        const r2 = await sb.auth.verifyOtp({ email, token, type: 'signup' });
+        if (!r2.error) r = r2;
+      }
+      if (r.error) throw r.error;
+      user = r.data?.user ?? r.data?.session?.user ?? user;
+    },
     async signOut() {
       await sb.auth.signOut();
       user = null;

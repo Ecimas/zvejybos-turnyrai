@@ -30,5 +30,7 @@ PSQL=(psql -h "$WORK" -p "$PORT" -U postgres -d postgres -X -q -v ON_ERROR_STOP=
 "${PSQL[@]}" -f "$ROOT/tests/db/supabase_stub.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/migrations/0001_init.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/migrations/0002_storage.sql"
+"${PSQL[@]}" -f "$ROOT/supabase/migrations/0003_location_retention.sql"
+"${PSQL[@]}" -f "$ROOT/supabase/migrations/0004_rls_performance.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/seed.sql"
 "${PSQL[@]}" -f "$ROOT/tests/db/test_schema.sql"

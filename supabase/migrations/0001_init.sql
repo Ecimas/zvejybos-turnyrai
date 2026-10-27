@@ -131,6 +131,7 @@ create table public.catch_locations (
 create or replace function public.catches_before_insert()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 begin
   new.user_id       := auth.uid();
