@@ -57,3 +57,9 @@ test('oras: tinklo klaida ir laukimo riba grąžina null, ne klaidą', async () 
   await fetchWeather(54.91234, 23.98765, { fetchImpl: async (u) => { asked = u; return { ok: true, json: async () => ({}) }; } });
   assert.match(asked, /latitude=54\.912&longitude=23\.988/, 'koordinatės apvalinamos – tikslios vietos neišduodamos');
 });
+
+test('atotrūkis iki aukštesnės vietos, įskaitant lygų rezultatą', async () => {
+  const { gapText } = await import('../../src/lib/format.js');
+  assert.equal(gapText({ rank: 2, score_mm: 810 }, { score_mm: 740 }), 'Iki #2 trūksta 7 cm');
+  assert.equal(gapText({ rank: 5, score_mm: 620 }, { score_mm: 620 }), 'Tiek pat kaip #5 – jis pagavo anksčiau, reikia bent 1 mm daugiau');
+});

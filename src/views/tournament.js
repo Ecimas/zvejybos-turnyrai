@@ -1,6 +1,6 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { phase, timeLabel, describeFormat, cm, dateTime, duration, count } from '../lib/format.js';
+import { phase, timeLabel, describeFormat, cm, dateTime, duration, count, gapText } from '../lib/format.js';
 import { fitReason, REASON_LT } from '../lib/scoring.js';
 import { phaseBadge, statusChip, backButton, thumb, hydratePhotos, empty, avatar, loginPrompt, notFound } from '../ui.js';
 
@@ -144,7 +144,7 @@ export async function tournamentView(ctx, [id]) {
           </div>
         </div>
         ${myRow && above ? html`<div class="stack-2">
-          <div class="row-between small strong"><span>Iki #${above.rank} trūksta ${cm(above.score_mm - myRow.score_mm)}</span><span class="muted">${above.nickname}</span></div>
+          <div class="row-between small strong"><span>${gapText(above, myRow)}</span><span class="muted">${above.nickname}</span></div>
           <div class="progress"><div style="width:${Math.max(4, Math.round((myRow.score_mm / above.score_mm) * 100))}%"></div></div>
         </div>` : ''}
         ${!myRow ? html`<span class="small muted">Įskaityti bus tik moderatoriaus patvirtinti laimikiai.</span>` : ''}
@@ -326,7 +326,7 @@ export async function boardView(ctx, [id]) {
       <span class="rank-big accent">#${mine.rank}</span>
       <span class="grow stack-1">
         <span class="strong">Tu · ${cm(mine.score_mm)}</span>
-        <span class="small">${above ? `Iki #${above.rank} trūksta ${cm(above.score_mm - mine.score_mm)}` : 'Tu pirmauji'}${p === 'live' ? ` · ${timeLabel(t).toLowerCase()}` : ''}</span>
+        <span class="small">${above ? gapText(above, mine) : 'Tu pirmauji'}${p === 'live' ? ` · ${timeLabel(t).toLowerCase()}` : ''}</span>
       </span>
       ${p === 'live' && t.joined ? html`<a class="icon-btn icon-btn-accent" href="#/laimikis" aria-label="Registruoti laimikį">${icon('plus', 22, 2.6)}</a>` : ''}
     </div>` : ''}`,

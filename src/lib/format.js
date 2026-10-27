@@ -73,3 +73,10 @@ export function count(n, one, few, many) {
 export function describeFormat(t) {
   return t.format === 'biggest' ? 'Didžiausia žuvis' : `TOP-${t.top_n} ilgių suma`;
 }
+
+// Kiek trūksta iki aukštesnės vietos. Lygus rezultatas: aukščiau tas, kas jį pasiekė anksčiau.
+export function gapText(above, mine) {
+  const gap = above.score_mm - mine.score_mm;
+  if (gap <= 0) return `Tiek pat kaip #${above.rank} – jis pagavo anksčiau, reikia bent 1 mm daugiau`;
+  return `Iki #${above.rank} trūksta ${cm(gap)}`;
+}

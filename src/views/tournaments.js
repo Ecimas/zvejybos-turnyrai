@@ -1,6 +1,6 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { phase, timeLabel, describeFormat, cm, longDate, count } from '../lib/format.js';
+import { phase, timeLabel, describeFormat, cm, longDate, count, gapText } from '../lib/format.js';
 import { phaseBadge, empty } from '../ui.js';
 
 const SEGMENTS = [
@@ -67,7 +67,7 @@ async function heroFor(ctx, list) {
         <span class="stat-label">iki ${longDate(live.ends_at)}</span></div>
     </div>
     ${mine && above ? html`<div class="stack-2">
-      <div class="row-between small strong"><span>Iki #${above.rank} trūksta ${cm(gap)}</span><span class="muted">${above.nickname}</span></div>
+      <div class="row-between small strong"><span>${gapText(above, mine)}</span><span class="muted">${above.nickname}</span></div>
       <div class="progress"><div style="width:${Math.max(4, Math.min(100, Math.round((mine.score_mm / above.score_mm) * 100)))}%"></div></div>
     </div>` : ''}
     ${!mine ? html`<span class="small muted">Užregistruok pirmą laimikį – ir atsirasi lentelėje.</span>` : ''}
