@@ -3,6 +3,7 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { backButton } from '../ui.js';
+import { rememberInvite } from './invite.js';
 
 const RESEND_S = 60;
 
@@ -28,6 +29,11 @@ export async function loginView(ctx) {
         <div class="stack-2">
           <h1 class="display-lg" tabindex="-1">Prisijungti</h1>
           <p class="muted" data-intro>Be slaptažodžio: atsiųsime prisijungimo nuorodą į el. paštą.</p>
+        </div>
+
+        <div class="stack" data-google-wrap hidden>
+          <button class="btn btn-google btn-lg" type="button" data-google>${icon('user', 22)}Prisijungti su Google</button>
+          <p class="or-line small muted"><span>arba el. paštu</span></p>
         </div>
 
         <form class="stack" data-email-form novalidate>
@@ -57,6 +63,24 @@ export async function loginView(ctx) {
       </div>
     </div>`,
     mount(root) {
+      const googleWrap = root.querySelector('[data-google-wrap]');
+      backend.authProviders?.().then((p) => {
+        if (!p?.google || !root.isConnected) return;
+        googleWrap.hidden = false;
+        root.querySelector('[data-intro]').textContent = 'Greičiausia – su Google paskyra. Slaptažodžio nereikia.';
+      });
+      root.querySelector('[data-google]').addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        // Kvietimas (jei atėjai per jį) prisimenamas iki grįžimo iš Google.
+        const pending = (() => { try { return JSON.parse(localStorage.getItem('zt-invite') || 'null'); } catch { return null; } })();
+        if (pending?.code) rememberInvite(pending.code);
+        try {
+          await backend.signInWithGoogle();
+        } catch {
+          e.currentTarget.disabled = false;
+          ctx.toast('Nepavyko prisijungti per Google');
+        }
+      });
       const emailForm = root.querySelector('[data-email-form]');
       const codeForm = root.querySelector('[data-code-form]');
       const resend = root.querySelector('[data-resend]');

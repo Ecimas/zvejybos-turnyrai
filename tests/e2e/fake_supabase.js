@@ -355,6 +355,26 @@ export function createClient(url, key) {
         log('signInWithOtp', { email: opts.email });
         return { data: {}, error: null };
       },
+      // Google imitacija: sukuria (arba randa) vartotoją ir „grįžta“ į programėlę su #access_token, kaip tikras OAuth.
+      async signInWithOAuth({ provider, options }) {
+        log('signInWithOAuth', { provider, redirectTo: options?.redirectTo, queryParams: options?.queryParams });
+        localStorage.setItem('fake-oauth-call', JSON.stringify({ provider, redirectTo: options?.redirectTo, queryParams: options?.queryParams }));
+        if (failNext.oauth) { failNext.oauth--; return { data: null, error: { message: 'Unsupported provider: provider is not enabled' } }; }
+        const email = window.__googleEmail || 'google.zvejys@gmail.com';
+        let p = db.profiles.find((x) => x.email === email);
+        if (!p) {
+          const id = uuid();
+          p = { id, email, nickname: 'zvejys_' + id.replace(/-/g, '').slice(0, 8), region: null, trust_score: 50, is_admin: false, created_at: new Date().toISOString() };
+          db.profiles.push(p);
+          save();
+        }
+        localStorage.setItem(SESSION, JSON.stringify({ access_token: 'google', user: { id: p.id, email } }));
+        setTimeout(() => {
+          history.replaceState(null, '', options.redirectTo + '#access_token=google&expires_in=3600&token_type=bearer&provider_token=x');
+          location.reload();
+        }, 0);
+        return { data: { provider, url: 'https://accounts.google.com/' }, error: null };
+      },
       async verifyOtp({ email, token, type }) {
         log('verifyOtp', { email, token, type });
         if (token !== '123456') return { data: { user: null, session: null }, error: { message: 'Token has expired or is invalid' } };

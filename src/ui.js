@@ -59,6 +59,9 @@ export function notFound(back, title, text = '') {
   </div></div>`;
 }
 
+// Automatiškai sukurtas slapyvardis (pvz. zvejys_1a2b3c4d) – reikia pasiūlyti pasirinkti savo.
+export const defaultNickname = (n) => /^zvejys_[0-9a-f]{8}$/.test(n || '');
+
 export function initials(name) {
   return (name || '?').trim().charAt(0).toUpperCase() || '?';
 }

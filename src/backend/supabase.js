@@ -90,6 +90,25 @@ export async function createSupabaseBackend(url, anonKey) {
         options: { emailRedirectTo: location.origin + location.pathname }
       }));
     },
+    // Kokie prisijungimo būdai įjungti Supabase (pvz. Google). Klaidos atveju – tik el. paštas.
+    async authProviders() {
+      try {
+        const res = await fetch(`${url}/auth/v1/settings`, { headers: { apikey: anonKey } });
+        if (!res.ok) return { google: false };
+        const s = await res.json();
+        return { google: !!s?.external?.google };
+      } catch {
+        return { google: false };
+      }
+    },
+    // Peradresuoja į Google; grįžus adrese būna #access_token – jį apdoroja app.js.
+    async signInWithGoogle() {
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: location.origin + location.pathname, queryParams: { prompt: 'select_account' } }
+      });
+      if (error) throw error;
+    },
     async verifyCode(email, token) {
       let r = await sb.auth.verifyOtp({ email, token, type: 'email' });
       // Senesnės Supabase versijos naujam vartotojui laukia tipo „signup“.

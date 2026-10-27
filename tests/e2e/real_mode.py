@@ -320,6 +320,35 @@ def more_real_tests(page, base):
     step("paskyros ištrynimas: neįdiegus – pranešimas, įdiegus – viskas ištrinta")
 
 
+def google_login_test(page, base, auth_settings):
+    # Kol Google neįjungtas Supabase – mygtuko nėra
+    go(page, base + "#/prisijungti")
+    expect(page.get_by_role("heading", name="Prisijungti")).to_be_visible()
+    page.wait_for_timeout(300)
+    expect(page.get_by_role("button", name="Prisijungti su Google")).to_be_hidden()
+    # Įjungus – mygtukas atsiranda ir prisijungia
+    auth_settings["google"] = True
+    page.goto("about:blank")
+    page.goto(base + "#/prisijungti")
+    expect(page.get_by_role("button", name="Prisijungti su Google")).to_be_visible()
+    expect(page.get_by_text("arba el. paštu")).to_be_visible()
+    page.get_by_role("button", name="Prisijungti su Google").click()
+    expect(page.locator("#toast")).to_have_text("Prisijungei")
+    assert page.evaluate("() => location.hash") == "#/profilis"
+    oc = page.evaluate("() => JSON.parse(localStorage.getItem('fake-oauth-call'))")
+    assert oc == {"provider": "google", "redirectTo": base, "queryParams": {"prompt": "select_account"}}, oc
+    expect(page.locator(".nick-card")).to_contain_text("Pasirink slapyvardį")
+    page.get_by_role("button", name="Pasirinkti slapyvardį").click()
+    expect(page.get_by_label("Slapyvardis (matomas kitiems)")).to_be_focused()
+    page.get_by_label("Slapyvardis (matomas kitiems)").fill("Google_Zvejys")
+    page.get_by_role("button", name="Išsaugoti").click()
+    expect(page.get_by_role("heading", name="Google_Zvejys")).to_be_visible()
+    expect(page.locator(".nick-card")).to_have_count(0)
+    page.goto(base + "#/")
+    expect(page.locator("[data-nick-banner]")).to_have_count(0)
+    step("prisijungimas su Google: mygtukas tik įjungus, grįžimas, slapyvardžio pasirinkimas")
+
+
 def main():
     httpd, base = base_mod.serve()
     errors = []
@@ -337,6 +366,10 @@ def main():
                                            headers={"Access-Control-Allow-Origin": "*"}, body=FAKE))
         ctx.route(re.compile(r".*/src/config\.js$"), lambda r: r.fulfill(status=200, content_type="text/javascript", body=CONFIG))
         ctx.route(base_mod.METEO, base_mod.fake_meteo)
+        auth_settings = {"google": False}
+        ctx.route(re.compile(r"https://fake\.supabase\.co/auth/v1/settings"), lambda r: r.fulfill(
+            status=200, content_type="application/json", headers={"Access-Control-Allow-Origin": "*"},
+            body=json.dumps({"external": {"google": auth_settings["google"], "email": True}})))
         page = ctx.new_page()
         page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
         page.on("console", lambda m: m.type == "error"
@@ -495,6 +528,7 @@ def main():
         step("grįžimas iš laiško nuorodos (pasibaigusi ir sėkminga)")
 
         more_real_tests(page, base)
+        google_login_test(page, base, auth_settings)
 
         browser.close()
     httpd.shutdown()

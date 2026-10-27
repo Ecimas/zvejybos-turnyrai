@@ -35,7 +35,7 @@ export async function privacyView() {
     <p>Programėlę „Žvejybos turnyrai“ valdo jos kūrėjas (toliau – „mes“). Klausimai ir prašymai: ${contact()}.</p>
     <h2 class="h2">Kokius duomenis renkame ir kodėl</h2>
     <ul>
-      <li><strong>El. pašto adresą</strong> – prisijungimui. Kitiems dalyviams jis nerodomas.</li>
+      <li><strong>El. pašto adresą</strong> – prisijungimui (per Google paskyrą arba nuorodą laiške). Kitiems dalyviams jis nerodomas. Jungiantis per Google gauname tik el. paštą ir vardą; vardo niekur nerodome – kitiems matomas tik tavo pasirinktas slapyvardis.</li>
       <li><strong>Slapyvardį ir regioną</strong> – rodomi lentelėse ir profilyje.</li>
       <li><strong>Laimikio nuotrauką, ilgį, rūšį, laiką</strong> – turnyrų rezultatams ir patikrai. Patvirtintos nuotraukos matomos kitiems dalyviams.</li>
       <li><strong>Tikslią vietą (GPS)</strong> – tik sąžiningumo patikrai. Ją mato tik moderatoriai, ji niekada nerodoma kitiems ir automatiškai ištrinama praėjus 90 dienų po turnyro pabaigos.</li>

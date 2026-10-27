@@ -1,7 +1,7 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { cm, shortDate } from '../lib/format.js';
-import { thumb, hydratePhotos, backButton, empty, avatar, loginPrompt, notFound } from '../ui.js';
+import { thumb, hydratePhotos, backButton, empty, avatar, loginPrompt, notFound, defaultNickname } from '../ui.js';
 import { computeBadges } from '../lib/badges.js';
 import { weatherEnabled } from './capture.js';
 
@@ -127,6 +127,12 @@ export async function profileView(ctx) {
         <button class="icon-btn" data-edit aria-label="Redaguoti profilį">${icon('edit', 20)}</button>
       </header>
 
+      ${defaultNickname(p.nickname) ? html`<div class="card stack-2 nick-card">
+        <p class="strong">Pasirink slapyvardį</p>
+        <p class="small muted">Jį matys kiti žvejai lentelėse. Dabar rodomas automatiškai sukurtas „${p.nickname}“.</p>
+        <button class="btn btn-primary" data-pick-nick>${icon('edit', 18)}Pasirinkti slapyvardį</button>
+      </div>` : ''}
+
       <form class="card stack" data-form hidden>
         <label class="field"><span class="small muted strong">Slapyvardis (matomas kitiems)</span>
           <input name="nickname" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_ĄČĘĖĮŠŲŪŽąčęėįšųūž.\\-]+" value="${p.nickname}" autocomplete="nickname"></label>
@@ -180,6 +186,11 @@ export async function profileView(ctx) {
       hydratePhotos(root, backend);
       const form = root.querySelector('[data-form]');
       root.querySelector('[data-edit]').addEventListener('click', () => { form.hidden = !form.hidden; if (!form.hidden) form.nickname.focus(); });
+      root.querySelector('[data-pick-nick]')?.addEventListener('click', () => {
+        form.hidden = false;
+        form.nickname.select();
+        form.nickname.focus();
+      });
       root.querySelector('[data-cancel]').addEventListener('click', () => { form.hidden = true; });
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
