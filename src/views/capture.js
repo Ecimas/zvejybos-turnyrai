@@ -6,7 +6,8 @@ import { phase, cm } from '../lib/format.js';
 import { fitReason, REASON_LT } from '../lib/scoring.js';
 import { startCamera, stopCamera, captureFrame, sha256Hex, watchLocation, uuid, vibrate } from '../lib/device.js';
 import { mountRuler } from '../lib/ruler.js';
-import { loginPrompt } from '../ui.js';
+import { loginPrompt, celebrate } from '../ui.js';
+import { recordFor, fromQueue } from '../lib/records.js';
 import { fetchWeather, weatherLine } from '../lib/weather.js';
 
 export function weatherEnabled() {
@@ -29,7 +30,14 @@ export async function captureView(ctx) {
   if (!state.user) {
     return { nav: 'turnyrai', title: 'Naujas laimikis', html: html`<div class="screen"><h1 class="display-lg" tabindex="-1">Naujas laimikis</h1>${loginPrompt('Prisijunk, kad galėtum registruoti laimikius.')}</div>` };
   }
-  const tournaments = (await backend.tournaments().catch(() => [])).filter((t) => t.joined && phase(t) === 'live');
+  const [allTournaments, mineSent, mineQueued] = await Promise.all([
+    backend.tournaments().catch(() => []),
+    backend.myCatches().catch(() => []),
+    ctx.outbox.list().catch(() => [])
+  ]);
+  const tournaments = allTournaments.filter((t) => t.joined && phase(t) === 'live');
+  // Visi savi laimikiai – rekordui nustatyti (ir be ryšio: tada bent tie, kurie telefone).
+  const known = [...mineSent, ...mineQueued.map(fromQueue)];
   const species = state.species;
   const last = lastUsed();
   const commonIds = COMMON.map((c) => species.find((s) => s.code === c)?.id).filter(Boolean);
@@ -286,9 +294,20 @@ export async function captureView(ctx) {
             weather
           });
           try { localStorage.setItem('zt-last', JSON.stringify({ speciesId, lengthCm: len, bait: bait.value.trim() })); } catch { /* nėra vietos */ }
+          const rec = recordFor(known, speciesId, len * 10);
+          known.push({ id: clientId, species_id: speciesId, length_mm: len * 10, status: 'pending' });
           vibrate([20, 40, 20]);
-          ctx.toast(`Išsaugota: ${cm(len * 10)}`);
           ctx.flush();
+          const spName = species.find((s) => s.id === speciesId)?.name_lt ?? '';
+          if (rec.kind === 'record') {
+            vibrate([30, 60, 30, 60, 80]);
+            await celebrate({ title: 'Naujas asmeninis rekordas!', big: `${spName} ${cm(len * 10)}`,
+              text: `Ankstesnis rekordas – ${cm(rec.previous)}. Rekordas bus įskaitytas, kai moderatorius patvirtins.` });
+          } else if (rec.kind === 'first') {
+            await celebrate({ title: 'Pirma tavo šios rūšies žuvis!', big: `${spName} ${cm(len * 10)}`, text: 'Kol kas tai ir tavo rekordas – pabandyk jį pagerinti.' });
+          } else {
+            ctx.toast(`Išsaugota: ${cm(len * 10)}`);
+          }
           if (more) {
             clientId = uuid();
             photo = null;

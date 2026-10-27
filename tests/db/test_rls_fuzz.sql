@@ -45,9 +45,12 @@ insert into fx select 'b_approved', id from c;
 set request.jwt.claim.sub = 'c0000000-0000-4000-8000-00000000000c';
 select public.review_catch((select id from fx where k = 'b_rejected'), false, 'Netikslus ilgis');
 select public.review_catch((select id from fx where k = 'b_approved'), true, null);
+insert into public.catch_reports (catch_id, reason, message) select id, 'old_photo', 'moderatoriaus pranešimas' from fx where k = 'b_approved';
 set request.jwt.claim.sub = 'b0000000-0000-4000-8000-00000000000b';
 with d as (insert into public.disputes (catch_id, message) select id, 'Nesutinku' from fx where k = 'b_rejected' returning id)
 insert into fx select 'b_dispute', id from d;
+insert into public.blank_trips (trip_date, hours, notes) values (current_date, 2, 'B slapta išvyka');
+insert into public.tournament_announcements (tournament_id, message) select id, 'B pranešimas' from fx where k = 'b_priv';
 
 -- A: vienas savas laimikis ir dalyvavimas B viešame turnyre.
 set request.jwt.claim.sub = 'a0000000-0000-4000-8000-00000000000a';
@@ -130,6 +133,9 @@ select who, format('update %I.%I set %I = %I where %s', s, t, c.column_name, c.c
                ('public', 'catches',         $$user_id = 'b0000000-0000-4000-8000-00000000000b'$$),
                ('public', 'catch_locations', $$catch_id in (select id from fx where k like 'b_%')$$),
                ('public', 'disputes',        $$user_id = 'b0000000-0000-4000-8000-00000000000b'$$),
+               ('public', 'catch_reports',   $$true$$),
+               ('public', 'blank_trips',     $$true$$),
+               ('public', 'tournament_announcements', $$true$$),
                ('storage', 'objects',        $$name like 'b0000000-%'$$)) as x(s, t, w)
   join information_schema.columns c on c.table_schema = x.s and c.table_name = x.t
  cross join (values ('anon'), ('A')) as who(who);
@@ -173,15 +179,24 @@ select who, format('delete from %I.%I where %s', s, t, w), 'nochange'
                ('public', 'catches', $$true$$),
                ('public', 'catch_locations', $$true$$),
                ('public', 'disputes', $$true$$),
+               ('public', 'catch_reports', $$true$$),
+               ('public', 'blank_trips', $$user_id <> (select auth.uid())$$),
+               ('public', 'tournament_announcements', $$true$$),
                ('public', 'species', $$true$$),
                ('storage', 'objects', $$true$$)) as x(s, t, w)
  cross join (values ('anon'), ('A'), ('B')) as who(who)
- where not (who = 'B' and t in ('tournaments', 'tournament_species', 'tournament_sponsors', 'entries')); -- B savo būsimą turnyrą trinti gali
+ where not (who = 'B' and t in ('tournaments', 'tournament_species', 'tournament_sponsors', 'entries', 'tournament_announcements', 'blank_trips')); -- B savo būsimą turnyrą trinti gali
 insert into pg_temp.attempts (who, sql, kind) values
   ('A', $$insert into public.entries (tournament_id, user_id) values ((select id from fx where k = 'b_priv'), 'a0000000-0000-4000-8000-00000000000a')$$, 'error'),
   ('A', $$insert into public.entries (tournament_id, user_id) values ((select id from fx where k = 'a_pub'), 'b0000000-0000-4000-8000-00000000000b')$$, 'error'),
   ('A', $$insert into public.tournament_species values ((select id from fx where k = 'b_pub'), 2)$$, 'error'),
   ('A', $$insert into public.tournament_sponsors (tournament_id, name) values ((select id from fx where k = 'b_pub'), 'Įsibrovėlis')$$, 'error'),
+  ('A', $$insert into public.tournament_announcements (tournament_id, message) values ((select id from fx where k = 'b_pub'), 'Netikras organizatorius')$$, 'error'),
+  ('A', $$insert into public.catch_reports (catch_id, reason) values ((select id from fx where k = 'b_pending'), 'other')$$, 'error'),
+  ('A', $$insert into public.catch_reports (catch_id, reason) values ((select id from fx where k = 'a_catch'), 'other')$$, 'error'),
+  ('A', $$select public.resolve_report((select id from public.catch_reports limit 1), true, 'x')$$, 'error'),
+  ('anon', $$insert into public.blank_trips (trip_date) values (current_date)$$, 'error'),
+  ('anon', $$insert into public.catch_reports (catch_id, reason) values ((select id from fx where k = 'b_approved'), 'other')$$, 'error'),
   ('anon', $$insert into public.tournament_sponsors (tournament_id, name) values ((select id from fx where k = 'b_pub'), 'Anon')$$, 'error'),
   ('A', $$insert into public.tournaments (organizer_id, title, format, starts_at, ends_at) values ('b0000000-0000-4000-8000-00000000000b', 'Apsimetėlis', 'biggest', now() + interval '1 day', now() + interval '2 days')$$, 'error'),
   ('A', $$insert into public.catch_locations (catch_id, lat, lng, accuracy_m) values ((select id from fx where k = 'b_rejected'), 1, 1, 1)$$, 'error'),
@@ -211,7 +226,10 @@ select who, q, 'zero' from (values
   ($$select count(*) from public.leaderboard((select id from fx where k = 'b_priv'))$$),
   ($$select count(*) from storage.objects where name like 'b0000000-%'$$),
   ($$select count(*) from public.get_invite('')$$),
-  ($$select count(*) from public.get_invite('%')$$)
+  ($$select count(*) from public.get_invite('%')$$),
+  ($$select count(*) from public.catch_reports where reporter_id is distinct from auth.uid()$$),
+  ($$select count(*) from public.blank_trips$$),
+  ($$select count(*) from public.tournament_announcements a join public.tournaments t on t.id = a.tournament_id where t.visibility = 'private'$$)
 ) as q(q) cross join (values ('anon'), ('A')) as who(who);
 -- privatūs stulpeliai: kito žmogaus masalas ir pastabos (net patvirtinto laimikio)
 insert into pg_temp.attempts (who, sql, kind)

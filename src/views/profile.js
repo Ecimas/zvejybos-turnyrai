@@ -96,12 +96,20 @@ export async function profileView(ctx) {
     return { nav: 'profilis', title: 'Profilis', html: html`<div class="screen"><h1 class="display-lg" tabindex="-1">Profilis</h1>${loginPrompt('Prisijunk, kad matytum savo profilį.')}</div>` };
   }
   const p = state.profile || (await backend.myProfile());
-  const [catches, tcount, pendingList, disputes] = await Promise.all([
+  const [catches, tcount, pendingList, disputes, reports, trips] = await Promise.all([
     backend.myCatches(),
     backend.userTournamentCount(state.user.id),
     p?.is_admin ? backend.pending().catch(() => []) : [],
-    p?.is_admin ? backend.openDisputes().catch(() => []) : []
+    p?.is_admin ? backend.openDisputes().catch(() => []) : [],
+    p?.is_admin ? backend.openReports().catch(() => []) : [],
+    backend.blankTrips().catch(() => [])
   ]);
+  const reportedCatches = new Set(reports.map((r) => r.catch_id)).size;
+  // Žvejybos dienos: dienos su laimikiu (bet kokios būsenos, išskyrus atmestus) ir dienos be laimikio.
+  const dayOf = (iso) => { const d = new Date(iso); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+  const catchDays = new Set(catches.filter((c) => c.status !== 'rejected').map((c) => dayOf(c.captured_at_device)));
+  const allDays = new Set([...catchDays, ...trips.map((b) => dayOf(`${b.trip_date}T12:00:00`))]);
+  const luck = allDays.size ? Math.round((catchDays.size / allDays.size) * 100) : 0;
   const s = stats(catches, state.species);
   let theme = 'dark';
   try { theme = localStorage.getItem('zt-theme') || 'dark'; } catch { /* nėra saugyklos */ }
@@ -129,6 +137,7 @@ export async function profileView(ctx) {
       </form>
 
       ${statGrid(s, tcount)}
+      ${trips.length ? html`<p class="card small" data-luck>${icon('book', 16)} Žvejybos dienų: <strong>${allDays.size}</strong> · su laimikiu <strong>${catchDays.size}</strong> (${luck} %)</p>` : ''}
       ${s.ok.length ? seasonChart(s) : ''}
       ${records(s)}
       ${badges(catches, tcount)}
@@ -137,6 +146,7 @@ export async function profileView(ctx) {
         <h2 class="h2">Daugiau</h2>
         <div class="list">
           ${p.is_admin ? html`<a class="list-row" href="#/moderavimas">${icon('shield', 20)}<span class="grow strong">Moderavimas</span>${pendingList.length ? html`<span class="chip chip-wait">${pendingList.length}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
+          ${p.is_admin ? html`<a class="list-row" href="#/moderavimas/pranesimai">${icon('alert', 20)}<span class="grow strong">Pranešimai apie laimikius</span>${reportedCatches ? html`<span class="chip chip-wait">${reportedCatches}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
           ${p.is_admin ? html`<a class="list-row" href="#/moderavimas/gincai">${icon('alert', 20)}<span class="grow strong">Ginčai</span>${disputes.length ? html`<span class="chip chip-wait">${disputes.length}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
           <a class="list-row" href="#/naujas">${icon('plus', 20)}<span class="grow strong">Sukurti turnyrą</span>${icon('chevron', 18)}</a>
           <a class="list-row" href="#/zvejys/${p.id}">${icon('user', 20)}<span class="grow strong">Kaip mane mato kiti</span>${icon('chevron', 18)}</a>

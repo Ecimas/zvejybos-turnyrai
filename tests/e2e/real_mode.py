@@ -153,6 +153,59 @@ def more_real_tests(page, base):
     expect(page.locator("#toast")).to_have_text("Negalima pašalinti paskutinio moderatoriaus")
     step("moderatorių skyrimas per serverio funkciją")
 
+    # „Nieko nekibo“ – privatus įrašas serveryje
+    go(page, base + "#/dienorastis")
+    page.get_by_role("button", name="Nieko nekibo").click()
+    page.get_by_label("Kiek valandų").fill("2")
+    page.locator("[data-blank-form]").get_by_label("Pastabos (nebūtina)").fill("Drumstas vanduo")
+    page.locator("[data-blank-form]").get_by_role("button", name="Išsaugoti").click()
+    expect(page.locator(".trip-card")).to_contain_text("Nieko nekibo · 2 val.")
+    trips = fake(page, "return db.blank_trips;")
+    assert len(trips) == 1 and trips[0]["user_id"] == me and trips[0]["notes"] == "Drumstas vanduo" and trips[0]["hours"] == 2, trips
+    ins = calls(page, "from", table="blank_trips", op="insert")[-1]["rows"][0]
+    assert "user_id" not in ins, f"savininką nustato serveris, ne programėlė: {ins}"
+    step("„Nieko nekibo“ išsaugoma serveryje be user_id iš kliento")
+
+    # Pranešimas apie įtartiną laimikį ir moderatoriaus sprendimas
+    go(page, base + "#/l/cccccccc-0000-4000-8000-000000000002")
+    page.get_by_role("button", name="Pranešti apie įtartiną laimikį").click()
+    page.get_by_role("radio", name="Ne ta rūšis").click()
+    page.locator("[data-report-form]").get_by_role("button", name="Pranešti").click()
+    expect(page.locator("[data-reported]")).to_be_visible()
+    rep_rows = fake(page, "return db.catch_reports;")
+    assert len(rep_rows) == 1 and rep_rows[0]["reporter_id"] == me and rep_rows[0]["reason"] == "wrong_species", rep_rows
+    dup = page.evaluate("() => window.__zt.backend.reportCatch('cccccccc-0000-4000-8000-000000000002', 'other', '').then(() => 'ok', e => e.message)")
+    assert dup == "Apie šį laimikį jau pranešei", dup
+    own_id = fake(page, "return db.catches.find(c => c.user_id === arg && c.status === 'approved').id;", me)
+    res = page.evaluate("(id) => window.__zt.backend.reportCatch(id, 'other', '').then(() => 'ok', e => e.message)", own_id)
+    assert res != "ok", "apie savo laimikį pranešti negalima"
+    go(page, base + "#/moderavimas/pranesimai")
+    g = page.locator("[data-group]")
+    expect(g).to_have_count(1)
+    expect(g).to_contain_text("Ne ta rūšis")
+    expect(g).to_contain_text("Ecimas_LT")
+    trust0 = fake(page, "return db.profiles.find(p => p.nickname === 'Kitas_Zvejys').trust_score;")
+    g.get_by_role("button", name="Atmesti laimikį").click()
+    expect(page.locator("#toast")).to_have_text("Laimikis atmestas")
+    assert fake(page, "return db.catches.find(c => c.id === 'cccccccc-0000-4000-8000-000000000002').status;") == "rejected"
+    assert fake(page, "return db.profiles.find(p => p.nickname === 'Kitas_Zvejys').trust_score;") == trust0 - 5
+    assert calls(page, "rpc", name="resolve_report")
+    step("pranešimas apie laimikį: įrašas, dublio ir savo laimikio apsauga, moderatorius atmeta")
+
+    # Organizatoriaus pranešimas
+    nt = page.evaluate("""() => window.__zt.backend.createTournament({ title: 'Pranešimų bandymas', format: 'biggest', top_n: 3,
+        min_length_mm: 0, starts_at: new Date(Date.now() + 864e5).toISOString(), ends_at: new Date(Date.now() + 2 * 864e5).toISOString(),
+        species_ids: [], visibility: 'public', leaderboard_hidden: false, prize_fund_cents: 0, prize_split: null, sponsors: [] })""")
+    go(page, base + f"#/t/{nt}")
+    page.get_by_label("Naujas pranešimas visiems dalyviams").fill("Startas rytoj 6 val.")
+    page.get_by_role("button", name="Siųsti dalyviams").click()
+    expect(page.locator(".ann")).to_contain_text("Startas rytoj 6 val.")
+    ann = fake(page, "return db.tournament_announcements;")
+    assert len(ann) == 1 and ann[0]["author_id"] == me and ann[0]["tournament_id"] == nt, ann
+    res = page.evaluate("(t) => window.__zt.backend.postAnnouncement(t, 'Ne mano turnyras').then(() => 'ok', e => e.message)", T1)
+    assert res != "ok", "ne organizatorius negali rašyti pranešimų"
+    step("organizatoriaus pranešimas: tik organizatorius, autorių nustato serveris")
+
     # Turnyro redagavimas ir ištrynimas (savo, iki starto); svetimo – ne
     tid = fake(page, "return db.tournaments.find(t => t.title === 'Ešerių savaitgalis').id;")
     go(page, base + f"#/t/{tid}/redaguoti")
@@ -242,6 +295,7 @@ def more_real_tests(page, base):
     assert all(c["user_id"] == me for c in data["catches"]) and len(data["catches"]) >= 2
     assert any(e["tournament_id"] == T2 for e in data["entries"])
     assert len(data["disputes"]) == 1
+    assert len(data["blank_trips"]) == 1 and len(data["catch_reports"]) == 1, (data.get("blank_trips"), data.get("catch_reports"))
     step("duomenų eksportas: tik savi duomenys")
 
     # Paskyros ištrynimas: kol funkcija neįdiegta – aiškus pranešimas; paskui – pilnas

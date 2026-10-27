@@ -3,6 +3,7 @@ import { icon } from '../icons.js';
 import { phase, timeLabel, describeFormat, cm, longDate, count, gapText } from '../lib/format.js';
 import { phaseBadge, empty } from '../ui.js';
 import { eur } from '../lib/prizes.js';
+import { hasUnseen } from '../lib/seen.js';
 
 const SEGMENTS = [
   ['mano', 'Mano'],
@@ -39,6 +40,7 @@ export function card(t, species) {
         : t.prizes ? html`<span>${icon('trophy', 16)}Prizai</span>` : ''}
     </div>
     ${t.joined ? html`<span class="accent strong">${phase(t) === 'soon' ? 'Užsiregistravai' : 'Dalyvauji'}</span>` : ''}
+    ${hasUnseen(t) ? html`<span class="chip chip-wait ann-chip">${icon('alert', 13, 2.6)}Naujas organizatoriaus pranešimas</span>` : ''}
   </a>`;
 }
 
@@ -107,6 +109,9 @@ export async function tournamentsView(ctx) {
         </div>
       </header>
       ${ctx.backend.mode === 'demo' ? html`<p class="demo-note">${icon('alert', 16)}Demonstracinis režimas: pavyzdiniai duomenys, saugomi tik šiame telefone.</p>` : ''}
+      ${list.filter(hasUnseen).slice(0, 2).map((t) => html`<a class="card card-link row ann-banner" href="#/t/${t.id}">
+        ${icon('alert', 22)}<span class="grow stack-1"><span class="strong">Naujas organizatoriaus pranešimas</span><span class="small muted ellipsis">${t.title}</span></span>${icon('chevron', 18)}
+      </a>`)}
       ${hero}
       <section class="stack">
         <h2 class="h2">Visi turnyrai</h2>

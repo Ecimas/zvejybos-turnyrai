@@ -74,6 +74,92 @@ def step(name):
     print(f"  ✓ {name}")
 
 
+def community_demo_tests(page, base):
+    """Nieko nekibo, pranešimai apie laimikius, organizatoriaus pranešimai."""
+    # „Nieko nekibo“
+    page.goto(base + "#/dienorastis")
+    page.get_by_role("button", name="Nieko nekibo").click()
+    expect(page.get_by_text("Žvejojai, bet nieko nepagavai?")).to_be_visible()
+    page.get_by_label("Kiek valandų").fill("30")
+    page.locator("[data-blank-form]").get_by_role("button", name="Išsaugoti").click()
+    expect(page.locator("#toast")).to_have_text("Valandų: nuo 0,5 iki 24")
+    page.get_by_label("Kiek valandų").fill("3,5")
+    page.locator("[data-blank-form]").get_by_label("Pastabos (nebūtina)").fill("Stiprus vėjas <b>banga</b>")
+    page.locator("[data-blank-form]").get_by_role("button", name="Išsaugoti").click()
+    expect(page.locator("#toast")).to_have_text("Išsaugota. Kitą kartą tikrai užkibs!")
+    trip = page.locator(".trip-card")
+    expect(trip).to_contain_text("Nieko nekibo · 3,5 val.")
+    expect(trip).to_contain_text("Stiprus vėjas <b>banga</b>")
+    expect(trip).to_contain_text("°C")  # oras paimtas, nes data – šiandien
+    expect(page.locator(".page-head p")).to_contain_text("1 be laimikio")
+    shot(page, "15-nieko-nekibo")
+    page.goto(base + "#/profilis")
+    expect(page.locator("[data-luck]")).to_contain_text("Žvejybos dienų")
+    page.goto(base + "#/dienorastis")
+    page.get_by_role("button", name="Ištrinti išvyką be laimikio").click()
+    expect(page.locator(".trip-card")).to_have_count(0)
+    step("„Nieko nekibo“: įrašas su oru, statistika, ištrynimas")
+
+    # Pranešimas apie įtartiną laimikį
+    page.goto(base + "#/l/demo-c1")
+    page.get_by_role("button", name="Pranešti apie įtartiną laimikį").click()
+    page.locator("[data-report-form]").get_by_role("button", name="Pranešti").click()
+    expect(page.locator("#toast")).to_have_text("Pasirink priežastį")
+    page.get_by_role("radio", name="Netikslus ilgis").click()
+    page.get_by_label("Paaiškinimas (nebūtina)").fill('Liniuotė prasideda nuo 5 cm <img src=x onerror="window.__xss=1">')
+    page.locator("[data-report-form]").get_by_role("button", name="Pranešti").click()
+    expect(page.locator("#toast")).to_have_text("Ačiū! Moderatorius peržiūrės laimikį")
+    expect(page.locator("[data-reported]")).to_contain_text("moderatorius peržiūrės")
+    expect(page.get_by_role("button", name="Pranešti apie įtartiną laimikį")).to_have_count(0)
+    page.goto(base + "#/dienorastis")
+    own = page.locator("[data-catch] a.catch-link").first.get_attribute("href")
+    page.goto(base + own)
+    expect(page.get_by_role("button", name="Pranešti apie įtartiną laimikį")).to_have_count(0)  # apie savo – ne
+    page.goto(base + "#/profilis")
+    page.get_by_role("link", name=re.compile("Pranešimai apie laimikius")).click()
+    groups = page.locator("[data-group]")
+    expect(groups).to_have_count(2)
+    g1 = page.locator("[data-group='demo-c1']")
+    expect(g1).to_contain_text("Netikslus ilgis")
+    expect(g1).to_contain_text('<img src=x onerror="window.__xss=1">')
+    expect(g1.get_by_label("Atmetimo priežastis (matys žvejys)")).to_have_value("Netikslus ilgis")
+    shot(page, "16-pranesimai")
+    g1.get_by_role("button", name="Atmesti laimikį").click()
+    expect(page.locator("#toast")).to_have_text("Laimikis atmestas")
+    page.locator("[data-group]").first.get_by_role("button", name="Palikti galioti").click()
+    expect(page.locator("#toast")).to_have_text("Laimikis paliktas galioti")
+    expect(page.get_by_text("Pranešimų nėra")).to_be_visible()
+    st = page.evaluate("() => { const db = JSON.parse(localStorage.getItem('zt-demo-v1')); return [db.catches.find(c => c.id === 'demo-c1').status, db.catches.find(c => c.id === 'demo-c28').status]; }")
+    assert st == ["rejected", "approved"], st
+    step("pranešimas apie įtartiną laimikį: dalyvis praneša, moderatorius atmeta arba palieka")
+
+    # Organizatoriaus pranešimai
+    page.goto(base + "#/t/t-slaptas")
+    page.get_by_label("Naujas pranešimas visiems dalyviams").fill("Startas 6 val. <script>window.__xss=1</script>")
+    page.get_by_role("button", name="Siųsti dalyviams").click()
+    expect(page.locator("#toast")).to_have_text("Pranešimas išsiųstas dalyviams")
+    expect(page.locator(".ann").first).to_contain_text("Startas 6 val. <script>window.__xss=1</script>")
+    page.get_by_role("button", name="Ištrinti pranešimą").first.click()
+    expect(page.locator(".ann")).to_have_count(0)
+    # Dalyvis gauna naują pranešimą: juosta pradžios ekrane ir žymė turnyre
+    page.evaluate("""() => { const db = JSON.parse(localStorage.getItem('zt-demo-v1'));
+        db.announcements.push({ id: 'a-new', tournament_id: 't-taure', author_id: db.tournaments.find(t => t.id === 't-taure').organizer_id,
+          message: 'Rytoj prognozuojamas stiprus vėjas – būkite atsargūs!', created_at: new Date().toISOString() });
+        localStorage.setItem('zt-demo-v1', JSON.stringify(db)); }""")
+    page.goto(base + "#/")
+    page.reload()
+    page.wait_for_selector("h1")
+    banner = page.locator(".ann-banner")
+    expect(banner).to_contain_text("Rudens lydekų taurė")
+    shot(page, "17-pranesimas-juosta")
+    banner.click()
+    expect(page.locator(".ann-new")).to_contain_text("stiprus vėjas")
+    page.goto(base + "#/")
+    expect(page.locator(".ann-banner")).to_have_count(0)  # perskaityta
+    step("organizatoriaus pranešimai: rašymas, ištrynimas, „nauja“ žymė dalyviui")
+    page.goto(base + "#/profilis")
+
+
 def extra_demo_tests(page, base, meteo_calls):
     """Ginčai, moderatoriai, privatūs turnyrai, redagavimas, prizai, ekranas, ženkliukai, eksportas, ištrynimas."""
     accept_dialogs = lambda d: d.accept()
@@ -277,6 +363,8 @@ def extra_demo_tests(page, base, meteo_calls):
     assert len(data["disputes"]) == 1
     step("ženkliukai, taisyklės, privatumo politika, duomenų eksportas")
 
+    community_demo_tests(page, base)
+
     # Oras išjungiamas
     page.get_by_text("Oras prie laimikio").click()
     assert page.evaluate("() => localStorage.getItem('zt-weather')") == "off"
@@ -399,8 +487,16 @@ def main():
         step("rūšis, taisyklių patikra, oras ir papildoma informacija")
 
         page.get_by_role("button", name="Išsaugoti").click()
+        # 81 cm lydeka > ankstesnė 69 cm -> naujas asmeninis rekordas
+        expect(page.locator(".celebrate")).to_contain_text("Naujas asmeninis rekordas!")
+        expect(page.locator(".celebrate")).to_contain_text("Lydeka 81 cm")
+        expect(page.locator(".celebrate")).to_contain_text("Ankstesnis rekordas – 69 cm")
+        shot(page, "04b-rekordas")
+        page.get_by_role("button", name="Super!").click()
+        expect(page.locator(".celebrate")).to_have_count(0)
         expect(page.get_by_role("heading", name="Dienoraštis")).to_be_visible()
         card81 = page.locator(".card", has_text="81 cm").first
+        expect(card81).to_contain_text("Asmeninis rekordas")
         expect(card81).to_contain_text("Tikrinama")
         expect(card81).to_contain_text("2,4 kg")
         expect(card81).to_contain_text("Masalas: Vobleris 9 cm")

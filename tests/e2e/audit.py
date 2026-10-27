@@ -43,6 +43,9 @@ POISON = """(X) => {
     if (i % 7 === 0 && c.user_id !== ids[0]) { c.status = 'pending'; }
   });
   (db.tournament_sponsors || []).forEach((sp) => { sp.name = X.slice(0, 60); sp.url = 'javascript:window.__xss=4'; sp.amount_cents = 12345; });
+  (db.announcements || []).forEach((a) => { a.message = X; a.created_at = new Date().toISOString(); });
+  (db.reports || []).forEach((r) => { r.message = X; });
+  db.blank_trips = [{ id: 'b-x', user_id: ids[0], trip_date: new Date().toISOString().slice(0, 10), hours: 2, notes: X, created_at: new Date().toISOString() }];
   const rej = db.catches.find((c) => c.user_id === ids[0] && c.status === 'rejected');
   if (rej) db.disputes = [{ id: 'd-x', catch_id: rej.id, user_id: ids[0], message: X, status: 'open', resolution: X, created_at: new Date().toISOString() }];
   db.catches.filter((c) => c.status === 'pending').forEach((c) => { db.locations[c.id] = { lat: 54.9, lng: 23.9, accuracy: 15 }; });
@@ -175,7 +178,7 @@ def main():
                           "#/t/t-eseriai", "#/dienorastis", "#/lenteles", "#/profilis", f"#/zvejys/{ids['other']}",
                           "#/naujas", "#/moderavimas", "#/moderavimas/gincai", "#/moderavimas/komanda",
                           "#/privatumas", "#/taisykles", "#/kvietimas/zzzzzz", "#/laimikis", "#/t/nera",
-                          "#/l/demo-c1", "#/l/demo-c33", "#/l/nera"]
+                          "#/l/demo-c1", "#/l/demo-c33", "#/l/nera", "#/moderavimas/pranesimai"]
                 for r in routes:
                     page.goto("about:blank")
                     page.goto(base + r)
@@ -188,7 +191,10 @@ def main():
                         page.get_by_role("button", name="Fotografuoti").click()
                         page.wait_for_selector("[data-step=details]:not([hidden])")
                         page.locator("details.more summary").click()
+                    if r == "#/l/demo-c1" and page.get_by_role("button", name="Pranešti apie įtartiną laimikį").count():
+                        page.get_by_role("button", name="Pranešti apie įtartiną laimikį").click()
                     if r == "#/dienorastis":
+                        page.get_by_role("button", name="Nieko nekibo").click()
                         page.locator("[data-edit-catch]").first.click()
                         if page.get_by_role("button", name="Nesutinku su sprendimu").count():
                             page.get_by_role("button", name="Nesutinku su sprendimu").first.click()

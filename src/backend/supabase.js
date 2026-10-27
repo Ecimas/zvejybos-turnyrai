@@ -9,7 +9,8 @@ export const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2
 // Viešai skaitomi laimikio stulpeliai. Masalas ir pastabos – tik savininkui per my_catch_notes() (0008).
 export const CATCH_COLS = 'id, user_id, client_id, species_id, length_mm, weight_g, weather, captured_at_device, received_at, ' +
   'photo_path, photo_sha256, status, reject_reason, reviewed_by, reviewed_at, created_at';
-const TOURNAMENT_SEL = '*, tournament_species(species_id), entries(count), tournament_sponsors(id, name, url, amount_cents, sort)';
+const TOURNAMENT_SEL = '*, tournament_species(species_id), entries(count), tournament_sponsors(id, name, url, amount_cents, sort), ' +
+  'tournament_announcements(created_at)';
 const PERMANENT_CODES = new Set(['42501', '23514', '23503', '22P02', 'P0001', '42883']);
 
 // Funkcijos dar nėra serveryje (migracija neįdiegta).
@@ -51,6 +52,7 @@ export async function createSupabaseBackend(url, anonKey) {
     ...t,
     species_ids: (t.tournament_species || []).map((x) => x.species_id),
     sponsors: (t.tournament_sponsors || []).slice().sort((a, b) => a.sort - b.sort),
+    last_announcement_at: (t.tournament_announcements || []).reduce((m, a) => (!m || a.created_at > m ? a.created_at : m), null),
     participants: t.entries?.[0]?.count ?? 0,
     joined: mine.has(t.id)
   });
@@ -331,13 +333,15 @@ export async function createSupabaseBackend(url, anonKey) {
 
     async exportData() {
       const me = uid();
-      const [profile, catches, entries, organized, disputes, notes] = await Promise.all([
+      const [profile, catches, entries, organized, disputes, notes, trips, reports] = await Promise.all([
         sb.from('profiles').select('*').eq('id', me).single(),
         sb.from('catches').select(`${CATCH_COLS}, catch_locations(*)`).eq('user_id', me).order('captured_at_device'),
         sb.from('entries').select('*').eq('user_id', me),
         sb.from('tournaments').select('*').eq('organizer_id', me),
         sb.from('disputes').select('*').eq('user_id', me),
-        myNotes()
+        myNotes(),
+        sb.from('blank_trips').select('*').eq('user_id', me),
+        sb.from('catch_reports').select('*').eq('reporter_id', me)
       ]);
       return {
         exported_at: new Date().toISOString(),
@@ -346,7 +350,9 @@ export async function createSupabaseBackend(url, anonKey) {
         catches: withNotes(check(catches), notes),
         entries: check(entries),
         tournaments_organized: check(organized),
-        disputes: check(disputes)
+        disputes: check(disputes),
+        blank_trips: trips.error ? [] : trips.data,
+        catch_reports: reports.error ? [] : reports.data
       };
     },
     // Paskyros ištrynimas: duomenys -> nuotraukos -> paskyra. Kartoti saugu.
@@ -375,6 +381,52 @@ export async function createSupabaseBackend(url, anonKey) {
       check(await sb.rpc('finish_account_deletion'));
       await sb.auth.signOut().catch(() => {});
       user = null;
+    },
+
+    // --- Pranešimai apie įtartinus laimikius ---
+    async reportCatch(catchId, reason, message) {
+      const { error } = await sb.from('catch_reports').insert({ catch_id: catchId, reason, message: message || null });
+      if (error?.code === '23505') throw new Error('Apie šį laimikį jau pranešei');
+      if (error) throw friendly(error, [[/report_limit/, 'Per parą galima pranešti ne daugiau kaip 20 kartų']], 'Nepavyko pranešti');
+    },
+    async myReport(catchId) {
+      if (!user) return null;
+      return check(await sb.from('catch_reports').select('id, status, reason').eq('catch_id', catchId).eq('reporter_id', user.id).maybeSingle());
+    },
+    async openReports() {
+      const rows = check(await sb.from('catch_reports')
+        .select(`*, catches(${CATCH_COLS}), profiles!catch_reports_reporter_id_fkey(nickname)`)
+        .eq('status', 'open')
+        .order('created_at'));
+      return rows.map((r) => ({ ...r, catch: r.catches, reporter: r.profiles?.nickname ?? '' }));
+    },
+    async resolveReport(id, uphold, reason) {
+      check(await sb.rpc('resolve_report', { p_id: id, p_uphold: uphold, p_reason: reason || null }));
+    },
+
+    // --- „Nieko nekibo“ ---
+    async blankTrips() {
+      if (!user) return [];
+      return check(await sb.from('blank_trips').select('*').eq('user_id', user.id).order('trip_date', { ascending: false }));
+    },
+    async addBlankTrip(trip) {
+      const { error } = await sb.from('blank_trips').insert(trip);
+      if (error) throw friendly(error, [[/trip_limit/, 'Per parą galima įrašyti ne daugiau kaip 10 išvykų'], [/trip_in_future/, 'Data negali būti ateityje']], 'Nepavyko išsaugoti');
+    },
+    async deleteBlankTrip(id) {
+      check(await sb.from('blank_trips').delete().eq('id', id).eq('user_id', uid()));
+    },
+
+    // --- Organizatoriaus pranešimai ---
+    async announcements(tournamentId) {
+      return check(await sb.from('tournament_announcements').select('*').eq('tournament_id', tournamentId).order('created_at', { ascending: false }));
+    },
+    async postAnnouncement(tournamentId, message) {
+      const { error } = await sb.from('tournament_announcements').insert({ tournament_id: tournamentId, message });
+      if (error) throw friendly(error, [[/announcement_limit/, 'Per parą – ne daugiau kaip 10 pranešimų']], 'Nepavyko išsiųsti pranešimo');
+    },
+    async deleteAnnouncement(id) {
+      check(await sb.from('tournament_announcements').delete().eq('id', id));
     },
 
     async pending() {

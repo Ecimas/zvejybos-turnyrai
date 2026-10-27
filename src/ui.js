@@ -74,6 +74,36 @@ export function loginPrompt(text = 'Prisijunk, kad galėtum dalyvauti.') {
   </div>`;
 }
 
+// Šventė per visą ekraną (naujas rekordas). Užsidaro paspaudus arba po kelių sekundžių.
+export function celebrate({ title, text, big }) {
+  return new Promise((resolve) => {
+    const box = document.createElement('div');
+    box.className = 'celebrate';
+    box.setAttribute('role', 'alertdialog');
+    box.setAttribute('aria-label', title);
+    const bits = Array.from({ length: 28 }, (_, i) => `<i style="--x:${(i * 37) % 100}%;--d:${(i % 7) * 0.12}s;--r:${(i * 53) % 360}deg"></i>`).join('');
+    box.innerHTML = `<div class="confetti" aria-hidden="true">${bits}</div>` + String(html`<div class="celebrate-card">
+      <div class="celebrate-ico">${icon('trophy', 44, 2)}</div>
+      <p class="celebrate-title">${title}</p>
+      ${big ? html`<p class="celebrate-big">${big}</p>` : ''}
+      ${text ? html`<p class="celebrate-text">${text}</p>` : ''}
+      <button class="btn btn-primary" data-ok>Super!</button>
+    </div>`);
+    let done = false;
+    const close = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      box.remove();
+      resolve();
+    };
+    const timer = setTimeout(close, 4500);
+    box.addEventListener('click', close);
+    document.body.appendChild(box);
+    box.querySelector('[data-ok]').focus();
+  });
+}
+
 // Nuotrauka per visą ekraną. Uždaroma mygtuku, paspaudus fone, „Atgal“ ar Esc.
 // Didinti galima dviem pirštais (puslapio mastelis neužblokuotas).
 export function openPhoto(src, alt = '') {

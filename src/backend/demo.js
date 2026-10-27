@@ -91,7 +91,16 @@ function seed() {
     { id: 's2', tournament_id: 't-taure', name: 'Kauno žvejų klubas', url: null, amount_cents: 20000, sort: 1 },
     { id: 's3', tournament_id: 't-plesrunai', name: 'Plėšrūnų bendrija', url: null, amount_cents: 10000, sort: 0 }
   ];
-  return { profiles, tournaments, tournament_species, tournament_sponsors, entries, catches, locations: {}, disputes: [] };
+  const announcements = [
+    { id: 'a1', tournament_id: 't-taure', author_id: ids[0], created_at: iso(-2 * H),
+      message: 'Primename: ilgis matuojamas nuo snukio iki uodegos galo, liniuotė turi matytis visa. Sėkmės!' }
+  ];
+  const reports = [
+    { id: 'r1', catch_id: 'demo-c28', reporter_id: ids[1], reason: 'old_photo', message: 'Šią nuotrauką mačiau Facebook grupėje pernai',
+      status: 'open', created_at: iso(-3 * H) }
+  ];
+  return { profiles, tournaments, tournament_species, tournament_sponsors, entries, catches, locations: {}, disputes: [],
+    announcements, reports, blank_trips: [] };
 }
 
 export function createDemoBackend({ photos } = {}) {
@@ -100,6 +109,9 @@ export function createDemoBackend({ photos } = {}) {
   if (!db) { db = seed(); }
   db.disputes ||= [];
   db.tournament_sponsors ||= [];
+  db.reports ||= [];
+  db.blank_trips ||= [];
+  db.announcements ||= [];
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* pilna atmintis */ } };
   save();
   const photoStore = photos || (typeof indexedDB !== 'undefined' ? idbStore('zvejybos-turnyrai-demo', 'photos') : memoryStore());
@@ -114,6 +126,8 @@ export function createDemoBackend({ photos } = {}) {
     ...t,
     species_ids: db.tournament_species.filter((x) => x.tournament_id === t.id).map((x) => x.species_id),
     sponsors: db.tournament_sponsors.filter((x) => x.tournament_id === t.id).sort((a, b) => a.sort - b.sort),
+    last_announcement_at: db.announcements.filter((a) => a.tournament_id === t.id)
+      .reduce((m, a) => (!m || a.created_at > m ? a.created_at : m), null),
     participants: db.entries.filter((e) => e.tournament_id === t.id).length,
     joined: db.entries.some((e) => e.tournament_id === t.id && e.user_id === ME)
   });
@@ -337,7 +351,9 @@ export function createDemoBackend({ photos } = {}) {
         catches: db.catches.filter((c) => c.user_id === ME).map((c) => ({ ...c, catch_locations: db.locations[c.id] || null })),
         entries: db.entries.filter((e) => e.user_id === ME),
         tournaments_organized: db.tournaments.filter((t) => t.organizer_id === ME),
-        disputes: db.disputes.filter((d) => d.user_id === ME)
+        disputes: db.disputes.filter((d) => d.user_id === ME),
+        blank_trips: db.blank_trips.filter((b) => b.user_id === ME),
+        catch_reports: db.reports.filter((r) => r.reporter_id === ME)
       };
     },
     async deleteAccount(onStep = () => {}) {
@@ -346,6 +362,73 @@ export function createDemoBackend({ photos } = {}) {
       onStep('account');
       localStorage.removeItem(KEY);
       db = seed();
+      save();
+    },
+
+    async reportCatch(catchId, reason, message) {
+      const c = db.catches.find((x) => x.id === catchId && x.status === 'approved' && x.user_id !== ME);
+      if (!c) throw new Error('Nepavyko pranešti');
+      if (db.reports.some((r) => r.catch_id === catchId && r.reporter_id === ME)) throw new Error('Apie šį laimikį jau pranešei');
+      db.reports.push({ id: `r-${Date.now().toString(36)}`, catch_id: catchId, reporter_id: ME, reason,
+        message: String(message || '').trim() || null, status: 'open', created_at: new Date().toISOString() });
+      save();
+    },
+    async myReport(catchId) {
+      return db.reports.find((r) => r.catch_id === catchId && r.reporter_id === ME) || null;
+    },
+    async openReports() {
+      return db.reports.filter((r) => r.status === 'open').map((r) => ({
+        ...r, catch: db.catches.find((c) => c.id === r.catch_id) || null, reporter: db.profiles[r.reporter_id]?.nickname ?? ''
+      }));
+    },
+    async resolveReport(id, uphold, reason) {
+      const r = db.reports.find((x) => x.id === id && x.status === 'open');
+      if (!r) throw new Error('Pranešimas nerastas');
+      if (uphold && !String(reason || '').trim()) throw new Error('Nurodyk atmetimo priežastį');
+      if (uphold) {
+        const c = db.catches.find((x) => x.id === r.catch_id);
+        Object.assign(c, { status: 'rejected', reject_reason: String(reason).trim() });
+        const p = db.profiles[c.user_id];
+        if (p) p.trust_score = Math.max(0, p.trust_score - 5);
+      }
+      db.reports.filter((x) => x.catch_id === r.catch_id && x.status === 'open')
+        .forEach((x) => Object.assign(x, { status: uphold ? 'upheld' : 'dismissed', resolved_by: ME, resolved_at: new Date().toISOString() }));
+      save();
+    },
+
+    async blankTrips() {
+      return db.blank_trips.filter((b) => b.user_id === ME).sort((a, b) => b.trip_date.localeCompare(a.trip_date));
+    },
+    async addBlankTrip(trip) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (trip.trip_date > today) throw new Error('Data negali būti ateityje');
+      if (db.blank_trips.filter((b) => b.user_id === ME && Date.now() - new Date(b.created_at) < D).length >= 10) {
+        throw new Error('Per parą galima įrašyti ne daugiau kaip 10 išvykų');
+      }
+      db.blank_trips.push({ ...trip, id: `b-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, user_id: ME, created_at: new Date().toISOString() });
+      save();
+    },
+    async deleteBlankTrip(id) {
+      db.blank_trips = db.blank_trips.filter((b) => !(b.id === id && b.user_id === ME));
+      save();
+    },
+
+    async announcements(tournamentId) {
+      return db.announcements.filter((a) => a.tournament_id === tournamentId).sort((a, b) => b.created_at.localeCompare(a.created_at));
+    },
+    async postAnnouncement(tournamentId, message) {
+      const t = db.tournaments.find((x) => x.id === tournamentId);
+      if (!t || t.organizer_id !== ME) throw new Error('Pranešimus rašo tik organizatorius');
+      const msg = String(message || '').trim();
+      if (msg.length < 2 || msg.length > 500) throw new Error('Pranešimas: 2–500 simbolių');
+      if (db.announcements.filter((a) => a.tournament_id === tournamentId && Date.now() - new Date(a.created_at) < D).length >= 10) {
+        throw new Error('Per parą – ne daugiau kaip 10 pranešimų');
+      }
+      db.announcements.push({ id: `a-${Date.now().toString(36)}`, tournament_id: tournamentId, author_id: ME, message: msg, created_at: new Date().toISOString() });
+      save();
+    },
+    async deleteAnnouncement(id) {
+      db.announcements = db.announcements.filter((a) => !(a.id === id && a.author_id === ME));
       save();
     },
 

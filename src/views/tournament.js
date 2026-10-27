@@ -4,6 +4,26 @@ import { phase, timeLabel, describeFormat, cm, dateTime, duration, count, gapTex
 import { fitReason, REASON_LT } from '../lib/scoring.js';
 import { phaseBadge, statusChip, backButton, thumb, hydratePhotos, empty, avatar, loginPrompt, notFound } from '../ui.js';
 import { eur, placeAmounts, payouts } from '../lib/prizes.js';
+import { lastSeen, markSeen } from '../lib/seen.js';
+
+// Organizatoriaus pranešimai dalyviams: rašo organizatorius, mato visi, kas mato turnyrą.
+function announcementsBlock(t, list, organizer, seenBefore) {
+  if (!list.length && !organizer) return '';
+  const canPost = organizer && Date.now() < new Date(t.ends_at).getTime() + 7 * 24 * 3600e3;
+  return html`<section class="stack" aria-label="Organizatoriaus pranešimai">
+    <h2 class="h2">Pranešimai dalyviams</h2>
+    ${canPost ? html`<form class="card stack-2" data-ann-form>
+      <label class="field"><span class="small muted strong">Naujas pranešimas visiems dalyviams</span>
+        <textarea name="message" rows="2" maxlength="500" placeholder="pvz. Rytoj startas 6 val., nepamirškite liniuotės"></textarea></label>
+      <button class="btn btn-primary" type="submit">${icon('share', 18)}Siųsti dalyviams</button>
+    </form>` : ''}
+    ${list.length ? html`<div class="stack-2">${list.map((a) => html`<div class="card ann ${a.created_at > seenBefore && !organizer ? 'ann-new' : ''}" data-ann="${a.id}">
+      <div class="row-between"><span class="small muted strong">${dateTime(a.created_at)}${a.created_at > seenBefore && !organizer ? html` · <span class="accent">Nauja</span>` : ''}</span>
+        ${organizer ? html`<button class="btn-text" data-ann-delete="${a.id}" aria-label="Ištrinti pranešimą">${icon('x', 16, 2.4)}</button>` : ''}</div>
+      <p class="prewrap">${a.message}</p>
+    </div>`)}</div>` : html`<p class="small muted">Pranešimų dar nėra. Juos matys visi dalyviai turnyro puslapyje ir pradžios ekrane.</p>`}
+  </section>`;
+}
 
 const prizeMap = (t, board) => payouts(board, t.prize_fund_cents || 0, t.prize_split);
 
@@ -91,10 +111,12 @@ export async function tournamentView(ctx, [id]) {
     return { nav: 'turnyrai', html: notFound('#/', 'Turnyras nerastas', 'Gal jis privatus arba ištrintas.') };
   }
   const me = state.user?.id;
-  const [board, mineAll] = await Promise.all([
+  const [board, mineAll, anns] = await Promise.all([
     backend.leaderboard(id).catch(() => []),
-    me ? backend.myCatches().catch(() => []) : []
+    me ? backend.myCatches().catch(() => []) : [],
+    backend.announcements(id).catch(() => [])
   ]);
+  const seenBefore = lastSeen(id);
   const p = phase(t);
   const speciesNames = t.species_ids.length
     ? t.species_ids.map((sid) => state.species.find((s) => s.id === sid)?.name_lt).filter(Boolean).join(', ')
@@ -153,6 +175,8 @@ export async function tournamentView(ctx, [id]) {
         ${t.invite_code && p !== 'done' ? html`<button class="btn" data-invite>${icon('users', 18)}Kviesti draugus</button>` : ''}
         ${organizer && p === 'soon' ? html`<a class="btn" href="#/t/${t.id}/redaguoti">${icon('edit', 18)}Redaguoti</a>` : ''}
       </section>` : ''}
+
+      ${announcementsBlock(t, anns, organizer, seenBefore)}
 
       <section class="card row-between" aria-label="${cd.label}">
         <div class="stack-1">
@@ -245,6 +269,28 @@ export async function tournamentView(ctx, [id]) {
         share(ctx, t.title, t.visibility === 'private' && t.invite_code ? inviteUrl(t) : location.href);
       });
       root.querySelector('[data-invite]')?.addEventListener('click', () => share(ctx, `Kvietimas: ${t.title}`, inviteUrl(t)));
+      if (anns.length) markSeen(t.id, anns[0].created_at);
+      const annForm = root.querySelector('[data-ann-form]');
+      annForm?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const msg = annForm.message.value.trim();
+        if (msg.length < 2) { ctx.toast('Parašyk pranešimą'); return; }
+        const btn = annForm.querySelector('[type=submit]');
+        btn.disabled = true;
+        try {
+          await backend.postAnnouncement(t.id, msg);
+          ctx.toast('Pranešimas išsiųstas dalyviams');
+          ctx.rerender();
+        } catch (err) {
+          btn.disabled = false;
+          ctx.toast(err.message || 'Nepavyko išsiųsti');
+        }
+      });
+      root.querySelectorAll('[data-ann-delete]').forEach((b) => b.addEventListener('click', async () => {
+        if (!confirm('Ištrinti pranešimą?')) return;
+        await backend.deleteAnnouncement(b.dataset.annDelete).catch(() => ctx.toast('Nepavyko ištrinti'));
+        ctx.rerender();
+      }));
       const timer = setInterval(() => {
         const el = root.querySelector('[data-countdown]');
         if (el) el.textContent = countdown(t).value;

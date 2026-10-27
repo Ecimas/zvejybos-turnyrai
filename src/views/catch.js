@@ -7,6 +7,14 @@ import { fitReason, REASON_LT } from '../lib/scoring.js';
 import { weatherLine } from '../lib/weather.js';
 import { statusChip, avatar, notFound, hydratePhotos, openPhoto } from '../ui.js';
 
+export const REPORT_REASONS = [
+  ['old_photo', 'Sena ar svetima nuotrauka'],
+  ['wrong_length', 'Netikslus ilgis'],
+  ['wrong_species', 'Ne ta rūšis'],
+  ['not_own', 'Ne jo pagauta žuvis'],
+  ['other', 'Kita']
+];
+
 export const kg = (g) => `${String(Math.round(g / 10) / 100).replace('.', ',')} kg`;
 
 export async function catchView(ctx, [id]) {
@@ -16,9 +24,11 @@ export async function catchView(ctx, [id]) {
   const me = state.user?.id;
   const own = !!me && c.user_id === me;
   const sp = state.species.find((s) => s.id === c.species_id)?.name_lt ?? '';
-  const [tournaments, entered] = await Promise.all([
+  const canReport = !!me && !own && c.status === 'approved';
+  const [tournaments, entered, myReport] = await Promise.all([
     backend.tournaments().catch(() => []),
-    backend.userEntries(c.user_id).catch(() => [])
+    backend.userEntries(c.user_id).catch(() => []),
+    canReport ? backend.myReport(c.id).catch(() => null) : null
   ]);
   const at = new Date(c.captured_at_device).getTime();
   const relevant = tournaments
@@ -87,6 +97,20 @@ export async function catchView(ctx, [id]) {
         </dl>
         <p class="small muted">${icon('lock', 14)} Masalo, pastabų ir vietos kiti nemato. Pakeisti masalą ir pastabas gali <a class="link" href="#/dienorastis">dienoraštyje</a>.</p>
       </section>` : html`<p class="center small muted">${icon('lock', 14)} Laimikio vieta nerodoma</p>`}
+
+      ${canReport ? (myReport
+        ? html`<p class="small muted center" data-reported>${icon('alert', 14)} Tu pranešei apie šį laimikį – ${myReport.status === 'open' ? 'moderatorius peržiūrės' : 'pranešimas jau išnagrinėtas'}.</p>`
+        : html`<button class="btn btn-ghost" data-report-open>${icon('alert', 18)}Pranešti apie įtartiną laimikį</button>
+          <form class="card stack" data-report-form hidden>
+            <p class="strong">Kas atrodo įtartina?</p>
+            <div class="chips" role="radiogroup" aria-label="Pranešimo priežastis">
+              ${REPORT_REASONS.map(([key, label]) => html`<button type="button" class="sp-chip" role="radio" aria-checked="false" data-reason="${key}">${label}</button>`)}
+            </div>
+            <label class="field"><span class="small muted strong">Paaiškinimas (nebūtina)</span>
+              <textarea name="message" rows="2" maxlength="300" placeholder="pvz. ši nuotrauka buvo kitoje grupėje pernai"></textarea></label>
+            <p class="small muted">Tavo vardo žvejys nematys. Pranešimą peržiūrės moderatorius.</p>
+            <div class="row gap-10"><button class="btn btn-primary grow" type="submit">Pranešti</button><button class="btn" type="button" data-report-cancel>Atšaukti</button></div>
+          </form>`) : ''}
     </div>`,
     mount(root) {
       hydratePhotos(root, backend);
@@ -99,6 +123,34 @@ export async function catchView(ctx, [id]) {
         if (img) openPhoto(img.src, img.alt);
         else ctx.toast(c.photo_path ? 'Nuotrauka dar kraunasi' : 'Šis laimikis be nuotraukos');
       });
+      const form = root.querySelector('[data-report-form]');
+      if (form) {
+        let reason = null;
+        const opener = root.querySelector('[data-report-open]');
+        opener.addEventListener('click', () => { opener.hidden = true; form.hidden = false; form.scrollIntoView({ block: 'center', behavior: 'smooth' }); });
+        root.querySelector('[data-report-cancel]').addEventListener('click', () => { form.hidden = true; opener.hidden = false; });
+        form.querySelectorAll('[data-reason]').forEach((b) => b.addEventListener('click', () => {
+          reason = b.dataset.reason;
+          form.querySelectorAll('[data-reason]').forEach((x) => {
+            x.setAttribute('aria-checked', String(x === b));
+            x.setAttribute('aria-pressed', String(x === b));
+          });
+        }));
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          if (!reason) { ctx.toast('Pasirink priežastį'); return; }
+          const btn = form.querySelector('[type=submit]');
+          btn.disabled = true;
+          try {
+            await backend.reportCatch(c.id, reason, form.message.value.trim());
+            ctx.toast('Ačiū! Moderatorius peržiūrės laimikį');
+            ctx.rerender();
+          } catch (err) {
+            btn.disabled = false;
+            ctx.toast(err.message || 'Nepavyko pranešti');
+          }
+        });
+      }
       root.querySelector('[data-share]')?.addEventListener('click', async () => {
         const url = location.href;
         try {

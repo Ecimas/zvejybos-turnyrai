@@ -44,7 +44,10 @@ function seed() {
     }],
     catch_locations: [],
     disputes: [],
-    tournament_sponsors: []
+    tournament_sponsors: [],
+    catch_reports: [],
+    blank_trips: [],
+    tournament_announcements: []
   };
 }
 
@@ -73,6 +76,12 @@ function visible(table, row) {
       || db.entries.some((e) => e.tournament_id === row.id && e.user_id === uid());
   }
   if (table === 'disputes') return row.user_id === uid() || isAdmin();
+  if (table === 'catch_reports') return row.reporter_id === uid() || isAdmin();
+  if (table === 'blank_trips') return row.user_id === uid();
+  if (table === 'tournament_announcements') {
+    const t = db.tournaments.find((x) => x.id === row.tournament_id);
+    return !!t && visible('tournaments', t);
+  }
   if (table === 'catches') return row.user_id === uid() || row.status === 'approved' || isAdmin();
   if (table === 'catch_locations') return isAdmin() || db.catches.some((c) => c.id === row.catch_id && c.user_id === uid());
   return true;
@@ -86,6 +95,15 @@ function embed(table, row, spec) {
     } else if (table === 'tournaments' && part.startsWith('tournament_sponsors(')) {
       out.tournament_sponsors = (db.tournament_sponsors || []).filter((x) => x.tournament_id === row.id)
         .map((x) => pick(x, part.slice(20, -1).split(',').map((c) => c.trim())));
+    } else if (table === 'tournaments' && part === 'tournament_announcements(created_at)') {
+      out.tournament_announcements = db.tournament_announcements.filter((a) => a.tournament_id === row.id && visible('tournament_announcements', a))
+        .map((a) => ({ created_at: a.created_at }));
+    } else if (table === 'catch_reports' && part.startsWith('catches(')) {
+      const c = db.catches.find((x) => x.id === row.catch_id);
+      out.catches = c ? pick(c, part.slice(8, -1).split(',').map((x) => x.trim())) : null;
+    } else if (table === 'catch_reports' && part.startsWith('profiles!catch_reports_reporter_id_fkey(')) {
+      const p = db.profiles.find((x) => x.id === row.reporter_id);
+      out.profiles = p ? { nickname: p.nickname } : null;
     } else if (table === 'tournaments' && part === 'entries(count)') {
       out.entries = [{ count: db.entries.filter((e) => e.tournament_id === row.id).length }];
     } else if (table === 'entries' && part.startsWith('profiles(')) {
@@ -142,6 +160,8 @@ function writable(table, row) {
   if (table === 'entries') return row.user_id === uid() && beforeStart(db.tournaments.find((x) => x.id === row.tournament_id));
   if (table === 'catches') return row.user_id === uid();
   if (table === 'profiles') return row.id === uid();
+  if (table === 'blank_trips') return row.user_id === uid();
+  if (table === 'tournament_announcements') return row.author_id === uid();
   return false;
 }
 
@@ -228,6 +248,22 @@ class Query {
           if (row.sponsor_url && !/^https:\/\/[^\s<>"']{3,200}$/.test(row.sponsor_url)) return { data: null, error: err('23514', 'check constraint sponsor_url') };
           Object.assign(row, { id: uuid(), visibility: row.visibility || 'public', leaderboard_hidden: !!row.leaderboard_hidden,
             fee_cents: 0, created_at: new Date().toISOString(), invite_code: uuid().replace(/-/g, '').slice(0, 10) });
+        }
+        if (this.table === 'catch_reports') {
+          const c = db.catches.find((x) => x.id === row.catch_id);
+          if (!c || c.status !== 'approved' || c.user_id === uid()) return { data: null, error: err('42501', 'new row violates row-level security policy for table "catch_reports"') };
+          if (db.catch_reports.some((x) => x.catch_id === row.catch_id && x.reporter_id === uid())) return { data: null, error: err('23505', 'duplicate key catch_reports_catch_id_reporter_id_key') };
+          Object.assign(row, { id: uuid(), reporter_id: uid(), status: 'open', created_at: new Date().toISOString() });
+        }
+        if (this.table === 'blank_trips') {
+          if (row.trip_date > new Date(Date.now() + 86400e3).toISOString().slice(0, 10)) return { data: null, error: err('P0001', 'trip_in_future') };
+          if (row.hours !== null && row.hours !== undefined && !(row.hours > 0 && row.hours <= 24)) return { data: null, error: err('23514', 'check constraint blank_trips_hours') };
+          Object.assign(row, { id: uuid(), user_id: uid(), created_at: new Date().toISOString() });
+        }
+        if (this.table === 'tournament_announcements') {
+          const t = db.tournaments.find((x) => x.id === row.tournament_id);
+          if (!t || t.organizer_id !== uid()) return { data: null, error: err('42501', 'new row violates row-level security policy for table "tournament_announcements"') };
+          Object.assign(row, { id: uuid(), author_id: uid(), message: String(row.message).trim(), created_at: new Date().toISOString() });
         }
         if (this.table === 'tournament_sponsors') {
           if (!canEditTournament(row.tournament_id)) return { data: null, error: err('42501', 'new row violates row-level security policy for table "tournament_sponsors"') };
@@ -384,6 +420,22 @@ export function createClient(url, key) {
           const owner = db.profiles.find((x) => x.id === d.user_id);
           owner.trust_score = Math.min(100, owner.trust_score + 5);
         }
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'resolve_report') {
+        if (!isAdmin()) return { data: null, error: err('P0001', 'not allowed') };
+        const r = db.catch_reports.find((x) => x.id === args.p_id && x.status === 'open');
+        if (!r) return { data: null, error: err('P0001', 'report not found') };
+        if (args.p_uphold && !String(args.p_reason || '').trim()) return { data: null, error: err('P0001', 'reject reason is required') };
+        if (args.p_uphold) {
+          const c = db.catches.find((x) => x.id === r.catch_id);
+          Object.assign(c, { status: 'rejected', reject_reason: String(args.p_reason).trim() });
+          const owner = db.profiles.find((x) => x.id === c.user_id);
+          owner.trust_score = Math.max(0, owner.trust_score - 5);
+        }
+        db.catch_reports.filter((x) => x.catch_id === r.catch_id && x.status === 'open')
+          .forEach((x) => Object.assign(x, { status: args.p_uphold ? 'upheld' : 'dismissed', resolved_by: uid() }));
         save();
         return { data: null, error: null };
       }

@@ -8,7 +8,8 @@ import { backButton, empty, thumb, hydratePhotos, openPhoto } from '../ui.js';
 const REASONS = ['Nesimato matavimo', 'Ne ta rūšis', 'Netikslus ilgis', 'Pakartota nuotrauka'];
 
 function tabs(active) {
-  const items = [['#/moderavimas', 'queue', 'Laimikiai'], ['#/moderavimas/gincai', 'disputes', 'Ginčai'], ['#/moderavimas/komanda', 'team', 'Komanda']];
+  const items = [['#/moderavimas', 'queue', 'Laimikiai'], ['#/moderavimas/pranesimai', 'reports', 'Pranešimai'],
+    ['#/moderavimas/gincai', 'disputes', 'Ginčai'], ['#/moderavimas/komanda', 'team', 'Komanda']];
   return html`<nav class="seg" aria-label="Moderavimo skiltys">${items.map(([href, key, label]) =>
     html`<a href="${href}" role="button" aria-pressed="${key === active}"${key === active ? html` aria-current="page"` : ''}>${label}</a>`)}</nav>`;
 }
@@ -193,6 +194,85 @@ export async function teamView(ctx) {
         e.preventDefault();
         const n = e.currentTarget.nickname.value.trim();
         if (n) set(n, true);
+      });
+    }
+  };
+}
+
+const REASON_TEXT = {
+  old_photo: 'Sena ar svetima nuotrauka', wrong_length: 'Netikslus ilgis', wrong_species: 'Ne ta rūšis',
+  not_own: 'Ne jo pagauta žuvis', other: 'Kita'
+};
+
+// Dalyvių pranešimai apie įtartinus (jau patvirtintus) laimikius, sugrupuoti pagal laimikį.
+export async function reportsView(ctx) {
+  const { backend, state } = ctx;
+  if (!state.profile?.is_admin) return denied();
+  const list = await backend.openReports();
+  const groups = [];
+  for (const r of list) {
+    let g = groups.find((x) => x.catchId === r.catch_id);
+    if (!g) { g = { catchId: r.catch_id, catch: r.catch, reports: [] }; groups.push(g); }
+    g.reports.push(r);
+  }
+  const owners = new Map(await Promise.all([...new Set(groups.map((g) => g.catch?.user_id).filter(Boolean))]
+    .map(async (id) => [id, await backend.profile(id).catch(() => null)])));
+  const sp = (id) => state.species.find((x) => x.id === id)?.name_lt ?? '';
+  const topReason = (g) => {
+    const n = {};
+    g.reports.forEach((r) => { n[r.reason] = (n[r.reason] || 0) + 1; });
+    return Object.entries(n).sort((a, b) => b[1] - a[1])[0][0];
+  };
+  return {
+    nav: 'profilis',
+    title: 'Pranešimai',
+    html: html`<div class="screen">
+      <header class="top-bar">${backButton('#/profilis')}<span class="muted strong">Pranešimai: ${groups.length}</span><span></span></header>
+      <h1 class="sr-only" tabindex="-1">Pranešimai apie laimikius</h1>
+      ${tabs('reports')}
+      ${groups.length ? groups.map((g) => html`<article class="card stack" data-group="${g.catchId}">
+        <div class="row tight">
+          <button class="thumb-btn" data-zoom aria-label="Rodyti nuotrauką per visą ekraną">${thumb(g.catch?.photo_path, 72)}</button>
+          <div class="grow stack-1">
+            <a class="strong link" href="#/l/${g.catchId}">${g.catch ? `${sp(g.catch.species_id)} · ${cm(g.catch.length_mm)}` : 'Laimikis'}</a>
+            <span class="small muted">${owners.get(g.catch?.user_id)?.nickname ?? ''}${g.catch ? ` · ${dateTime(g.catch.captured_at_device)}` : ''}</span>
+            <span class="chip chip-wait">${icon('alert', 13, 2.6)}${g.reports.length} ${g.reports.length === 1 ? 'pranešimas' : g.reports.length < 10 ? 'pranešimai' : 'pranešimų'}</span>
+          </div>
+        </div>
+        <ul class="plain stack-2">${g.reports.map((r) => html`<li class="quote">
+          <span class="strong">${REASON_TEXT[r.reason] || r.reason}</span>${r.message ? html` – ${r.message}` : ''}
+          <span class="small muted"> (${r.reporter})</span>
+        </li>`)}</ul>
+        <input data-reject-reason maxlength="200" value="${REASON_TEXT[topReason(g)]}" aria-label="Atmetimo priežastis (matys žvejys)">
+        <div class="stack-2">
+          <button class="btn btn-danger" data-uphold>${icon('x', 18, 2.6)}Atmesti laimikį</button>
+          <button class="btn btn-outline" data-keep>${icon('check', 18, 3)}Palikti galioti</button>
+        </div>
+      </article>`) : empty('Pranešimų nėra', 'Kai dalyviai praneš apie įtartiną laimikį, jis atsiras čia.')}
+    </div>`,
+    mount(root) {
+      hydratePhotos(root, backend);
+      root.querySelectorAll('[data-group]').forEach((card) => {
+        const g = groups.find((x) => x.catchId === card.dataset.group);
+        card.querySelector('[data-zoom]').addEventListener('click', () => {
+          const img = card.querySelector('img.loaded');
+          if (img) openPhoto(img.src, 'Laimikio nuotrauka');
+        });
+        const act = async (uphold) => {
+          const reason = card.querySelector('[data-reject-reason]').value.trim();
+          if (uphold && !reason) { ctx.toast('Nurodyk priežastį'); return; }
+          card.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+          try {
+            await backend.resolveReport(g.reports[0].id, uphold, reason);
+            ctx.toast(uphold ? 'Laimikis atmestas' : 'Laimikis paliktas galioti');
+            ctx.rerender();
+          } catch (err) {
+            card.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+            ctx.toast(err.message || 'Nepavyko');
+          }
+        };
+        card.querySelector('[data-keep]').addEventListener('click', () => act(false));
+        card.querySelector('[data-uphold]').addEventListener('click', () => act(true));
       });
     }
   };
