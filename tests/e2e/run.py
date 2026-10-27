@@ -88,6 +88,10 @@ def extra_demo_tests(page, base, meteo_calls):
     expect(page.locator("#toast")).to_have_text("Ginčas pateiktas moderatoriui")
     expect(page.locator(".card", has_text="Netikslus ilgis")).to_contain_text("Ginčas peržiūrimas")
     expect(page.locator(".card", has_text="Netikslus ilgis").get_by_role("button", name="Nesutinku su sprendimu")).to_have_count(0)
+    dup = page.evaluate("""async () => { const b = window.__zt.backend;
+        const c = (await b.myCatches()).find(x => x.status === 'rejected');
+        return b.openDispute(c.id, 'dar kartą').then(() => 'ok', e => e.message); }""")
+    assert dup == "Ginčas dėl šio laimikio jau pateiktas", dup
     page.goto(base + "#/profilis")
     page.get_by_role("link", name=re.compile("Ginčai")).click()
     expect(page.locator(".quote")).to_have_text("Liniuotė matosi <script>window.__xss=1</script>")
