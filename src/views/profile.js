@@ -48,22 +48,22 @@ function stats(catches, species) {
     const d = new Date(c.captured_at_device);
     if (d.getFullYear() === year) byMonth[d.getMonth()]++;
   });
-  const lastMonth = new Date().getMonth();
-  const firstMonth = Math.max(0, byMonth.findIndex((n) => n > 0) === -1 ? lastMonth : Math.min(byMonth.findIndex((n) => n > 0), lastMonth));
-  const months = byMonth.slice(firstMonth, lastMonth + 1).map((n, i) => ({ n, label: MONTHS[firstMonth + i] }));
+  // Visada visi 12 mėnesių: vienas mėnuo su laimikiais nebeišsitempia per visą plotį.
+  const nowMonth = new Date().getMonth();
+  const months = byMonth.map((n, i) => ({ n, label: MONTHS[i], now: i === nowMonth, future: i > nowMonth }));
   return { ok, records, months, year, speciesCount: best.size };
 }
 
 function seasonChart(s) {
   const max = Math.max(1, ...s.months.map((m) => m.n));
-  const label = s.months.map((m) => `${m.label} ${m.n}`).join(', ');
+  const label = s.months.filter((m) => !m.future).map((m) => `${m.label} ${m.n}`).join(', ');
   return html`<section class="card hero stack">
     <div class="row-between"><h2 class="h2">${s.year} sezonas</h2><span class="small muted">patvirtinti laimikiai</span></div>
     <div class="bars" role="img" aria-label="Laimikiai per mėnesį: ${label}">
-      ${s.months.map((m, i) => html`<div class="bar-col">
-        <span class="small strong">${m.n}</span>
-        <div class="bar ${i === s.months.length - 1 ? 'now' : ''}" style="height:${Math.round((m.n / max) * 86) + 2}px"></div>
-        <span class="small muted">${m.label}</span>
+      ${s.months.map((m) => html`<div class="bar-col ${m.future ? 'future' : ''}">
+        <span class="bar-n">${m.n || ''}</span>
+        <div class="bar ${m.now ? 'now' : ''} ${m.n ? '' : 'zero'}" style="height:${m.n ? Math.round((m.n / max) * 86) + 4 : 2}px"></div>
+        <span class="bar-label">${m.label}</span>
       </div>`)}
     </div>
   </section>`;
