@@ -12,7 +12,7 @@ export const kg = (g) => `${String(Math.round(g / 10) / 100).replace('.', ',')} 
 export async function catchView(ctx, [id]) {
   const { backend, state } = ctx;
   const c = await backend.catchDetail(id);
-  if (!c) return { nav: null, title: 'Laimikis', html: notFound('#/', 'Laimikis nerastas', 'Gal jis dar nepatvirtintas arba ištrintas.') };
+  if (!c) return { nav: 'turnyrai', title: 'Laimikis', html: notFound('#/', 'Laimikis nerastas', 'Gal jis dar nepatvirtintas arba ištrintas.') };
   const me = state.user?.id;
   const own = !!me && c.user_id === me;
   const sp = state.species.find((s) => s.id === c.species_id)?.name_lt ?? '';
@@ -34,7 +34,7 @@ export async function catchView(ctx, [id]) {
   ].filter(Boolean);
 
   return {
-    nav: null,
+    nav: own ? 'dienorastis' : 'lenteles',
     title: `${sp} ${cm(c.length_mm)}`,
     html: html`<div class="screen">
       <header class="top-bar">

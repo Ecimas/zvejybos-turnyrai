@@ -98,10 +98,10 @@ export async function tournamentView(ctx, [id]) {
   let cta = '';
   if (!me && p !== 'done') cta = html`<a class="btn btn-primary btn-lg" href="#/prisijungti">${icon('mail', 22)}Prisijungti ir dalyvauti</a>`;
   else if (me && !t.joined && p !== 'done') cta = html`<button class="btn btn-primary btn-lg" data-join>${icon('plus', 22, 2.6)}Dalyvauti</button>`;
-  else if (me && t.joined && p === 'live') cta = html`<a class="btn btn-primary btn-lg" href="#/laimikis">${icon('plus', 22, 2.6)}Registruoti laimikį</a>`;
+  // Dalyvaujant laimikis registruojamas apatinio meniu „+“ mygtuku – atskiro mygtuko nebereikia.
 
   return {
-    nav: cta ? null : 'turnyrai',
+    nav: 'turnyrai',
     title: t.title,
     html: html`<div class="screen ${cta ? 'has-cta' : ''}">
       <header class="top-bar">
@@ -228,7 +228,7 @@ export async function tournamentView(ctx, [id]) {
 export async function tvView(ctx, [id]) {
   const { backend, state } = ctx;
   const [t, board] = await Promise.all([backend.tournament(id), backend.leaderboard(id)]);
-  if (!t) return { nav: null, html: notFound('#/', 'Turnyras nerastas') };
+  if (!t) return { nav: 'turnyrai', html: notFound('#/', 'Turnyras nerastas') };
   const hidden = boardHidden(t, state);
   const p = phase(t);
   return {
@@ -328,7 +328,6 @@ export async function boardView(ctx, [id]) {
         <span class="strong">Tu · ${cm(mine.score_mm)}</span>
         <span class="small">${above ? gapText(above, mine) : 'Tu pirmauji'}${p === 'live' ? ` · ${timeLabel(t).toLowerCase()}` : ''}</span>
       </span>
-      ${p === 'live' && t.joined ? html`<a class="icon-btn icon-btn-accent" href="#/laimikis" aria-label="Registruoti laimikį">${icon('plus', 22, 2.6)}</a>` : ''}
     </div>` : ''}`,
     mount() {
       if (p !== 'live') return null;

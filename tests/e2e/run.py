@@ -292,6 +292,10 @@ def main():
         # 2. Registracija į turnyrą
         page.locator(".t-card", has_text="Rudens lydekų taurė").click()
         expect(page.get_by_role("heading", name="Rudens lydekų taurė")).to_be_visible()
+        expect(page.locator("#nav")).to_be_visible()  # meniu matomas ir ekranuose su veiksmo mygtuku
+        btn = page.get_by_role("button", name="Dalyvauti").bounding_box()
+        fab = page.locator(".fab").bounding_box()
+        assert btn["y"] + btn["height"] <= fab["y"], f"veiksmo mygtukas užlipa ant + mygtuko: {btn} {fab}"
         page.get_by_role("button", name="Dalyvauti").click()
         expect(page.locator("#toast")).to_have_text("Užsiregistravai į turnyrą")
         expect(page.get_by_role("link", name="Registruoti laimikį")).to_be_visible()

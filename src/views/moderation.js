@@ -43,7 +43,7 @@ export async function moderationView(ctx) {
   else if (c.location.accuracy > 100) warnings.push(`Netiksli vieta (±${Math.round(c.location.accuracy)} m)`);
 
   return {
-    nav: null,
+    nav: 'profilis',
     title: 'Moderavimas',
     html: html`<div class="screen has-cta">
       <header class="top-bar">${backButton('#/profilis')}<span class="muted strong">Liko: ${list.length}</span><span></span></header>

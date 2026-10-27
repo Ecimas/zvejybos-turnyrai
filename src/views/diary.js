@@ -81,7 +81,7 @@ export async function diaryView(ctx) {
                 <button class="btn btn-primary" type="submit">Pateikti moderatoriui</button>
               </form>` : ''}
         </div>`;
-        }) : (!queued.length ? empty('Dar neturi laimikių', 'Paspausk didelį mygtuką apačioje ir užregistruok pirmą žuvį.', html`<a class="btn btn-primary" href="#/laimikis">${icon('camera', 20)}Registruoti laimikį</a>`) : '')}
+        }) : (!queued.length ? empty('Dar neturi laimikių', 'Paspausk didelį mygtuką apačioje ir užregistruok pirmą žuvį.', html`<a class="btn btn-primary" href="#/laimikis">${icon('camera', 20)}Užregistruoti pirmą laimikį</a>`) : '')}
       </section>
     </div>`,
     mount(root) {

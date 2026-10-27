@@ -20,7 +20,7 @@ export async function loginView(ctx) {
     return { nav: 'turnyrai', html: html`` };
   }
   return {
-    nav: null,
+    nav: 'profilis',
     title: 'Prisijungti',
     html: html`<div class="screen">
       <header class="top-bar">${backButton('#/')}<span></span><span></span></header>

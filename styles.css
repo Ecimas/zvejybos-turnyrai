@@ -524,3 +524,13 @@ a.catch-link { color: inherit; text-decoration: none; display: flex; align-items
 .lightbox-close { position: absolute; top: max(12px, env(safe-area-inset-top)); right: 12px; background: rgba(255, 255, 255, 0.15); color: #fff; }
 button.mod-photo { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
 .bar.zero { background: var(--line); }
+
+/* Veiksmo juosta virš apatinio meniu (meniu matomas visur, išskyrus kamerą ir TV režimą).
+   Apačioje paliekama vietos išsikišusiam „+“ mygtukui. */
+body:not(.no-nav) .cta-bar {
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  padding: 10px 16px 40px;
+  background: linear-gradient(to bottom, transparent, var(--bg) 14px);
+  border-top: 0;
+}
+body:not(.no-nav) .screen.has-cta { padding-bottom: 130px; }

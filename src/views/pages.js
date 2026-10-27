@@ -12,7 +12,7 @@ const contact = () => (CONTACT_EMAIL
 
 function page(title, body) {
   return {
-    nav: null,
+    nav: 'profilis',
     title,
     html: html`<div class="screen prose">
       <header class="top-bar"><button class="icon-btn" data-back aria-label="Atgal"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button><span></span><span></span></header>

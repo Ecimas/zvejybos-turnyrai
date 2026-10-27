@@ -40,7 +40,7 @@ export async function createView(ctx, [editId] = []) {
   const back = t ? `#/t/${t.id}` : '#/';
 
   return {
-    nav: null,
+    nav: 'turnyrai',
     title: heading,
     html: html`<div class="screen has-cta">
       <header class="top-bar">${backButton(back)}<span class="muted strong">${heading}</span><span></span></header>

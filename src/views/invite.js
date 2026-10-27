@@ -37,7 +37,7 @@ export async function inviteView(ctx, [code]) {
     }
   }
   return {
-    nav: null,
+    nav: 'turnyrai',
     title: `Kvietimas · ${t.title}`,
     html: html`<div class="screen has-cta">
       <header class="top-bar">${backButton('#/')}<span class="muted strong">Kvietimas</span><span></span></header>
