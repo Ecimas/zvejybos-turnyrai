@@ -7,6 +7,7 @@ turnyro kūrimą ir atsijungimą.
 python3 tests/e2e/real_mode.py
 """
 import importlib.util
+import json
 import pathlib
 import re
 import sys
@@ -20,7 +21,8 @@ spec.loader.exec_module(base_mod)
 
 FAKE = (HERE / "fake_supabase.js").read_text()
 CONFIG = "export const SUPABASE_URL = 'https://fake.supabase.co';\nexport const SUPABASE_ANON_KEY = 'sb_publishable_test';\n"
-CDN = re.compile(r"https://cdn\.jsdelivr\.net/npm/@supabase/supabase-js@2/\+esm")
+# Tikslus prisegtos versijos adresas: jei kas nors pakeistų importą į „@2“, testai sulūžtų.
+CDN = re.compile(r"https://cdn\.jsdelivr\.net/npm/@supabase/supabase-js@2\.118\.0/\+esm")
 
 
 def step(name):
@@ -31,6 +33,205 @@ def calls(page, kind=None, **match):
     cs = page.evaluate("() => window.__sbCalls")
     out = [c for c in cs if (kind is None or c["kind"] == kind) and all(c.get(k) == v for k, v in match.items())]
     return out
+
+
+T1 = "tttttttt-0000-4000-8000-000000000001"
+T2 = "tttttttt-0000-4000-8000-000000000002"
+
+
+def fake(page, js, arg=None):
+    return page.evaluate(f"(arg) => {{ const db = window.__fakeDb.get(); {js} }}", arg)
+
+
+def go(page, url):
+    """Kaip page.goto, bet ir tada, kai jau esame tame pačiame adrese (tada ekranas tiesiog perpiešiamas)."""
+    if page.url == url:
+        page.evaluate("() => window.__zt.rerender()")
+    else:
+        page.goto(url)
+
+
+def more_real_tests(page, base):
+    page.on("dialog", lambda d: d.accept())
+    me = fake(page, "return db.profiles.find(p => p.nickname === 'Ecimas_LT').id;")
+
+    # Laimikio laukai pasiekia serverį (svoris gramais, masalas, pastabos, oras)
+    go(page, base + "#/laimikis")
+    page.get_by_role("button", name="Fotografuoti").click()
+    expect(page.locator("[data-weather]")).to_contain_text("6,4 °C")
+    page.get_by_text("Daugiau: svoris, masalas, pastabos").click()
+    page.get_by_label("Svoris, kg (nebūtina)").fill("1,25")
+    page.get_by_label("Masalas (matysi tik tu)").fill("Sukriukė")
+    page.get_by_label("Svoris, kg (nebūtina)").fill("999")
+    page.get_by_role("button", name="Išsaugoti").click()
+    expect(page.locator("#toast")).to_have_text("Svoris turi būti 0–200 kg")
+    page.get_by_label("Svoris, kg (nebūtina)").fill("1,25")
+    page.get_by_role("button", name="Išsaugoti").click()
+    expect(page.locator("#toast")).to_have_text("Laimikis išsiųstas")
+    row = fake(page, "return db.catches.filter(c => c.user_id === arg).sort((a, b) => a.received_at < b.received_at ? 1 : -1)[0];", me)
+    assert row["weight_g"] == 1250 and row["bait"] == "Sukriukė" and row["notes"] is None, row
+    assert row["weather"] == {"temp_c": 6.4, "wind_ms": 3.1, "pressure_hpa": 1013, "code": 3}, row["weather"]
+    ins = [c for c in calls(page, "from", table="catches", op="insert")][-1]["rows"][0]
+    assert set(ins) >= {"weight_g", "bait", "notes", "weather"} and "status" not in ins and "user_id" not in ins, ins
+    step("laimikio svoris, masalas ir oras išsaugomi serveryje (be status/user_id iš kliento)")
+
+    # Masalo redagavimas: siunčiami tik leistini stulpeliai
+    go(page, base + "#/dienorastis")
+    card = page.locator("[data-catch]").first
+    card.get_by_role("button", name="Redaguoti masalą ir pastabas").click()
+    card.get_by_label("Pastabos").fill("Prie nendrių")
+    card.get_by_role("button", name="Išsaugoti").click()
+    expect(page.locator("#toast")).to_have_text("Išsaugota")
+    upd = calls(page, "from", table="catches", op="update")[-1]
+    assert sorted(upd["patch"]) == ["bait", "notes"], upd
+    step("masalo ir pastabų redagavimas (tik leistini laukai)")
+
+    # Paros limitas: laimikis lieka eilėje su aiškiu pranešimu, vėliau išsiunčiamas
+    fake(page, """for (let i = 0; i < 50; i++) db.catches.push({ id: 'lim' + i, user_id: arg, client_id: 'lim' + i, species_id: 2,
+        length_mm: 200, captured_at_device: new Date().toISOString(), received_at: new Date().toISOString(),
+        photo_path: arg + '/lim' + i + '.jpg', photo_sha256: 'lim' + i, status: 'pending' }); window.__fakeDb.save();""", me)
+    page.evaluate("""async () => { const z = window.__zt;
+        await z.outbox.add({ clientId: crypto.randomUUID(), speciesId: 2, lengthMm: 330, capturedAt: new Date().toISOString(),
+          sha256: 'a'.repeat(64), photo: new Blob(['y'], {type: 'image/jpeg'}), location: null });
+        await z.flush(); }""")
+    expect(page.locator("#toast")).to_have_text("Paros limitas – 50 laimikių. Išsiųsime automatiškai vėliau")
+    expect(page.locator("#status")).to_contain_text("1 laimikis laukia")
+    go(page, base + "#/dienorastis")
+    expect(page.locator(".card", has_text="33 cm")).to_contain_text("Paros limitas")
+    fake(page, "db.catches = db.catches.filter(c => !String(c.id).startsWith('lim')); window.__fakeDb.save();")
+    page.get_by_role("button", name="Siųsti dabar").click()
+    expect(page.locator("#toast")).to_have_text("Laimikis išsiųstas")
+    expect(page.locator("#status")).to_be_hidden()
+    step("paros limitas: laimikis neprarandamas, išsiunčiamas vėliau")
+
+    # Ginčas ir jo sprendimas (patikimumas +5)
+    target = fake(page, "return db.catches.find(c => c.user_id === arg && c.length_mm === 330).id;", me)
+    page.evaluate("(id) => window.__zt.backend.review(id, false, 'Ne ta rūšis')", target)
+    trust0 = fake(page, "return db.profiles.find(p => p.id === arg).trust_score;", me)
+    go(page, base + "#/dienorastis")
+    rej = page.locator("[data-catch]", has_text="Ne ta rūšis")
+    rej.get_by_role("button", name="Nesutinku su sprendimu").click()
+    rej.get_by_label("Kodėl laimikis turėtų būti įskaitytas?").fill("Tai tikrai ešerys")
+    rej.get_by_role("button", name="Pateikti moderatoriui").click()
+    expect(page.locator("#toast")).to_have_text("Ginčas pateiktas moderatoriui")
+    d = fake(page, "return db.disputes[0];")
+    assert d["catch_id"] == target and d["user_id"] == me and d["status"] == "open", d
+    dup = page.evaluate("(id) => window.__zt.backend.openDispute(id, 'dar kartą').then(() => 'ok', e => e.message)", target)
+    assert dup == "Ginčas dėl šio laimikio jau pateiktas", dup
+    go(page, base + "#/moderavimas/gincai")
+    expect(page.locator(".quote")).to_have_text("Tai tikrai ešerys")
+    expect(page.locator("[data-d]")).to_contain_text("Atmesta: Ne ta rūšis")
+    page.get_by_role("button", name="Įskaityti").click()
+    expect(page.locator("#toast")).to_have_text("Laimikis įskaitytas")
+    assert fake(page, "return db.catches.find(c => c.id === arg).status;", target) == "approved"
+    assert fake(page, "return db.profiles.find(p => p.id === arg).trust_score;", me) == min(100, trust0 + 5)
+    step("ginčas: pateikimas, dublio apsauga, įskaitymas su patikimumo grąžinimu")
+
+    # Moderatorių komanda
+    go(page, base + "#/moderavimas/komanda")
+    page.get_by_label("Pridėti moderatorių pagal slapyvardį").fill("kitas_zvejys")
+    page.get_by_role("button", name="Paskirti moderatoriumi").click()
+    expect(page.locator("#toast")).to_have_text("Moderatorius paskirtas")
+    assert fake(page, "return db.profiles.find(p => p.nickname === 'Kitas_Zvejys').is_admin;") is True
+    page.locator(".list-row", has_text="Kitas_Zvejys").get_by_role("button", name="Pašalinti").click()
+    expect(page.locator("#toast")).to_have_text("Moderatorius pašalintas")
+    page.locator(".list-row", has_text="(tu)").get_by_role("button", name="Pašalinti").click()
+    expect(page.locator("#toast")).to_have_text("Negalima pašalinti paskutinio moderatoriaus")
+    step("moderatorių skyrimas per serverio funkciją")
+
+    # Turnyro redagavimas ir ištrynimas (savo, iki starto); svetimo – ne
+    tid = fake(page, "return db.tournaments.find(t => t.title === 'Ešerių savaitgalis').id;")
+    go(page, base + f"#/t/{tid}/redaguoti")
+    page.get_by_label("Pavadinimas").fill("Ešerių savaitgalis+")
+    page.get_by_role("button", name="Tik su kvietimu").click()
+    page.get_by_label("Prizai (nebūtina)").fill("Kepurė")
+    page.locator("[data-form]").get_by_role("button", name="Lydeka").click()
+    page.get_by_role("button", name="Išsaugoti pakeitimus").click()
+    expect(page.get_by_role("heading", name="Ešerių savaitgalis+")).to_be_visible()
+    t = fake(page, "return db.tournaments.find(t => t.id === arg);", tid)
+    assert t["visibility"] == "private" and t["prizes"] == "Kepurė", t
+    assert sorted(x["species_id"] for x in fake(page, "return db.tournament_species.filter(x => x.tournament_id === arg);", tid)) == [1, 2]
+    go(page, base + f"#/t/{T1}/redaguoti")
+    expect(page.get_by_text("Redaguoti negalima")).to_be_visible()
+    res = page.evaluate("(id) => window.__zt.backend.updateTournament(id, { title: 'Pavogta' }).then(() => 'ok', e => e.message)", T1)
+    assert res == "Turnyras jau prasidėjo – keisti nebegalima", res
+    res = page.evaluate("(id) => window.__zt.backend.deleteTournament(id).then(() => 'ok', e => e.message)", T1)
+    assert res == "Prasidėjusio turnyro ištrinti negalima", res
+    assert fake(page, "return db.tournaments.find(t => t.id === arg).title;", T1) == "Testo lydekų taurė"
+    go(page, base + f"#/t/{tid}/redaguoti")
+    page.get_by_role("button", name="Ištrinti turnyrą").click()
+    expect(page.locator("#toast")).to_have_text("Turnyras ištrintas")
+    assert fake(page, "return db.tournaments.some(t => t.id === arg) || db.entries.some(e => e.tournament_id === arg);", tid) is False
+    step("redagavimas ir ištrynimas: savo iki starto – taip, svetimo prasidėjusio – ne")
+
+    # Privatus turnyras: nesimato sąraše, kvietimas, paslėpta lentelė
+    fake(page, "db.profiles.find(p => p.id === arg).is_admin = false; window.__fakeDb.save();", me)
+    page.evaluate("async () => { window.__zt.state.profile = await window.__zt.backend.myProfile(); }")
+    go(page, base + "#/")
+    page.get_by_role("button", name=re.compile("^Vyksta")).click()
+    expect(page.locator(".t-card", has_text="Slaptas klubo turnyras")).to_have_count(0)
+    res = page.evaluate("(id) => window.__zt.backend.join(id).then(() => 'ok', e => e.code)", T2)
+    assert res == "42501", f"prisijungti prie privataus be kvietimo neturėtų pavykti: {res}"
+    go(page, base + "#/profilis")
+    page.get_by_role("button", name="Atsijungti").click()
+    go(page, base + "#/kvietimas/b1b2b3b4b5")
+    expect(page.get_by_role("heading", name="Slaptas klubo turnyras")).to_be_visible()
+    page.get_by_role("link", name="Prisijungti ir dalyvauti").click()
+    page.get_by_label("El. paštas").fill("ecimas@pastas.lt")
+    page.get_by_role("button", name="Siųsti nuorodą").click()
+    page.get_by_role("button", name="Laiške yra kodas?").click()
+    page.get_by_label("Kodas iš laiško").fill("123456")
+    page.get_by_role("button", name="Prisijungti").click()
+    expect(page.get_by_role("button", name="Dalyvauti")).to_be_visible()  # grįžo į kvietimą
+    assert page.evaluate("() => location.hash") == "#/kvietimas/b1b2b3b4b5"
+    page.get_by_role("button", name="Dalyvauti").click()
+    expect(page.locator("#toast")).to_have_text("Užsiregistravai į turnyrą")
+    expect(page.get_by_role("heading", name="Slaptas klubo turnyras")).to_be_visible()
+    expect(page.get_by_text("Lentelė paslėpta iki turnyro pabaigos.")).to_be_visible()
+    expect(page.locator(".list-row", has_text="Kitas_Zvejys")).to_have_count(0)
+    go(page, base + f"#/t/{T2}/lentele")
+    expect(page.get_by_text("Paslėpta iki pabaigos")).to_be_visible()
+    go(page, base + f"#/t/{T2}/tv")
+    expect(page.locator(".tv-empty")).to_contain_text("paslėpta")
+    expect(page.locator(".tv-row")).to_have_count(0)
+    lb = page.evaluate("(id) => window.__zt.backend.leaderboard(id)", T2)
+    me2 = fake(page, "return db.profiles.find(p => p.nickname === 'Ecimas_LT').id;")
+    assert lb and all(r["user_id"] == me2 and r["rank"] is None for r in lb), f"paslėptoje lentelėje tik sava eilutė be vietos: {lb}"
+    go(page, base + "#/kvietimas/ffffffffff")
+    expect(page.get_by_text("Kvietimas negalioja")).to_be_visible()
+    step("privatus turnyras: nematomas, kvietimas išlieka per prisijungimą, lentelė paslėpta")
+
+    # Duomenų eksportas
+    go(page, base + "#/profilis")
+    with page.expect_download() as dl:
+        page.get_by_role("button", name="Atsisiųsti mano duomenis").click()
+    data = json.loads(pathlib.Path(dl.value.path()).read_text())
+    assert data["email"] == "ecimas@pastas.lt" and data["profile"]["id"] == me
+    assert all(c["user_id"] == me for c in data["catches"]) and len(data["catches"]) >= 2
+    assert any(e["tournament_id"] == T2 for e in data["entries"])
+    assert len(data["disputes"]) == 1
+    step("duomenų eksportas: tik savi duomenys")
+
+    # Paskyros ištrynimas: kol funkcija neįdiegta – aiškus pranešimas; paskui – pilnas
+    page.evaluate("() => { window.__sbFail.noDeletion = true; }")
+    page.get_by_role("button", name="Ištrinti paskyrą").first.click()
+    page.get_by_label("Patvirtinimui įrašyk IŠTRINTI").fill("IŠTRINTI")
+    page.locator("[data-delete-confirm]").click()
+    expect(page.locator("[data-delete-status]")).to_contain_text("laikinai neprieinamas")
+    assert fake(page, "return db.profiles.some(p => p.id === arg);", me)
+    page.evaluate("() => { window.__sbFail.noDeletion = false; }")
+    page.locator("[data-delete-confirm]").click()
+    expect(page.locator("#toast")).to_have_text("Paskyra ištrinta")
+    expect(page.get_by_role("heading", name="Turnyrai", level=1)).to_be_visible()
+    left = fake(page, """return { p: db.profiles.some(p => p.id === arg), c: db.catches.some(c => c.user_id === arg),
+        e: db.entries.some(e => e.user_id === arg), d: db.disputes.length, t: db.tournaments.some(t => t.organizer_id === arg) };""", me)
+    assert left == {"p": False, "c": False, "e": False, "d": 0, "t": False}, left
+    assert calls(page, "list") and calls(page, "remove"), "nuotraukos turi būti ištrintos"
+    order = [c["name"] for c in calls(page, "rpc") if "account_deletion" in c.get("name", "")]
+    assert order[-2:] == ["begin_account_deletion", "finish_account_deletion"], order
+    go(page, base + "#/dienorastis")
+    expect(page.get_by_role("link", name="Prisijungti")).to_be_visible()
+    step("paskyros ištrynimas: neįdiegus – pranešimas, įdiegus – viskas ištrinta")
 
 
 def main():
@@ -49,6 +250,7 @@ def main():
         ctx.route(CDN, lambda r: r.fulfill(status=200, content_type="text/javascript",
                                            headers={"Access-Control-Allow-Origin": "*"}, body=FAKE))
         ctx.route(re.compile(r".*/src/config\.js$"), lambda r: r.fulfill(status=200, content_type="text/javascript", body=CONFIG))
+        ctx.route(base_mod.METEO, base_mod.fake_meteo)
         page = ctx.new_page()
         page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
         page.on("console", lambda m: m.type == "error"
@@ -205,6 +407,8 @@ def main():
         expect(page.locator("#toast")).to_have_text("Prisijungei")
         assert page.evaluate("() => location.hash") == "#/profilis"
         step("grįžimas iš laiško nuorodos (pasibaigusi ir sėkminga)")
+
+        more_real_tests(page, base)
 
         browser.close()
     httpd.shutdown()

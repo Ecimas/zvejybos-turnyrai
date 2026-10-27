@@ -2,6 +2,33 @@ import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { cm, shortDate } from '../lib/format.js';
 import { thumb, hydratePhotos, backButton, empty, avatar, loginPrompt } from '../ui.js';
+import { computeBadges } from '../lib/badges.js';
+import { weatherEnabled } from './capture.js';
+
+function badges(catches, tcount) {
+  const list = computeBadges(catches, tcount);
+  const earned = list.filter((b) => b.earned).length;
+  return html`<section class="stack">
+    <div class="row-between"><h2 class="h2">Ženkliukai</h2><span class="small muted">${earned} iš ${list.length}</span></div>
+    <ul class="badges plain">${list.map((b) => html`<li class="badge-tile ${b.earned ? 'earned' : ''}" title="${b.desc}">
+      <span class="badge-ico" aria-hidden="true">${icon(b.earned ? 'star' : 'lock', 20, 2.2)}</span>
+      <span class="small strong">${b.name}</span>
+      <span class="sr-only">${b.earned ? 'gautas' : `dar negautas, ${Math.round(b.progress * 100)} %`}: ${b.desc}</span>
+      ${b.earned ? '' : html`<span class="mini-progress" aria-hidden="true"><span style="width:${Math.round(b.progress * 100)}%"></span></span>`}
+    </li>`)}</ul>
+  </section>`;
+}
+
+function download(name, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
 
 const MONTHS = ['Sau', 'Vas', 'Kov', 'Bal', 'Geg', 'Bir', 'Lie', 'Rgp', 'Rgs', 'Spa', 'Lap', 'Grd'];
 
@@ -68,10 +95,11 @@ export async function profileView(ctx) {
     return { nav: 'profilis', title: 'Profilis', html: html`<div class="screen"><h1 class="display-lg" tabindex="-1">Profilis</h1>${loginPrompt('Prisijunk, kad matytum savo profilį.')}</div>` };
   }
   const p = state.profile || (await backend.myProfile());
-  const [catches, tcount, pendingList] = await Promise.all([
+  const [catches, tcount, pendingList, disputes] = await Promise.all([
     backend.myCatches(),
     backend.userTournamentCount(state.user.id),
-    p?.is_admin ? backend.pending().catch(() => []) : []
+    p?.is_admin ? backend.pending().catch(() => []) : [],
+    p?.is_admin ? backend.openDisputes().catch(() => []) : []
   ]);
   const s = stats(catches, state.species);
   let theme = 'auto';
@@ -102,11 +130,13 @@ export async function profileView(ctx) {
       ${statGrid(s, tcount)}
       ${s.ok.length ? seasonChart(s) : ''}
       ${records(s)}
+      ${badges(catches, tcount)}
 
       <section class="stack">
         <h2 class="h2">Daugiau</h2>
         <div class="list">
           ${p.is_admin ? html`<a class="list-row" href="#/moderavimas">${icon('shield', 20)}<span class="grow strong">Moderavimas</span>${pendingList.length ? html`<span class="chip chip-wait">${pendingList.length}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
+          ${p.is_admin ? html`<a class="list-row" href="#/moderavimas/gincai">${icon('alert', 20)}<span class="grow strong">Ginčai</span>${disputes.length ? html`<span class="chip chip-wait">${disputes.length}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
           <a class="list-row" href="#/naujas">${icon('plus', 20)}<span class="grow strong">Sukurti turnyrą</span>${icon('chevron', 18)}</a>
           <a class="list-row" href="#/zvejys/${p.id}">${icon('user', 20)}<span class="grow strong">Kaip mane mato kiti</span>${icon('chevron', 18)}</a>
           <div class="list-row">${icon('sun', 20)}<span class="grow strong">Tema</span>
@@ -116,9 +146,22 @@ export async function profileView(ctx) {
               <option value="light" ${theme === 'light' ? 'selected' : ''}>Šviesi (lauke)</option>
             </select>
           </div>
+          <label class="list-row">${icon('sun', 20)}<span class="grow stack-1"><span class="strong">Oras prie laimikio</span><span class="small muted">Temperatūra, vėjas ir slėgis iš Open-Meteo</span></span>
+            <input type="checkbox" data-weather-toggle ${weatherEnabled() ? 'checked' : ''}></label>
+          <a class="list-row" href="#/taisykles">${icon('book', 20)}<span class="grow strong">Turnyrų taisyklės</span>${icon('chevron', 18)}</a>
+          <a class="list-row" href="#/privatumas">${icon('lock', 20)}<span class="grow strong">Privatumo politika</span>${icon('chevron', 18)}</a>
+          <button class="list-row" data-export>${icon('share', 20)}<span class="grow strong left">Atsisiųsti mano duomenis</span></button>
           ${backend.mode === 'demo'
             ? html`<button class="list-row" data-reset>${icon('refresh', 20)}<span class="grow strong left">Atstatyti demo duomenis</span></button>`
             : html`<button class="list-row" data-logout>${icon('logout', 20)}<span class="grow strong left">Atsijungti</span></button>`}
+          <button class="list-row bad" data-delete-open>${icon('x', 20)}<span class="grow strong left">Ištrinti paskyrą</span></button>
+        </div>
+        <div class="card stack danger-box" data-delete-box hidden>
+          <p class="strong">Ištrinti paskyrą visam laikui?</p>
+          <p class="small muted">Bus ištrinti tavo laimikiai, nuotraukos, vietos, sukurti turnyrai ir registracijos. Atkurti nebus galima. Prieš tai gali atsisiųsti savo duomenis.</p>
+          <label class="field"><span class="small muted strong">Patvirtinimui įrašyk IŠTRINTI</span><input data-delete-word autocomplete="off"></label>
+          <p class="small" data-delete-status aria-live="polite"></p>
+          <button class="btn btn-danger" data-delete-confirm>Ištrinti paskyrą</button>
         </div>
       </section>
     </div>`,
@@ -143,6 +186,46 @@ export async function profileView(ctx) {
       root.querySelector('[data-theme]').addEventListener('change', (e) => {
         try { localStorage.setItem('zt-theme', e.target.value); } catch { /* nėra saugyklos */ }
         ctx.applyTheme();
+      });
+      root.querySelector('[data-weather-toggle]').addEventListener('change', (e) => {
+        try { localStorage.setItem('zt-weather', e.target.checked ? 'on' : 'off'); } catch { /* nėra saugyklos */ }
+      });
+      root.querySelector('[data-export]').addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        try {
+          const data = await backend.exportData();
+          const day = new Date().toISOString().slice(0, 10);
+          download(`zvejybos-turnyrai-${day}.json`, JSON.stringify(data, null, 2));
+          ctx.toast('Duomenys atsisiųsti');
+        } catch {
+          ctx.toast('Nepavyko paruošti duomenų');
+        } finally {
+          e.currentTarget.disabled = false;
+        }
+      });
+      const delBox = root.querySelector('[data-delete-box]');
+      root.querySelector('[data-delete-open]').addEventListener('click', () => {
+        delBox.hidden = !delBox.hidden;
+        if (!delBox.hidden) delBox.scrollIntoView({ block: 'center' });
+      });
+      root.querySelector('[data-delete-confirm]').addEventListener('click', async (e) => {
+        const word = root.querySelector('[data-delete-word]').value.trim().toUpperCase();
+        const status = root.querySelector('[data-delete-status]');
+        if (word !== 'IŠTRINTI' && word !== 'ISTRINTI') { status.textContent = 'Įrašyk žodį IŠTRINTI.'; return; }
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        const STEPS = { data: 'Trinami duomenys…', photos: 'Trinamos nuotraukos…', account: 'Trinama paskyra…' };
+        try {
+          await backend.deleteAccount((step) => { status.textContent = STEPS[step] || ''; });
+          for (const item of await ctx.outbox.list()) await ctx.outbox.dismiss(item.clientId);
+          ctx.state.user = backend.getUser();
+          ctx.state.profile = ctx.state.user ? await backend.myProfile().catch(() => null) : null;
+          ctx.toast(backend.mode === 'demo' ? 'Demo paskyra ištrinta ir sukurta iš naujo' : 'Paskyra ištrinta');
+          ctx.navigate('#/');
+        } catch (err) {
+          btn.disabled = false;
+          status.textContent = err.message || 'Nepavyko ištrinti – bandyk dar kartą';
+        }
       });
       root.querySelector('[data-reset]')?.addEventListener('click', async () => {
         if (!confirm('Ištrinti visus demo duomenis ir pradėti iš naujo?')) return;

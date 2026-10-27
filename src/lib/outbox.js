@@ -9,6 +9,14 @@ export class PermanentError extends Error {
   }
 }
 
+// Laikina, bet vartotojui paaiškintina kliūtis (pvz. paros limitas): įrašas lieka eilėje su pranešimu.
+export class RetryLaterError extends Error {
+  constructor(message, code) {
+    super(message);
+    this.code = code;
+  }
+}
+
 // Saugykla atmintyje – testams ir naršyklėms be IndexedDB.
 export function memoryStore() {
   const m = new Map();
@@ -76,7 +84,7 @@ export class Outbox {
   flush(send) {
     if (this.flushing) return this.flushing;
     this.flushing = (async () => {
-      const result = { sent: 0, failed: 0, stopped: false };
+      const result = { sent: 0, failed: 0, stopped: false, held: null };
       try {
         for (const item of await this.list()) {
           if (item.state !== 'queued') continue;
@@ -89,6 +97,10 @@ export class Outbox {
               await this.store.put({ ...item, state: 'failed', error: err.message });
               result.failed++;
             } else {
+              if (err instanceof RetryLaterError) {
+                await this.store.put({ ...item, state: 'queued', error: err.message });
+                result.held = err.message;
+              }
               result.stopped = true;
               break;
             }

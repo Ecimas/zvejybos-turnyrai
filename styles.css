@@ -436,3 +436,58 @@ ol.plain { list-style: none; margin: 0; padding: 0; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* --- Turnyrų ir profilio papildiniai --- */
+.seg a {
+  flex: 1; min-height: 44px; border-radius: 12px; color: var(--muted); font-size: 14px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
+}
+.seg a[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.wrap { flex-wrap: wrap; }
+.prewrap { white-space: pre-line; overflow-wrap: anywhere; }
+.ok { color: var(--ok); }
+.btn.bad, .list-row.bad { color: var(--bad); }
+.check-row {
+  display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 16px;
+  background: var(--surface); border: 1px solid var(--line);
+}
+.check-row input, .list-row input[type="checkbox"] { width: 24px; height: 24px; accent-color: var(--accent); flex: none; margin: 0; }
+.winners { border: 1.5px solid var(--accent); }
+.winners li { min-height: 40px; }
+.medal { font-size: 26px; line-height: 1; width: 32px; text-align: center; }
+.quote { margin: 0; padding: 10px 14px; border-left: 3px solid var(--accent); background: var(--surface-2); border-radius: 0 12px 12px 0; overflow-wrap: anywhere; }
+.danger-box { border: 1.5px solid var(--bad); }
+details.more { border: 1px solid var(--line); border-radius: 16px; padding: 0 14px; background: var(--surface); }
+details.more summary { min-height: 48px; display: flex; align-items: center; cursor: pointer; }
+details.more[open] { padding-bottom: 14px; }
+
+.badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.badge-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
+  padding: 12px 8px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); color: var(--muted);
+}
+.badge-tile.earned { color: var(--text); border-color: var(--accent); }
+.badge-ico { width: 40px; height: 40px; border-radius: 20px; display: grid; place-items: center; background: var(--surface-2); }
+.badge-tile.earned .badge-ico { background: var(--accent); color: var(--on-accent); }
+.mini-progress { width: 100%; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.mini-progress span { display: block; height: 100%; background: var(--line-2); }
+
+.prose ul { padding-left: 20px; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.prose p, .prose li { line-height: 1.5; }
+.prose .h2 { margin-top: 12px; }
+
+/* Didelio ekrano režimas */
+.tv { min-height: 100vh; padding: clamp(16px, 4vw, 48px); display: flex; flex-direction: column; gap: clamp(16px, 3vw, 32px); }
+.tv-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.tv-title { font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif; font-size: clamp(32px, 6vw, 72px); line-height: 1; margin: 0; overflow-wrap: anywhere; }
+.tv-list { display: flex; flex-direction: column; gap: clamp(6px, 1vw, 12px); }
+.tv-row {
+  display: grid; grid-template-columns: 2.2em 1fr auto auto; gap: 0.6em; align-items: center;
+  font-size: clamp(20px, 3.4vw, 44px); padding: 0.35em 0.6em; border-radius: 16px; background: var(--surface);
+}
+.tv-row.r1 { background: var(--accent); color: var(--on-accent); }
+.tv-rank, .tv-score { font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif; font-weight: 800; }
+.tv-meta { font-size: 0.55em; opacity: 0.8; }
+.tv-empty { font-size: clamp(22px, 4vw, 40px); text-align: center; margin: auto; display: flex; gap: 12px; align-items: center; }
+.tv-foot { margin-top: auto; text-align: center; }
+@media (max-width: 480px) { .tv-meta { display: none; } .tv-row { grid-template-columns: 2em 1fr auto; } }

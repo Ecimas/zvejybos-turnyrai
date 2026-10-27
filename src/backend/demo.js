@@ -2,12 +2,14 @@
 // Leidžia išbandyti programėlę dar prieš prijungiant Supabase.
 import { SPECIES, speciesId } from './species.js';
 import { computeLeaderboard } from '../lib/scoring.js';
-import { PermanentError, idbStore, memoryStore } from '../lib/outbox.js';
+import { PermanentError, RetryLaterError, idbStore, memoryStore } from '../lib/outbox.js';
+import { phase } from '../lib/format.js';
 
 const KEY = 'zt-demo-v1';
 const ME = '00000000-0000-4000-8000-000000000001';
 const H = 3600e3;
 const D = 24 * H;
+const code10 = () => Array.from(crypto.getRandomValues(new Uint8Array(5)), (b) => b.toString(16).padStart(2, '0')).join('');
 
 function seed() {
   const now = Date.now();
@@ -28,18 +30,23 @@ function seed() {
 
   const T = (id, o) => ({
     id, organizer_id: ids[0], description: null, visibility: 'public', fee_cents: 0,
-    created_at: iso(-30 * D), top_n: 3, min_length_mm: 0, ...o
+    created_at: iso(-30 * D), top_n: 3, min_length_mm: 0, prizes: null, sponsor_name: null, sponsor_url: null,
+    leaderboard_hidden: false, invite_code: code10(), ...o
   });
   const tournaments = [
     T('t-taure', { title: 'Rudens lydekų taurė', format: 'top_n_sum', top_n: 3, min_length_mm: 500,
       starts_at: iso(-4 * D), ends_at: iso(2 * D + 14 * H),
-      description: 'Trys ilgiausios lydekos sumuojamos. Nuotrauka su matavimo liniuote, matomas visas žuvies ilgis.' }),
+      description: 'Trys ilgiausios lydekos sumuojamos. Nuotrauka su matavimo liniuote, matomas visas žuvies ilgis.',
+      prizes: '1 vieta – spiningas\n2 vieta – ritė\n3 vieta – masalų rinkinys', sponsor_name: 'Ežero žvejybos parduotuvė' }),
     T('t-sezonas', { title: 'Sezono iššūkis', format: 'biggest', starts_at: iso(-60 * D), ends_at: iso(39 * D),
       description: 'Didžiausia bet kurios rūšies žuvis per sezoną.' }),
     T('t-eseriai', { title: 'Ešerių savaitgalis', format: 'biggest', min_length_mm: 200,
       starts_at: iso(30 * H), ends_at: iso(30 * H + 2 * D) }),
     T('t-plesrunai', { title: 'Rugsėjo plėšrūnai', format: 'top_n_sum', top_n: 3, min_length_mm: 400,
-      starts_at: iso(-40 * D), ends_at: iso(-22 * D) })
+      starts_at: iso(-40 * D), ends_at: iso(-22 * D), prizes: '1 vieta – 50 € dovanų kuponas' }),
+    T('t-slaptas', { title: 'Draugų iššūkis', format: 'biggest', organizer_id: ME, visibility: 'private',
+      leaderboard_hidden: true, starts_at: iso(-2 * D), ends_at: iso(5 * D),
+      description: 'Privatus turnyras tik su kvietimu. Lentelė paslėpta iki pabaigos.' })
   ];
   const tournament_species = [
     ['t-taure', speciesId('lydeka')], ['t-eseriai', speciesId('eserys')],
@@ -52,6 +59,7 @@ function seed() {
   enter('t-sezonas', ids.slice(0, 7));
   enter('t-eseriai', ids.slice(2, 6));
   enter('t-plesrunai', [...ids, ME]);
+  enter('t-slaptas', [ME, ids[2], ids[5]]);
 
   const catches = [];
   let n = 0;
@@ -78,13 +86,14 @@ function seed() {
   add(ME, 'eserys', 340, -50 * D);
   add(ME, 'karsis', 520, -70 * D);
 
-  return { profiles, tournaments, tournament_species, entries, catches, locations: {} };
+  return { profiles, tournaments, tournament_species, entries, catches, locations: {}, disputes: [] };
 }
 
 export function createDemoBackend({ photos } = {}) {
   let db;
   try { db = JSON.parse(localStorage.getItem(KEY)); } catch { db = null; }
   if (!db) { db = seed(); }
+  db.disputes ||= [];
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* pilna atmintis */ } };
   save();
   const photoStore = photos || (typeof indexedDB !== 'undefined' ? idbStore('zvejybos-turnyrai-demo', 'photos') : memoryStore());
@@ -92,6 +101,9 @@ export function createDemoBackend({ photos } = {}) {
   const listeners = new Set();
   const user = { id: ME, email: 'demo@zvejybosturnyrai.lt' };
 
+  const visible = (t) => t.visibility === 'public' || t.organizer_id === ME
+    || db.entries.some((e) => e.tournament_id === t.id && e.user_id === ME);
+  const isOrganizerBeforeStart = (t) => t && t.organizer_id === ME && Date.now() < new Date(t.starts_at).getTime();
   const decorate = (t) => ({
     ...t,
     species_ids: db.tournament_species.filter((x) => x.tournament_id === t.id).map((x) => x.species_id),
@@ -121,19 +133,56 @@ export function createDemoBackend({ photos } = {}) {
     },
 
     async species() { return SPECIES; },
-    async tournaments() { return db.tournaments.map(decorate); },
+    async tournaments() { return db.tournaments.filter(visible).map(decorate); },
     async tournament(id) {
       const t = db.tournaments.find((x) => x.id === id);
-      return t ? decorate(t) : null;
+      return t && visible(t) ? decorate(t) : null;
     },
     async createTournament(data) {
       const id = `t-${Date.now().toString(36)}`;
       const { species_ids, ...rest } = data;
-      db.tournaments.push({ id, organizer_id: ME, visibility: 'public', fee_cents: 0, created_at: new Date().toISOString(), ...rest });
+      const recent = db.tournaments.filter((t) => t.organizer_id === ME && Date.now() - new Date(t.created_at) < D).length;
+      if (recent >= 10) throw new Error('Per parą galima sukurti ne daugiau kaip 10 turnyrų');
+      db.tournaments.push({ id, organizer_id: ME, visibility: 'public', fee_cents: 0, leaderboard_hidden: false,
+        invite_code: code10(), created_at: new Date().toISOString(), ...rest });
       species_ids.forEach((species_id) => db.tournament_species.push({ tournament_id: id, species_id }));
       db.entries.push({ tournament_id: id, user_id: ME, joined_at: new Date().toISOString() });
       save();
       return id;
+    },
+    async updateTournament(id, data) {
+      const t = db.tournaments.find((x) => x.id === id);
+      if (!isOrganizerBeforeStart(t)) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
+      const { species_ids, ...rest } = data;
+      Object.assign(t, rest);
+      if (species_ids) {
+        db.tournament_species = db.tournament_species.filter((x) => x.tournament_id !== id)
+          .concat(species_ids.map((species_id) => ({ tournament_id: id, species_id })));
+      }
+      save();
+    },
+    async deleteTournament(id) {
+      const t = db.tournaments.find((x) => x.id === id);
+      if (!isOrganizerBeforeStart(t)) throw new Error('Prasidėjusio turnyro ištrinti negalima');
+      db.tournaments = db.tournaments.filter((x) => x.id !== id);
+      db.tournament_species = db.tournament_species.filter((x) => x.tournament_id !== id);
+      db.entries = db.entries.filter((x) => x.tournament_id !== id);
+      save();
+    },
+    async getInvite(code) {
+      const t = db.tournaments.find((x) => x.invite_code === String(code).trim().toLowerCase() && Date.now() < new Date(x.ends_at));
+      if (!t) return null;
+      const { id, title, format, top_n, min_length_mm, starts_at, ends_at } = t;
+      return { id, title, format, top_n, min_length_mm, starts_at, ends_at, participants: db.entries.filter((e) => e.tournament_id === id).length };
+    },
+    async joinWithInvite(code) {
+      const t = await this.getInvite(code);
+      if (!t) throw new Error('Kvietimas negalioja arba turnyras jau baigėsi');
+      if (!db.entries.some((e) => e.tournament_id === t.id && e.user_id === ME)) {
+        db.entries.push({ tournament_id: t.id, user_id: ME, joined_at: new Date().toISOString() });
+        save();
+      }
+      return t.id;
     },
     async join(id) {
       if (!db.entries.some((e) => e.tournament_id === id && e.user_id === ME)) {
@@ -151,13 +200,17 @@ export function createDemoBackend({ photos } = {}) {
     async leaderboard(id) {
       const t = db.tournaments.find((x) => x.id === id);
       if (!t) return [];
-      return computeLeaderboard({
+      const rows = computeLeaderboard({
         tournament: t,
         speciesIds: db.tournament_species.filter((x) => x.tournament_id === id).map((x) => x.species_id),
         entries: db.entries.filter((e) => e.tournament_id === id).map((e) => e.user_id),
         catches: db.catches,
         profiles: db.profiles
       });
+      // Kaip serveryje: paslėpta lentelė vykstant turnyrui – tik savo eilutė be vietos
+      // (organizatorius ir moderatoriai mato viską).
+      const hidden = t.leaderboard_hidden && phase(t) !== 'done' && t.organizer_id !== ME && !db.profiles[ME]?.is_admin;
+      return hidden ? rows.filter((r) => r.user_id === ME).map((r) => ({ ...r, rank: null })) : rows;
     },
 
     async myCatches() {
@@ -179,6 +232,8 @@ export function createDemoBackend({ photos } = {}) {
     async submitCatch(item) {
       const existing = db.catches.find((c) => c.user_id === ME && c.client_id === item.clientId);
       if (existing) return existing;
+      const today = db.catches.filter((c) => c.user_id === ME && Date.now() - new Date(c.received_at) < D).length;
+      if (today >= 50) throw new RetryLaterError('Paros limitas – 50 laimikių. Išsiųsime automatiškai vėliau', 'catch_limit');
       if (db.catches.some((c) => c.photo_sha256 === item.sha256)) {
         throw new PermanentError('Ši nuotrauka jau buvo įkelta', 'duplicate_photo');
       }
@@ -188,12 +243,85 @@ export function createDemoBackend({ photos } = {}) {
         id: item.clientId, client_id: item.clientId, user_id: ME, species_id: item.speciesId,
         length_mm: item.lengthMm, captured_at_device: item.capturedAt, received_at: new Date().toISOString(),
         photo_path: path, photo_sha256: item.sha256, status: 'pending', reject_reason: null,
+        weight_g: item.weightG ?? null, bait: item.bait || null, notes: item.notes || null, weather: item.weather ?? null,
         created_at: new Date().toISOString()
       };
       db.catches.push(row);
       if (item.location) db.locations[row.id] = item.location;
       save();
       return row;
+    },
+
+    async updateCatch(id, { bait, notes }) {
+      const c = db.catches.find((x) => x.id === id && x.user_id === ME);
+      if (!c) throw new Error('Nepavyko išsaugoti');
+      if (String(bait || '').length > 80 || String(notes || '').length > 500) throw new Error('Per ilgas tekstas');
+      c.bait = bait || null;
+      c.notes = notes || null;
+      save();
+    },
+
+    async myDisputes() { return db.disputes.filter((d) => d.user_id === ME); },
+    async openDispute(catchId, message) {
+      const c = db.catches.find((x) => x.id === catchId && x.user_id === ME && x.status === 'rejected');
+      if (!c) throw new Error('Nepavyko pateikti');
+      if (db.disputes.some((d) => d.catch_id === catchId)) throw new Error('Ginčas dėl šio laimikio jau pateiktas');
+      const msg = String(message || '').trim();
+      if (msg.length < 3 || msg.length > 500) throw new Error('Parašyk 3–500 simbolių');
+      db.disputes.push({ id: `d-${Date.now().toString(36)}`, catch_id: catchId, user_id: ME, message: msg, status: 'open',
+        resolution: null, resolved_by: null, resolved_at: null, created_at: new Date().toISOString() });
+      save();
+    },
+    async openDisputes() {
+      return db.disputes.filter((d) => d.status === 'open').map((d) => ({
+        ...d,
+        catch: db.catches.find((c) => c.id === d.catch_id) || null,
+        nickname: db.profiles[d.user_id]?.nickname ?? '',
+        trust_score: db.profiles[d.user_id]?.trust_score ?? 50
+      }));
+    },
+    async resolveDispute(id, accept, note) {
+      const d = db.disputes.find((x) => x.id === id && x.status === 'open');
+      if (!d) throw new Error('Ginčas nerastas');
+      Object.assign(d, { status: accept ? 'accepted' : 'rejected', resolution: String(note || '').trim() || null,
+        resolved_by: ME, resolved_at: new Date().toISOString() });
+      if (accept) {
+        const c = db.catches.find((x) => x.id === d.catch_id);
+        if (c) Object.assign(c, { status: 'approved', reject_reason: null });
+      }
+      save();
+    },
+    async moderators() {
+      return Object.values(db.profiles).filter((p) => p.is_admin).map(({ id, nickname, region }) => ({ id, nickname, region }));
+    },
+    async setModerator(nickname, admin) {
+      const p = Object.values(db.profiles).find((x) => x.nickname.toLowerCase() === String(nickname).trim().toLowerCase());
+      if (!p) throw new Error('Tokio slapyvardžio nėra');
+      if (!admin && p.is_admin && Object.values(db.profiles).filter((x) => x.is_admin).length <= 1) {
+        throw new Error('Negalima pašalinti paskutinio moderatoriaus');
+      }
+      p.is_admin = admin;
+      save();
+    },
+
+    async exportData() {
+      return {
+        exported_at: new Date().toISOString(),
+        email: user.email,
+        profile: { ...db.profiles[ME] },
+        catches: db.catches.filter((c) => c.user_id === ME).map((c) => ({ ...c, catch_locations: db.locations[c.id] || null })),
+        entries: db.entries.filter((e) => e.user_id === ME),
+        tournaments_organized: db.tournaments.filter((t) => t.organizer_id === ME),
+        disputes: db.disputes.filter((d) => d.user_id === ME)
+      };
+    },
+    async deleteAccount(onStep = () => {}) {
+      onStep('data');
+      onStep('photos');
+      onStep('account');
+      localStorage.removeItem(KEY);
+      db = seed();
+      save();
     },
 
     async pending() {
@@ -208,6 +336,10 @@ export function createDemoBackend({ photos } = {}) {
       const c = db.catches.find((x) => x.id === id);
       if (!c) throw new Error('Laimikis nerastas');
       if (!approve && !String(reason || '').trim()) throw new Error('Nurodyk atmetimo priežastį');
+      if (c.status === 'pending') {
+        const p = db.profiles[c.user_id];
+        if (p) p.trust_score = Math.max(0, Math.min(100, p.trust_score + (approve ? 1 : -5)));
+      }
       c.status = approve ? 'approved' : 'rejected';
       c.reject_reason = approve ? null : String(reason).trim();
       c.reviewed_at = new Date().toISOString();

@@ -6,3 +6,6 @@
 
 export const SUPABASE_URL = 'https://nhegygtobrgilwthtkel.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_dG1Dt5ZSV-tuY28iywORPw__1ExOGqv';
+
+// Kontaktinis el. paštas privatumo politikoje (tuščias – rodoma „bus paskelbtas netrukus“).
+export const CONTACT_EMAIL = '';

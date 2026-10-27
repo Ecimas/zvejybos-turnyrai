@@ -1,10 +1,24 @@
 // Tikras režimas: Supabase (Postgres + autentifikacija + nuotraukų saugykla).
 // Visas saugumas – serveryje (RLS taisyklės ir funkcijos), ne čia.
 import { SPECIES } from './species.js';
-import { PermanentError } from '../lib/outbox.js';
+import { PermanentError, RetryLaterError } from '../lib/outbox.js';
 
 const BUCKET = 'catch-photos';
+// Versija prisegta: CDN negali netikėtai pakeisti kodo, kuris tvarko prisijungimą.
+export const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
 const PERMANENT_CODES = new Set(['42501', '23514', '23503', '22P02', 'P0001', '42883']);
+
+// Funkcijos dar nėra serveryje (migracija neįdiegta).
+export function isMissingFunction(err) {
+  const code = String(err?.code || '');
+  return code === 'PGRST202' || code === '42883' || /could not find the function/i.test(err?.message || '');
+}
+
+function friendly(err, map, fallback) {
+  const m = String(err?.message || '');
+  for (const [re, text] of map) if (re.test(m)) return new Error(text);
+  return fallback ? new Error(fallback) : err;
+}
 
 function isPermanent(err) {
   if (!err) return false;
@@ -13,7 +27,7 @@ function isPermanent(err) {
 }
 
 export async function createSupabaseBackend(url, anonKey) {
-  const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+  const { createClient } = await import(SUPABASE_JS);
   const sb = createClient(url, anonKey, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' }
   });
@@ -108,12 +122,38 @@ export async function createSupabaseBackend(url, anonKey) {
     },
     async createTournament(data) {
       const { species_ids, ...rest } = data;
-      const t = check(await sb.from('tournaments').insert({ ...rest, organizer_id: uid() }).select('id').single());
+      const ins = await sb.from('tournaments').insert({ ...rest, organizer_id: uid() }).select('id').single();
+      if (ins.error) throw friendly(ins.error, [[/tournament_limit/, 'Per parą galima sukurti ne daugiau kaip 10 turnyrų']]);
+      const t = ins.data;
       if (species_ids.length) {
         check(await sb.from('tournament_species').insert(species_ids.map((species_id) => ({ tournament_id: t.id, species_id }))));
       }
       check(await sb.from('entries').insert({ tournament_id: t.id, user_id: uid() }));
       return t.id;
+    },
+    async updateTournament(id, data) {
+      const { species_ids, ...rest } = data;
+      const rows = check(await sb.from('tournaments').update(rest).eq('id', id).select('id'));
+      if (!rows?.length) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
+      if (species_ids) {
+        check(await sb.from('tournament_species').delete().eq('tournament_id', id));
+        if (species_ids.length) {
+          check(await sb.from('tournament_species').insert(species_ids.map((species_id) => ({ tournament_id: id, species_id }))));
+        }
+      }
+    },
+    async deleteTournament(id) {
+      const rows = check(await sb.from('tournaments').delete().eq('id', id).select('id'));
+      if (!rows?.length) throw new Error('Prasidėjusio turnyro ištrinti negalima');
+    },
+    async getInvite(code) {
+      const rows = check(await sb.rpc('get_invite', { p_code: code }));
+      return rows?.[0] ?? null;
+    },
+    async joinWithInvite(code) {
+      const { data, error } = await sb.rpc('join_with_invite', { p_code: code });
+      if (error) throw friendly(error, [[/invite_invalid/, 'Kvietimas negalioja arba turnyras jau baigėsi']]);
+      return data;
     },
     async join(id) {
       const { error } = await sb.from('entries').insert({ tournament_id: id, user_id: uid() });
@@ -169,10 +209,17 @@ export async function createSupabaseBackend(url, anonKey) {
         length_mm: item.lengthMm,
         captured_at_device: item.capturedAt,
         photo_path: path,
-        photo_sha256: item.sha256
+        photo_sha256: item.sha256,
+        weight_g: item.weightG ?? null,
+        bait: item.bait || null,
+        notes: item.notes || null,
+        weather: item.weather ?? null
       }).select().single();
       if (ins.error) {
         const msg = `${ins.error.message} ${ins.error.details || ''}`;
+        if (/catch_limit/.test(msg)) {
+          throw new RetryLaterError('Paros limitas – 50 laimikių. Išsiųsime automatiškai vėliau', 'catch_limit');
+        }
         if (ins.error.code === '23505' && /photo_sha256/.test(msg)) {
           throw new PermanentError('Ši nuotrauka jau buvo įkelta', 'duplicate_photo');
         }
@@ -200,6 +247,91 @@ export async function createSupabaseBackend(url, anonKey) {
         }
       }
       return row;
+    },
+
+    async updateCatch(id, { bait, notes }) {
+      const rows = check(await sb.from('catches').update({ bait: bait || null, notes: notes || null })
+        .eq('id', id).eq('user_id', uid()).select('id'));
+      if (!rows?.length) throw new Error('Nepavyko išsaugoti');
+    },
+
+    async myDisputes() {
+      if (!user) return [];
+      return check(await sb.from('disputes').select('*').eq('user_id', user.id));
+    },
+    async openDispute(catchId, message) {
+      const { error } = await sb.from('disputes').insert({ catch_id: catchId, message });
+      if (error?.code === '23505') throw new Error('Ginčas dėl šio laimikio jau pateiktas');
+      if (error) throw friendly(error, [], 'Nepavyko pateikti');
+    },
+    async openDisputes() {
+      const rows = check(await sb.from('disputes')
+        .select('*, catches(*), profiles!disputes_user_id_fkey(nickname, trust_score)')
+        .eq('status', 'open')
+        .order('created_at'));
+      return rows.map((d) => ({ ...d, catch: d.catches, nickname: d.profiles?.nickname ?? '', trust_score: d.profiles?.trust_score ?? 50 }));
+    },
+    async resolveDispute(id, accept, note) {
+      check(await sb.rpc('resolve_dispute', { p_id: id, p_accept: accept, p_note: note || null }));
+    },
+    async moderators() {
+      return check(await sb.from('profiles').select('id, nickname, region').eq('is_admin', true).order('nickname'));
+    },
+    async setModerator(nickname, admin) {
+      const { error } = await sb.rpc('set_moderator', { p_nickname: nickname, p_admin: admin });
+      if (error) {
+        throw friendly(error, [
+          [/user not found/, 'Tokio slapyvardžio nėra'],
+          [/last_admin/, 'Negalima pašalinti paskutinio moderatoriaus']
+        ], 'Nepavyko pakeisti');
+      }
+    },
+
+    async exportData() {
+      const me = uid();
+      const [profile, catches, entries, organized, disputes] = await Promise.all([
+        sb.from('profiles').select('*').eq('id', me).single(),
+        sb.from('catches').select('*, catch_locations(*)').eq('user_id', me).order('captured_at_device'),
+        sb.from('entries').select('*').eq('user_id', me),
+        sb.from('tournaments').select('*').eq('organizer_id', me),
+        sb.from('disputes').select('*').eq('user_id', me)
+      ]);
+      return {
+        exported_at: new Date().toISOString(),
+        email: user.email ?? null,
+        profile: check(profile),
+        catches: check(catches),
+        entries: check(entries),
+        tournaments_organized: check(organized),
+        disputes: check(disputes)
+      };
+    },
+    // Paskyros ištrynimas: duomenys -> nuotraukos -> paskyra. Kartoti saugu.
+    async deleteAccount(onStep = () => {}) {
+      const me = uid();
+      onStep('data');
+      const begin = await sb.rpc('begin_account_deletion');
+      if (begin.error) {
+        if (isMissingFunction(begin.error)) {
+          const e = new Error('Paskyros ištrynimas laikinai neprieinamas – parašyk mums, ištrinsime rankiniu būdu');
+          e.code = 'unavailable';
+          throw e;
+        }
+        throw begin.error;
+      }
+      onStep('photos');
+      const bucket = sb.storage.from(BUCKET);
+      for (let guard = 0; guard < 50; guard++) {
+        const { data, error } = await bucket.list(me, { limit: 100 });
+        if (error) throw error;
+        if (!data?.length) break;
+        const rm = await bucket.remove(data.map((f) => `${me}/${f.name}`));
+        if (rm.error) throw rm.error;
+      }
+      onStep('account');
+      check(await sb.rpc('finish_account_deletion'));
+      await sb.auth.signOut().catch(() => {});
+      user = null;
     },
 
     async pending() {

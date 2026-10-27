@@ -1,5 +1,5 @@
 // Supabase kliento imitacija naršyklės testams (tikras režimas be tinklo).
-// Įkeliama vietoj https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm.
+// Įkeliama vietoj https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm.
 // Įgyvendina tik tai, ką naudoja src/backend/supabase.js, ir užrašo visus kvietimus į window.__sbCalls.
 
 const SPECIES = ['lydeka', 'eserys', 'starkis', 'karsis', 'kuoja', 'karpis', 'lynas', 'sapalas', 'salatis', 'strepetys',
@@ -22,16 +22,28 @@ function seed() {
     tournaments: [{
       id: 'tttttttt-0000-4000-8000-000000000001', organizer_id: other, title: 'Testo lydekų taurė',
       description: null, format: 'top_n_sum', top_n: 3, min_length_mm: 400, visibility: 'public', fee_cents: 0,
-      starts_at: iso(-24 * H), ends_at: iso(48 * H), created_at: iso(-48 * H)
+      starts_at: iso(-24 * H), ends_at: iso(48 * H), created_at: iso(-48 * H),
+      prizes: null, sponsor_name: null, sponsor_url: null, leaderboard_hidden: false, invite_code: 'aaaaaaaaaa'
+    }, {
+      id: 'tttttttt-0000-4000-8000-000000000002', organizer_id: other, title: 'Slaptas klubo turnyras',
+      description: null, format: 'biggest', top_n: 3, min_length_mm: 0, visibility: 'private', fee_cents: 0,
+      starts_at: iso(-2 * H), ends_at: iso(72 * H), created_at: iso(-48 * H),
+      prizes: 'Taurė', sponsor_name: null, sponsor_url: null, leaderboard_hidden: true, invite_code: 'b1b2b3b4b5'
     }],
     tournament_species: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', species_id: 1 }],
-    entries: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', user_id: other, joined_at: iso(-20 * H) }],
+    entries: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', user_id: other, joined_at: iso(-20 * H) },
+      { tournament_id: 'tttttttt-0000-4000-8000-000000000002', user_id: other, joined_at: iso(-20 * H) }],
     catches: [{
       id: 'cccccccc-0000-4000-8000-000000000001', user_id: other, client_id: 'cccccccc-0000-4000-8000-000000000001',
       species_id: 1, length_mm: 700, captured_at_device: iso(-10 * H), received_at: iso(-10 * H),
       photo_path: `${other}/x.jpg`, photo_sha256: 'f'.repeat(64), status: 'approved', reject_reason: null, created_at: iso(-10 * H)
+    }, {
+      id: 'cccccccc-0000-4000-8000-000000000002', user_id: other, client_id: 'cccccccc-0000-4000-8000-000000000002',
+      species_id: 3, length_mm: 650, captured_at_device: iso(-1 * H), received_at: iso(-1 * H),
+      photo_path: `${other}/y.jpg`, photo_sha256: 'e'.repeat(64), status: 'approved', reject_reason: null, created_at: iso(-1 * H)
     }],
-    catch_locations: []
+    catch_locations: [],
+    disputes: []
   };
 }
 
@@ -55,6 +67,11 @@ const isAdmin = () => !!db.profiles.find((p) => p.id === uid())?.is_admin;
 
 // Paprastas RLS atitikmuo – kad testai pagautų užklausas, kurios tikroje bazėje grąžintų ne tai.
 function visible(table, row) {
+  if (table === 'tournaments') {
+    return row.visibility === 'public' || row.organizer_id === uid()
+      || db.entries.some((e) => e.tournament_id === row.id && e.user_id === uid());
+  }
+  if (table === 'disputes') return row.user_id === uid() || isAdmin();
   if (table === 'catches') return row.user_id === uid() || row.status === 'approved' || isAdmin();
   if (table === 'catch_locations') return isAdmin() || db.catches.some((c) => c.id === row.catch_id && c.user_id === uid());
   return true;
@@ -71,6 +88,11 @@ function embed(table, row, spec) {
       const p = db.profiles.find((x) => x.id === row.user_id);
       out.profiles = p ? { id: p.id, nickname: p.nickname, region: p.region } : null;
     } else if (table === 'catches' && part.startsWith('profiles!catches_user_id_fkey(')) {
+      const p = db.profiles.find((x) => x.id === row.user_id);
+      out.profiles = p ? { nickname: p.nickname, trust_score: p.trust_score } : null;
+    } else if (table === 'disputes' && part === 'catches(*)') {
+      out.catches = db.catches.find((c) => c.id === row.catch_id) || null;
+    } else if (table === 'disputes' && part.startsWith('profiles!disputes_user_id_fkey(')) {
       const p = db.profiles.find((x) => x.id === row.user_id);
       out.profiles = p ? { nickname: p.nickname, trust_score: p.trust_score } : null;
     } else if (table === 'catches' && part.startsWith('catch_locations(')) {
@@ -101,6 +123,21 @@ function splitSelect(sel) {
   }
   if (cur.trim()) parts.push(cur.trim());
   return { cols: parts.filter((p) => !p.includes('(')), embeds: parts.filter((p) => p.includes('(')) };
+}
+
+const beforeStart = (t) => t && Date.now() < new Date(t.starts_at).getTime();
+function canEditTournament(id) {
+  const t = db.tournaments.find((x) => x.id === id);
+  return !!t && t.organizer_id === uid() && (beforeStart(t) || Date.now() - new Date(t.created_at) < 10 * 60e3);
+}
+// RLS atitikmuo rašymui: eilutės, kurių taisyklė neleidžia, tiesiog nepaliečiamos (kaip PostgREST).
+function writable(table, row) {
+  if (table === 'tournaments') return row.organizer_id === uid() && beforeStart(row);
+  if (table === 'tournament_species') return canEditTournament(row.tournament_id);
+  if (table === 'entries') return row.user_id === uid() && beforeStart(db.tournaments.find((x) => x.id === row.tournament_id));
+  if (table === 'catches') return row.user_id === uid();
+  if (table === 'profiles') return row.id === uid();
+  return false;
 }
 
 class Query {
@@ -148,6 +185,9 @@ class Query {
             return { data: null, error: err('23505', 'duplicate key value violates unique constraint "catches_photo_sha256_uniq"', { details: 'Key (photo_sha256)=(...) already exists.' }) };
           }
           if (row.photo_path.split('/')[0] !== uid()) return { data: null, error: err('P0001', 'photo_path must be inside the uploader\'s own folder') };
+          if (db.catches.filter((c) => c.user_id === uid() && Date.now() - new Date(c.received_at) < 24 * H).length >= 50) {
+            return { data: null, error: err('P0001', 'catch_limit', { hint: 'Ne daugiau kaip 50 laimikių per parą' }) };
+          }
           Object.assign(row, { id: uuid(), user_id: uid(), status: 'pending', reject_reason: null, received_at: new Date().toISOString(), created_at: new Date().toISOString() });
         }
         if (this.table === 'catch_locations') {
@@ -159,10 +199,30 @@ class Query {
           if (db.entries.some((e) => e.tournament_id === row.tournament_id && e.user_id === row.user_id)) {
             return { data: null, error: err('23505', 'duplicate key entries_pkey') };
           }
+          const tt = db.tournaments.find((x) => x.id === row.tournament_id);
+          if (!tt || Date.now() >= new Date(tt.ends_at) || (tt.visibility !== 'public' && tt.organizer_id !== uid())) {
+            return { data: null, error: err('42501', 'new row violates row-level security policy for table "entries"') };
+          }
           row.joined_at = new Date().toISOString();
         }
         if (this.table === 'tournaments') {
-          Object.assign(row, { id: uuid(), visibility: 'public', fee_cents: 0, created_at: new Date().toISOString() });
+          if (db.tournaments.filter((x) => x.organizer_id === uid() && Date.now() - new Date(x.created_at) < 24 * H).length >= 10) {
+            return { data: null, error: err('P0001', 'tournament_limit') };
+          }
+          if (row.sponsor_url && !/^https:\/\/[^\s<>"']{3,200}$/.test(row.sponsor_url)) return { data: null, error: err('23514', 'check constraint sponsor_url') };
+          Object.assign(row, { id: uuid(), visibility: row.visibility || 'public', leaderboard_hidden: !!row.leaderboard_hidden,
+            fee_cents: 0, created_at: new Date().toISOString(), invite_code: uuid().replace(/-/g, '').slice(0, 10) });
+        }
+        if (this.table === 'tournament_species' && !canEditTournament(row.tournament_id)) {
+          return { data: null, error: err('42501', 'new row violates row-level security policy for table "tournament_species"') };
+        }
+        if (this.table === 'disputes') {
+          const c = db.catches.find((x) => x.id === row.catch_id);
+          if (!c || c.user_id !== uid() || c.status !== 'rejected') return { data: null, error: err('42501', 'rls disputes') };
+          if (db.disputes.some((d) => d.catch_id === row.catch_id)) return { data: null, error: err('23505', 'duplicate key disputes_catch_id_key') };
+          const msg = String(row.message || '').trim();
+          if (msg.length < 3 || msg.length > 500) return { data: null, error: err('23514', 'check constraint disputes_message') };
+          Object.assign(row, { id: uuid(), user_id: uid(), message: msg, status: 'open', resolution: null, resolved_by: null, resolved_at: null, created_at: new Date().toISOString() });
         }
         t.push(row);
         inserted.push(row);
@@ -177,12 +237,23 @@ class Query {
           return { data: null, error: err('23505', 'duplicate nickname') };
         }
       }
-      data = t.filter((r) => this.matches(r));
+      if (this.table === 'catches') {
+        if (Object.keys(this.patch).some((k) => !['bait', 'notes'].includes(k))) return { data: null, error: err('42501', 'permission denied for table catches') };
+        if ((this.patch.bait || '').length > 80 || (this.patch.notes || '').length > 500) return { data: null, error: err('23514', 'check constraint') };
+      }
+      if (this.table === 'disputes') return { data: null, error: err('42501', 'permission denied for table disputes') };
+      data = t.filter((r) => this.matches(r) && writable(this.table, r));
       data.forEach((r) => Object.assign(r, this.patch));
       save();
     } else if (this.op === 'delete') {
-      data = t.filter((r) => this.matches(r));
-      db[this.table] = t.filter((r) => !this.matches(r));
+      if (this.table === 'catches' || this.table === 'disputes') return { data: null, error: err('42501', `permission denied for table ${this.table}`) };
+      data = t.filter((r) => this.matches(r) && writable(this.table, r));
+      db[this.table] = t.filter((r) => !data.includes(r));
+      if (this.table === 'tournaments') {
+        const gone = new Set(data.map((r) => r.id));
+        db.tournament_species = db.tournament_species.filter((x) => !gone.has(x.tournament_id));
+        db.entries = db.entries.filter((x) => !gone.has(x.tournament_id));
+      }
       save();
     } else {
       data = t.filter((r) => this.matches(r) && visible(this.table, r));
@@ -256,6 +327,68 @@ export function createClient(url, key) {
         save();
         return { data: null, error: null };
       }
+      if (name === 'get_invite') {
+        const t = db.tournaments.find((x) => x.invite_code === String(args.p_code).trim().toLowerCase() && Date.now() < new Date(x.ends_at));
+        if (!t) return { data: [], error: null };
+        const { id, title, format, top_n, min_length_mm, starts_at, ends_at } = t;
+        return { data: [{ id, title, format, top_n, min_length_mm, starts_at, ends_at, participants: db.entries.filter((e) => e.tournament_id === id).length }], error: null };
+      }
+      if (name === 'join_with_invite') {
+        if (!uid()) return { data: null, error: err('P0001', 'not allowed') };
+        const t = db.tournaments.find((x) => x.invite_code === String(args.p_code).trim().toLowerCase() && Date.now() < new Date(x.ends_at));
+        if (!t) return { data: null, error: err('P0001', 'invite_invalid') };
+        if (!db.entries.some((e) => e.tournament_id === t.id && e.user_id === uid())) {
+          db.entries.push({ tournament_id: t.id, user_id: uid(), joined_at: new Date().toISOString() });
+          save();
+        }
+        return { data: t.id, error: null };
+      }
+      if (name === 'resolve_dispute') {
+        if (!isAdmin()) return { data: null, error: err('P0001', 'not allowed') };
+        const d = db.disputes.find((x) => x.id === args.p_id && x.status === 'open');
+        if (!d) return { data: null, error: err('P0001', 'dispute not found') };
+        Object.assign(d, { status: args.p_accept ? 'accepted' : 'rejected', resolution: String(args.p_note || '').trim() || null, resolved_by: uid(), resolved_at: new Date().toISOString() });
+        if (args.p_accept) {
+          const c = db.catches.find((x) => x.id === d.catch_id);
+          Object.assign(c, { status: 'approved', reject_reason: null });
+          const owner = db.profiles.find((x) => x.id === d.user_id);
+          owner.trust_score = Math.min(100, owner.trust_score + 5);
+        }
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'set_moderator') {
+        if (!isAdmin()) return { data: null, error: err('P0001', 'not allowed') };
+        const p = db.profiles.find((x) => x.nickname.toLowerCase() === String(args.p_nickname).trim().toLowerCase());
+        if (!p) return { data: null, error: err('P0001', 'user not found') };
+        if (!args.p_admin && p.is_admin && db.profiles.filter((x) => x.is_admin).length <= 1) return { data: null, error: err('P0001', 'last_admin') };
+        p.is_admin = !!args.p_admin;
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'begin_account_deletion' || name === 'finish_account_deletion') {
+        if (failNext.noDeletion) return { data: null, error: err('PGRST202', `Could not find the function public.${name} without parameters in the schema cache`) };
+        if (!uid()) return { data: null, error: err('P0001', 'not allowed') };
+        const me = uid();
+        const prof = db.profiles.find((x) => x.id === me);
+        if (name === 'begin_account_deletion') {
+          const mine = new Set(db.tournaments.filter((t) => t.organizer_id === me).map((t) => t.id));
+          db.tournaments = db.tournaments.filter((t) => !mine.has(t.id));
+          db.tournament_species = db.tournament_species.filter((x) => !mine.has(x.tournament_id));
+          const myCatches = new Set(db.catches.filter((c) => c.user_id === me).map((c) => c.id));
+          db.catches = db.catches.filter((c) => !myCatches.has(c.id));
+          db.catch_locations = db.catch_locations.filter((l) => !myCatches.has(l.catch_id));
+          db.disputes = db.disputes.filter((d) => !myCatches.has(d.catch_id));
+          db.entries = db.entries.filter((e) => e.user_id !== me && !mine.has(e.tournament_id));
+          prof.deleting_at = new Date().toISOString();
+        } else {
+          if (!prof?.deleting_at || db.catches.some((c) => c.user_id === me)) return { data: null, error: err('P0001', 'not allowed') };
+          if ([...blobs.keys()].some((k) => k.startsWith(me + '/'))) return { data: null, error: err('P0001', 'fake: nuotraukos neištrintos') };
+          db.profiles = db.profiles.filter((x) => x.id !== me);
+        }
+        save();
+        return { data: null, error: null };
+      }
       if (name === 'leaderboard') {
         const { computeLeaderboard } = await import(window.__appBase + 'src/lib/scoring.js');
         const t = db.tournaments.find((x) => x.id === args.p_tournament_id);
@@ -268,7 +401,8 @@ export function createClient(url, key) {
           catches: db.catches,
           profiles
         });
-        return { data: rows, error: null };
+        const hidden = t.leaderboard_hidden && Date.now() < new Date(t.ends_at) && t.organizer_id !== uid() && !isAdmin();
+        return { data: hidden ? rows.filter((r) => r.user_id === uid()).map((r) => ({ ...r, rank: null })) : rows, error: null };
       }
       return { data: null, error: err('42883', `function ${name} does not exist`) };
     },
@@ -282,6 +416,18 @@ export function createClient(url, key) {
             if (blobs.has(path) && !opts?.upsert) return { data: null, error: { statusCode: '409', message: 'The resource already exists' } };
             blobs.set(path, blob);
             return { data: { path }, error: null };
+          },
+          async list(prefix, opts = {}) {
+            log('list', { bucket, prefix });
+            const names = [...blobs.keys()].filter((k) => k.startsWith(prefix + '/')).map((k) => k.slice(prefix.length + 1));
+            return { data: names.slice(0, opts.limit || 100).map((name) => ({ name })), error: null };
+          },
+          async remove(paths) {
+            log('remove', { bucket, paths });
+            const prof = db.profiles.find((x) => x.id === uid());
+            if (!prof?.deleting_at) return { data: [], error: null }; // RLS: be leidimo niekas neištrinama
+            paths.filter((x) => x.split('/')[0] === uid()).forEach((x) => blobs.delete(x));
+            return { data: paths.map((name) => ({ name })), error: null };
           },
           async createSignedUrl(path) {
             const b = blobs.get(path);

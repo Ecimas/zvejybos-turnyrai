@@ -4,18 +4,23 @@ import { html } from './lib/html.js';
 import { icon } from './icons.js';
 import { count } from './lib/format.js';
 import { tournamentsView, standingsView } from './views/tournaments.js';
-import { tournamentView, boardView } from './views/tournament.js';
+import { tournamentView, boardView, tvView } from './views/tournament.js';
 import { captureView } from './views/capture.js';
 import { diaryView } from './views/diary.js';
 import { profileView, anglerView } from './views/profile.js';
 import { createView } from './views/create.js';
-import { moderationView } from './views/moderation.js';
+import { moderationView, disputesView, teamView } from './views/moderation.js';
 import { loginView } from './views/login.js';
+import { inviteView, takeInvite } from './views/invite.js';
+import { privacyView, rulesView } from './views/pages.js';
 
 const ROUTES = [
   [/^\/$/, tournamentsView],
   [/^\/t\/([\w-]+)$/, tournamentView],
   [/^\/t\/([\w-]+)\/lentele$/, boardView],
+  [/^\/t\/([\w-]+)\/tv$/, tvView],
+  [/^\/t\/([\w-]+)\/redaguoti$/, createView],
+  [/^\/kvietimas\/(\w+)$/, inviteView],
   [/^\/laimikis$/, captureView],
   [/^\/dienorastis$/, diaryView],
   [/^\/lenteles$/, standingsView],
@@ -23,6 +28,10 @@ const ROUTES = [
   [/^\/zvejys\/([\w-]+)$/, anglerView],
   [/^\/naujas$/, createView],
   [/^\/moderavimas$/, moderationView],
+  [/^\/moderavimas\/gincai$/, disputesView],
+  [/^\/moderavimas\/komanda$/, teamView],
+  [/^\/privatumas$/, privacyView],
+  [/^\/taisykles$/, rulesView],
   [/^\/prisijungti$/, loginView]
 ];
 
@@ -53,7 +62,8 @@ async function main() {
   await backend.init();
   if (/[?&]code=/.test(location.search)) history.replaceState(null, '', location.pathname + location.hash);
   if (authHash) {
-    const target = authError ? '#/prisijungti' : (backend.getUser() ? '#/profilis' : '#/prisijungti');
+    const invite = !authError && backend.getUser() ? takeInvite() : null;
+    const target = authError ? '#/prisijungti' : (backend.getUser() ? (invite ? `#/kvietimas/${invite}` : '#/profilis') : '#/prisijungti');
     history.replaceState(null, '', location.pathname + target);
   }
 
@@ -64,7 +74,8 @@ async function main() {
     toast,
     refreshStatus,
     applyTheme,
-    rerender: () => render(true)
+    rerender: () => render(true),
+    afterLogin: () => { const code = takeInvite(); return code ? `#/kvietimas/${code}` : '#/profilis'; }
   };
 
   let store;
@@ -75,7 +86,8 @@ async function main() {
     const r = await ctx.outbox.flush((item) => backend.submitCatch(item));
     if (r.sent) toast(r.sent === 1 ? 'Laimikis išsiųstas' : `Išsiųsta: ${r.sent}`);
     if (r.failed) toast('Ne visus laimikius pavyko išsiųsti – žiūrėk dienoraštyje');
-    if ((r.sent || r.failed) && typeof ctx.onSynced === 'function') ctx.onSynced();
+    if (r.held && !r.sent && !r.failed) toast(r.held);
+    if ((r.sent || r.failed || r.held) && typeof ctx.onSynced === 'function') ctx.onSynced();
   };
 
   async function loadUser() {

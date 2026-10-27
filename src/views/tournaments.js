@@ -24,7 +24,7 @@ export function card(t, species) {
   return html`<a class="card card-link t-card" href="#/t/${t.id}">
     <div class="row-between">
       ${phaseBadge(t)}
-      <span class="muted small strong">Nemokamas</span>
+      <span class="muted small strong">${t.visibility === 'private' ? html`${icon('lock', 13, 2.6)} Privatus · ` : ''}Nemokamas</span>
     </div>
     <div class="stack-2">
       <span class="t-title">${t.title}</span>
@@ -34,6 +34,7 @@ export function card(t, species) {
       <span>${icon('clock', 16)}${timeLabel(t)}</span>
       <span>${icon('users', 16)}${t.participants}</span>
       ${t.min_length_mm ? html`<span>nuo ${cm(t.min_length_mm)}</span>` : ''}
+      ${t.prizes ? html`<span>${icon('trophy', 16)}Prizai</span>` : ''}
     </div>
     ${t.joined ? html`<span class="accent strong">${phase(t) === 'soon' ? 'Užsiregistravai' : 'Dalyvauji'}</span>` : ''}
   </a>`;
@@ -56,7 +57,7 @@ async function heroFor(ctx, list) {
     </div>
     <div class="grid-3">
       <div class="stat-box"><span class="stat-label">Tavo vieta</span>
-        <span class="stat-value accent">${mine ? `#${mine.rank}` : '–'}</span>
+        <span class="stat-value accent">${mine && mine.rank !== null ? `#${mine.rank}` : '–'}</span>
         <span class="stat-label">iš ${live.participants}</span></div>
       <div class="stat-box"><span class="stat-label">Rezultatas</span>
         <span class="stat-value">${mine ? cm(mine.score_mm) : '–'}</span>
@@ -141,10 +142,10 @@ export async function standingsView(ctx) {
       <header class="page-head"><h1 class="display-lg" tabindex="-1">Lentelės</h1></header>
       ${rows.length ? html`<div class="stack">${rows.map(({ t, mine, total }) => html`
         <a class="card card-link row" href="#/t/${t.id}/lentele">
-          <span class="rank-big ${mine ? 'accent' : 'muted'}">${mine ? `#${mine.rank}` : '–'}</span>
+          <span class="rank-big ${mine ? 'accent' : 'muted'}">${mine && mine.rank !== null ? `#${mine.rank}` : '–'}</span>
           <span class="grow stack-1">
             <span class="strong">${t.title}</span>
-            <span class="small muted">${mine ? `${cm(mine.score_mm)} · iš ${total} lentelėje` : 'Dar neturi įskaitytų laimikių'}</span>
+            <span class="small muted">${mine ? `${cm(mine.score_mm)} · ${mine.rank === null ? 'lentelė paslėpta iki pabaigos' : `iš ${total} lentelėje`}` : 'Dar neturi įskaitytų laimikių'}</span>
             <span class="small">${phaseBadge(t)}</span>
           </span>
           ${icon('chevron', 20)}

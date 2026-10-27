@@ -21,6 +21,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SHOTS = os.environ.get("E2E_SHOTS")
 os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers")
 VERCEL = json.loads((ROOT / "vercel.json").read_text())
+METEO = re.compile(r"https://api\.open-meteo\.com/.*")
+METEO_BODY = json.dumps({"current": {"temperature_2m": 6.44, "wind_speed_10m": 3.06, "surface_pressure": 1012.6, "weather_code": 3}})
+
+
+def fake_meteo(route):
+    route.fulfill(status=200, content_type="application/json", headers={"Access-Control-Allow-Origin": "*"}, body=METEO_BODY)
 
 
 class Quiet(http.server.SimpleHTTPRequestHandler):
@@ -68,6 +74,172 @@ def step(name):
     print(f"  ✓ {name}")
 
 
+def extra_demo_tests(page, base, meteo_calls):
+    """Ginčai, moderatoriai, privatūs turnyrai, redagavimas, prizai, ekranas, ženkliukai, eksportas, ištrynimas."""
+    accept_dialogs = lambda d: d.accept()
+    page.on("dialog", accept_dialogs)
+
+    # Ginčas dėl atmesto laimikio
+    page.goto(base + "#/dienorastis")
+    rejected = page.locator(".card", has_text="Netikslus ilgis")
+    rejected.get_by_role("button", name="Nesutinku su sprendimu").click()
+    rejected.get_by_label("Kodėl laimikis turėtų būti įskaitytas?").fill("Liniuotė matosi <script>window.__xss=1</script>")
+    rejected.get_by_role("button", name="Pateikti moderatoriui").click()
+    expect(page.locator("#toast")).to_have_text("Ginčas pateiktas moderatoriui")
+    expect(page.locator(".card", has_text="Netikslus ilgis")).to_contain_text("Ginčas peržiūrimas")
+    expect(page.locator(".card", has_text="Netikslus ilgis").get_by_role("button", name="Nesutinku su sprendimu")).to_have_count(0)
+    page.goto(base + "#/profilis")
+    page.get_by_role("link", name=re.compile("Ginčai")).click()
+    expect(page.locator(".quote")).to_have_text("Liniuotė matosi <script>window.__xss=1</script>")
+    shot(page, "12-gincai")
+    page.get_by_label("Atsakymas dalyviui").fill("Atsiprašome, ilgis teisingas")
+    page.get_by_role("button", name="Įskaityti").click()
+    expect(page.locator("#toast")).to_have_text("Laimikis įskaitytas")
+    expect(page.get_by_text("Ginčų nėra")).to_be_visible()
+    page.goto(base + "#/dienorastis")
+    card = page.locator(".card", has_text="Ginčas patenkintas")
+    expect(card).to_contain_text("Patvirtinta")
+    expect(card).to_contain_text("Atsiprašome, ilgis teisingas")
+    step("ginčas: dalyvis pateikia, moderatorius įskaito")
+
+    # Moderatorių komanda
+    page.goto(base + "#/moderavimas/komanda")
+    page.get_by_label("Pridėti moderatorių pagal slapyvardį").fill("nėra_tokio")
+    page.get_by_role("button", name="Paskirti moderatoriumi").click()
+    expect(page.locator("#toast")).to_have_text("Tokio slapyvardžio nėra")
+    page.get_by_label("Pridėti moderatorių pagal slapyvardį").fill("lydekininkas")
+    page.get_by_role("button", name="Paskirti moderatoriumi").click()
+    expect(page.locator("#toast")).to_have_text("Moderatorius paskirtas")
+    row = page.locator(".list-row", has_text="Lydekininkas")
+    expect(row).to_be_visible()
+    row.get_by_role("button", name="Pašalinti").click()
+    expect(page.locator("#toast")).to_have_text("Moderatorius pašalintas")
+    expect(page.locator(".list-row", has_text="Lydekininkas")).to_have_count(0)
+    page.locator(".list-row", has_text="(tu)").get_by_role("button", name="Pašalinti").click()
+    expect(page.locator("#toast")).to_have_text("Negalima pašalinti paskutinio moderatoriaus")
+    step("moderatorių skyrimas ir paskutinio apsauga")
+
+    # Privatus turnyras su paslėpta lentele, prizais ir rėmėju
+    page.goto(base + "#/naujas")
+    page.get_by_label("Pavadinimas").fill("Klubo taurė")
+    page.get_by_role("button", name="Tik su kvietimu").click()
+    page.get_by_text("Slėpti lentelę iki pabaigos").click()
+    page.get_by_label("Prizai (nebūtina)").fill("1 vieta – <img src=x onerror=window.__xss=1>\n2 vieta – ritė")
+    page.get_by_label("Rėmėjas (nebūtina)").fill("Ežero parduotuvė")
+    page.get_by_label("Rėmėjo svetainė").fill("javascript:alert(1)")
+    page.get_by_role("button", name="Sukurti turnyrą").click()
+    expect(page.locator("[data-error]")).to_have_text("Rėmėjo svetainė turi prasidėti https://")
+    page.get_by_label("Rėmėjo svetainė").fill("https://example.com/zvejyba")
+    page.get_by_role("button", name="Sukurti turnyrą").click()
+    expect(page.get_by_role("heading", name="Klubo taurė")).to_be_visible()
+    expect(page.locator(".badge", has_text="Privatus")).to_be_visible()
+    expect(page.locator(".prewrap")).to_contain_text("<img src=x onerror=window.__xss=1>")
+    sponsor = page.get_by_role("link", name="Ežero parduotuvė")
+    expect(sponsor).to_have_attribute("href", "https://example.com/zvejyba")
+    expect(sponsor).to_have_attribute("rel", "noopener noreferrer sponsored")
+    expect(page.locator("dl")).to_contain_text("Paslėpta iki pabaigos")
+    expect(page.get_by_role("button", name="Kviesti draugus")).to_be_visible()
+    shot(page, "13-privatus")
+    tid = page.evaluate("() => location.hash.split('/')[2]")
+    code = page.evaluate("(id) => JSON.parse(localStorage.getItem('zt-demo-v1')).tournaments.find(t => t.id === id).invite_code", tid)
+    assert re.fullmatch(r"[0-9a-f]{10}", code), code
+    step("privatus turnyras su prizais, rėmėju ir paslėpta lentele")
+
+    # Redagavimas ir ištrynimas iki starto
+    page.get_by_role("link", name="Redaguoti").click()
+    expect(page.get_by_label("Pavadinimas")).to_have_value("Klubo taurė")
+    expect(page.get_by_role("button", name="Tik su kvietimu")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("[name=leaderboard_hidden]")).to_be_checked()
+    page.get_by_label("Pavadinimas").fill("Klubo taurė 2026")
+    page.get_by_role("button", name="Visi").click()
+    page.get_by_role("button", name="Išsaugoti pakeitimus").click()
+    expect(page.locator("#toast")).to_have_text("Pakeitimai išsaugoti")
+    expect(page.get_by_role("heading", name="Klubo taurė 2026")).to_be_visible()
+    expect(page.locator(".badge", has_text="Privatus")).to_have_count(0)
+    page.get_by_role("link", name="Redaguoti").click()
+    page.get_by_role("button", name="Ištrinti turnyrą").click()
+    expect(page.locator("#toast")).to_have_text("Turnyras ištrintas")
+    assert page.evaluate("(id) => JSON.parse(localStorage.getItem('zt-demo-v1')).tournaments.some(t => t.id === id)", tid) is False
+    page.goto(base + "#/t/t-taure/redaguoti")
+    expect(page.get_by_text("Redaguoti negalima")).to_be_visible()
+    step("turnyro redagavimas ir ištrynimas iki starto, prasidėjusio – ne")
+
+    # Kvietimai
+    scode = page.evaluate("() => JSON.parse(localStorage.getItem('zt-demo-v1')).tournaments.find(t => t.id === 't-slaptas').invite_code")
+    page.goto(base + f"#/kvietimas/{scode}")
+    expect(page.get_by_role("heading", name="Draugų iššūkis")).to_be_visible()  # jau dalyvauji -> iškart turnyras
+    page.goto(base + "#/kvietimas/0000000000")
+    expect(page.get_by_text("Kvietimas negalioja")).to_be_visible()
+    page.goto(base + "#/kvietimas/%3Cscript%3E")  # ne kodas -> maršrutas nepriima, grįžtama į pradžią
+    expect(page.get_by_role("heading", name="Turnyrai", level=1)).to_be_visible()
+    page.goto(base + "#/kvietimas/zzzzzz")  # ne šešioliktainis -> serveris net neklausiamas
+    expect(page.get_by_text("Kvietimas negalioja")).to_be_visible()
+    step("kvietimo nuoroda: galiojanti ir negaliojanti")
+
+    # Baigęsis turnyras: nugalėtojai, ekrano režimas
+    page.goto(base + "#/t/t-plesrunai")
+    expect(page.locator(".winners li")).to_have_count(3)
+    expect(page.locator(".winners")).to_contain_text("🥇")
+    page.goto(base + "#/t/t-taure")
+    expect(page.locator(".winners")).to_have_count(0)
+    page.get_by_role("link", name="Rodyti dideliame ekrane").click()
+    expect(page.locator(".tv-row")).to_have_count(10)
+    expect(page.locator(".tv-row.r1")).to_contain_text("Ąžuolas_K")
+    expect(page.locator("#nav")).to_be_hidden()
+    shot(page, "14-ekranas")
+    page.set_viewport_size({"width": 1280, "height": 720})
+    shot(page, "14b-ekranas-platus")
+    page.set_viewport_size({"width": 390, "height": 844})
+    step("nugalėtojai ir didelio ekrano režimas")
+
+    # Ženkliukai, puslapiai, eksportas
+    page.goto(base + "#/profilis")
+    expect(page.locator(".badge-tile")).to_have_count(10)
+    assert page.locator(".badge-tile.earned").count() >= 2
+    page.get_by_role("link", name="Turnyrų taisyklės").click()
+    expect(page.get_by_role("heading", name="Turnyrų taisyklės")).to_be_visible()
+    page.get_by_role("button", name="Atgal").click()
+    page.get_by_role("link", name="Privatumo politika").click()
+    expect(page.get_by_role("heading", name="Privatumo politika")).to_be_visible()
+    expect(page.locator(".prose")).to_contain_text("90 dienų")
+    page.goto(base + "#/profilis")
+    with page.expect_download() as dl:
+        page.get_by_role("button", name="Atsisiųsti mano duomenis").click()
+    data = json.loads(pathlib.Path(dl.value.path()).read_text())
+    assert dl.value.suggested_filename.startswith("zvejybos-turnyrai-") and dl.value.suggested_filename.endswith(".json")
+    assert data["profile"]["nickname"] == "Testas_1", data["profile"]
+    assert any(c.get("bait") == "Guminukas" for c in data["catches"])
+    assert any(c.get("catch_locations") for c in data["catches"]), "eksporte turi būti vietos"
+    assert len(data["disputes"]) == 1
+    step("ženkliukai, taisyklės, privatumo politika, duomenų eksportas")
+
+    # Oras išjungiamas
+    page.get_by_text("Oras prie laimikio").click()
+    assert page.evaluate("() => localStorage.getItem('zt-weather')") == "off"
+    n = len(meteo_calls)
+    page.goto(base + "#/laimikis")
+    page.get_by_role("button", name="Fotografuoti").click()
+    expect(page.locator("[data-step=details]")).to_be_visible()
+    page.wait_for_timeout(500)
+    assert len(meteo_calls) == n, "oras išjungtas, bet užklausa siųsta"
+    page.get_by_role("button", name="Uždaryti").click()
+    step("oro užklausų išjungimas")
+
+    # Paskyros ištrynimas
+    page.goto(base + "#/profilis")
+    page.get_by_role("button", name="Ištrinti paskyrą").first.click()
+    page.get_by_label("Patvirtinimui įrašyk IŠTRINTI").fill("taip")
+    page.locator("[data-delete-confirm]").click()
+    expect(page.locator("[data-delete-status]")).to_have_text("Įrašyk žodį IŠTRINTI.")
+    page.get_by_label("Patvirtinimui įrašyk IŠTRINTI").fill("ištrinti")
+    page.locator("[data-delete-confirm]").click()
+    expect(page.locator("#toast")).to_have_text("Demo paskyra ištrinta ir sukurta iš naujo")
+    expect(page.get_by_role("heading", name="Turnyrai", level=1)).to_be_visible()
+    assert page.evaluate("() => window.__xss") is None, "XSS: kodas įvykdytas!"
+    page.remove_listener("dialog", accept_dialogs)
+    step("paskyros ištrynimas su patvirtinimu; XSS niekur neįvykdytas")
+
+
 def main():
     httpd, base = serve()
     errors = []
@@ -93,6 +265,8 @@ def main():
                 and not re.search(r"fonts\.(googleapis|gstatic)", (m.location or {}).get("url", ""))
                 and errors.append(f"console: {m.text} @ {(m.location or {}).get('url', '')}"))
         page.route(re.compile(r"https://fonts\.(googleapis|gstatic)\.com/.*"), lambda r: r.abort())
+        meteo_calls = []
+        page.route(METEO, lambda r: (meteo_calls.append(r.request.url), fake_meteo(r)))
         expect.set_options(timeout=8000)
 
         # 1. Turnyrų sąrašas
@@ -146,12 +320,29 @@ def main():
         page.get_by_role("button", name="Lydeka").click()
         expect(fit).to_contain_text("Bus įskaityta")
         expect(page.locator("[data-loc]")).to_have_text("±8 m")
+        expect(page.locator("[data-weather]")).to_have_text("Oras: 6,4 °C, debesuota, vėjas 3,1 m/s, 1013 hPa")
+        assert "latitude=54.900&longitude=23.900" in meteo_calls[0], meteo_calls
+        page.get_by_text("Daugiau: svoris, masalas, pastabos").click()
+        page.get_by_label("Svoris, kg (nebūtina)").fill("2,4")
+        page.get_by_label("Masalas (matysi tik tu)").fill("Vobleris 9 cm")
+        page.get_by_label("Pastabos (matysi tik tu)").fill('<b onmouseover="window.__xss=1">nendrės</b>')
         shot(page, "04-laimikis")
-        step("rūšis ir taisyklių patikra prieš išsaugant")
+        step("rūšis, taisyklių patikra, oras ir papildoma informacija")
 
         page.get_by_role("button", name="Išsaugoti").click()
         expect(page.get_by_role("heading", name="Dienoraštis")).to_be_visible()
-        expect(page.locator(".card", has_text="81 cm").first).to_contain_text("Tikrinama")
+        card81 = page.locator(".card", has_text="81 cm").first
+        expect(card81).to_contain_text("Tikrinama")
+        expect(card81).to_contain_text("2,4 kg")
+        expect(card81).to_contain_text("Masalas: Vobleris 9 cm")
+        expect(card81).to_contain_text('<b onmouseover="window.__xss=1">nendrės</b>')
+        expect(card81).to_contain_text("6,4 °C")
+        card81.get_by_role("button", name="Redaguoti masalą ir pastabas").click()
+        card81.get_by_label("Masalas").fill("Guminukas")
+        card81.get_by_role("button", name="Išsaugoti").click()
+        expect(page.locator("#toast")).to_have_text("Išsaugota")
+        expect(page.locator(".card", has_text="81 cm").first).to_contain_text("Masalas: Guminukas")
+        step("dienoraštis: svoris, oras, masalo redagavimas")
         shot(page, "05-dienorastis")
         step("išsaugota ir išsiųsta")
 
@@ -274,6 +465,8 @@ def main():
         shot(p2, "11-kameros-klaida")
         plain.close()
         step("kameros klaidos paaiškinimas")
+
+        extra_demo_tests(page, base, meteo_calls)
 
         ctx.close()
 

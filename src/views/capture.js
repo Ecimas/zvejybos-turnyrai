@@ -7,6 +7,11 @@ import { fitReason, REASON_LT } from '../lib/scoring.js';
 import { startCamera, stopCamera, captureFrame, sha256Hex, watchLocation, uuid, vibrate } from '../lib/device.js';
 import { mountRuler } from '../lib/ruler.js';
 import { loginPrompt } from '../ui.js';
+import { fetchWeather, weatherLine } from '../lib/weather.js';
+
+export function weatherEnabled() {
+  try { return localStorage.getItem('zt-weather') !== 'off'; } catch { return true; }
+}
 
 const COMMON = ['lydeka', 'eserys', 'starkis', 'karsis', 'kuoja', 'karpis'];
 const MIN_CM = 10;
@@ -100,6 +105,19 @@ export async function captureView(ctx) {
             <div class="info"><span class="small muted">Laikas</span><span class="strong" data-time>–</span></div>
             <div class="info"><span class="small muted">Vieta</span><span class="strong" data-loc>–</span></div>
           </div>
+          <p class="small muted" data-weather hidden></p>
+
+          <details class="more" data-more>
+            <summary class="strong">Daugiau: svoris, masalas, pastabos</summary>
+            <div class="stack">
+              <label class="field"><span class="small muted strong">Svoris, kg (nebūtina)</span>
+                <input name="weight" inputmode="decimal" maxlength="7" autocomplete="off" placeholder="pvz. 2,4" data-weight></label>
+              <label class="field"><span class="small muted strong">Masalas (matysi tik tu)</span>
+                <input name="bait" maxlength="80" placeholder="pvz. vobleris 9 cm" data-bait></label>
+              <label class="field"><span class="small muted strong">Pastabos (matysi tik tu)</span>
+                <textarea name="notes" rows="2" maxlength="500" data-notes></textarea></label>
+            </div>
+          </details>
         </div>
         <div class="cta-bar row gap-10">
           <button class="btn btn-outline btn-lg" data-save-more>Dar vienas</button>
@@ -120,6 +138,21 @@ export async function captureView(ctx) {
       let len = Math.min(MAX_CM, Math.max(MIN_CM, last.lengthCm || 50));
       let speciesId = last.speciesId || commonIds[0] || null;
       let saving = false;
+      let weather = null;
+      let weatherAsked = false;
+      const bait = q('[data-bait]');
+      bait.value = last.bait || '';
+
+      async function askWeather() {
+        if (weatherAsked || !fix || !capturedAt || !weatherEnabled()) return;
+        weatherAsked = true;
+        const w = await fetchWeather(fix.lat, fix.lng);
+        if (!w || !root.isConnected) return;
+        weather = w;
+        const el = q('[data-weather]');
+        el.hidden = false;
+        el.textContent = `Oras: ${weatherLine(w)}`;
+      }
 
       const ruler = mountRuler(q('[data-ruler]'), {
         value: len, min: MIN_CM, max: MAX_CM,
@@ -173,6 +206,7 @@ export async function captureView(ctx) {
           gpsChip.innerHTML = String(html`${icon('alert', 14, 2.4)}Be GPS`);
         }
         showLoc();
+        askWeather();
       });
       function showLoc() {
         const el = q('[data-loc]');
@@ -220,6 +254,7 @@ export async function captureView(ctx) {
           show('details');
           showLen();
           showSpecies();
+          askWeather();
         } catch {
           ctx.toast('Nepavyko nufotografuoti');
           btn.disabled = false;
@@ -236,14 +271,21 @@ export async function captureView(ctx) {
       async function save(more) {
         if (saving) return;
         if (!speciesId) { ctx.toast('Pasirink rūšį'); return; }
+        const wRaw = q('[data-weight]').value.replace(',', '.').trim();
+        const weightKg = wRaw ? Number(wRaw) : null;
+        if (weightKg !== null && !(weightKg > 0 && weightKg <= 200)) { ctx.toast('Svoris turi būti 0–200 kg'); return; }
         saving = true;
         try {
           const sha256 = await sha256Hex(photo);
           await ctx.outbox.add({
             clientId, speciesId, lengthMm: len * 10, capturedAt, sha256, photo,
-            location: fix ? { ...fix } : null
+            location: fix ? { ...fix } : null,
+            weightG: weightKg ? Math.round(weightKg * 1000) : null,
+            bait: bait.value.trim() || null,
+            notes: q('[data-notes]').value.trim() || null,
+            weather
           });
-          try { localStorage.setItem('zt-last', JSON.stringify({ speciesId, lengthCm: len })); } catch { /* nėra vietos */ }
+          try { localStorage.setItem('zt-last', JSON.stringify({ speciesId, lengthCm: len, bait: bait.value.trim() })); } catch { /* nėra vietos */ }
           vibrate([20, 40, 20]);
           ctx.toast(`Išsaugota: ${cm(len * 10)}`);
           ctx.flush();
@@ -251,6 +293,11 @@ export async function captureView(ctx) {
             clientId = uuid();
             photo = null;
             capturedAt = null;
+            weather = null;
+            weatherAsked = false;
+            q('[data-weather]').hidden = true;
+            q('[data-weight]').value = '';
+            q('[data-notes]').value = '';
             saving = false;
             await backToCamera();
           } else {

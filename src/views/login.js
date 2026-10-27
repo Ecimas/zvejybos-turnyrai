@@ -53,7 +53,7 @@ export async function loginView(ctx) {
           </div>
         </form>
 
-        <p class="small muted">Prisijungdamas sutinki, kad laimikių nuotraukos ir vieta būtų naudojamos turnyrų patikrai. Tiksli vieta niekam nerodoma ir ištrinama praėjus 90 dienų po turnyro.</p>
+        <p class="small muted">Prisijungdamas sutinki su <a class="link" href="#/taisykles">turnyrų taisyklėmis</a> ir kad laimikių nuotraukos ir vieta būtų naudojamos turnyrų patikrai. Tiksli vieta niekam nerodoma ir ištrinama praėjus 90 dienų po turnyro. Plačiau – <a class="link" href="#/privatumas">privatumo politikoje</a>.</p>
       </div>
     </div>`,
     mount(root) {
@@ -125,7 +125,7 @@ export async function loginView(ctx) {
         try {
           await backend.verifyCode(email, code);
           ctx.toast('Prisijungei');
-          ctx.navigate('#/profilis');
+          ctx.navigate(ctx.afterLogin());
         } catch (err) {
           btn.disabled = false;
           ctx.toast(errorText(err, 'Nepavyko prisijungti'));
