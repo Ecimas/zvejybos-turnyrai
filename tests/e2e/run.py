@@ -214,6 +214,7 @@ def extra_demo_tests(page, base, meteo_calls):
     page.get_by_label("Pavadinimas", exact=True).fill("Klubo taurė")
     page.get_by_role("button", name="Tik su kvietimu").click()
     page.get_by_text("Slėpti lentelę iki pabaigos").click()
+    page.get_by_label("Registracija po starto").select_option(label="3 val. po starto")
     page.get_by_label("Daiktiniai prizai (nebūtina)").fill("1 vieta – <img src=x onerror=window.__xss=1>\n2 vieta – ritė")
 
     # Prizinis fondas: suma, padalijimas, savas padalijimas su klaida
@@ -268,6 +269,7 @@ def extra_demo_tests(page, base, meteo_calls):
     expect(sponsor).to_have_attribute("rel", "noopener noreferrer sponsored")
     expect(page.locator(".sponsor-list .list-row").nth(1)).to_contain_text('<b onmouseover="window.__xss=1">Klubas</b>')
     expect(page.locator("dl", has_text="Lentelė")).to_contain_text("Paslėpta iki pabaigos")
+    expect(page.locator(".list-row", has_text="Registracija")).to_contain_text("Iki ")
     expect(page.get_by_role("button", name="Kviesti draugus")).to_be_visible()
     shot(page, "13-privatus")
     tid = page.evaluate("() => location.hash.split('/')[2]")
@@ -280,6 +282,8 @@ def extra_demo_tests(page, base, meteo_calls):
     expect(page.get_by_label("Pavadinimas", exact=True)).to_have_value("Klubo taurė")
     expect(page.get_by_role("button", name="Tik su kvietimu")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("[name=leaderboard_hidden]")).to_be_checked()
+    expect(page.get_by_label("Registracija po starto")).to_have_value("180")
+    page.get_by_label("Registracija po starto").select_option(label="Tik iki starto")
     expect(page.get_by_label("Fondo suma, €")).to_have_value("1000")
     expect(page.get_by_label("Rėmėjo 2 įnašas, €")).to_have_value("400")
     page.get_by_role("button", name="Pašalinti rėmėją 2").click()
@@ -296,6 +300,9 @@ def extra_demo_tests(page, base, meteo_calls):
     expect(page.locator("[data-fund]")).to_have_text("600 €")
     expect(page.locator(".prize-card .list-row")).to_have_count(1)
     expect(page.locator(".sponsor-list .list-row")).to_have_count(1)
+    expect(page.locator(".list-row", has_text="Registracija")).to_contain_text("Tik iki starto")
+    stored = page.evaluate("() => JSON.parse(localStorage.getItem('zt-demo-v1')).tournaments.find(t => t.title === 'Klubo taurė 2026').late_join_minutes")
+    assert stored == 0, stored
     page.get_by_role("link", name="Redaguoti").click()
     page.get_by_role("button", name="Ištrinti turnyrą").click()
     expect(page.locator("#toast")).to_have_text("Turnyras ištrintas")

@@ -13,6 +13,9 @@ const H = 3600e3;
 const calls = (window.__sbCalls = window.__sbCalls || []);
 const log = (kind, detail) => calls.push({ kind, ...detail });
 const iso = (off) => new Date(Date.now() + off).toISOString();
+// 0011: registracija atvira iki pabaigos arba late_join_minutes po starto.
+const regOpen = (t) => Date.now() < new Date(t.ends_at)
+  && (t.late_join_minutes == null || Date.now() < new Date(t.starts_at).getTime() + t.late_join_minutes * 60e3);
 
 function seed() {
   const other = '00000000-0000-4000-8000-0000000000aa';
@@ -29,6 +32,11 @@ function seed() {
       description: null, format: 'biggest', top_n: 3, min_length_mm: 0, visibility: 'private', fee_cents: 0,
       starts_at: iso(-2 * H), ends_at: iso(72 * H), created_at: iso(-48 * H),
       prizes: 'Taurė', sponsor_name: null, sponsor_url: null, leaderboard_hidden: true, invite_code: 'b1b2b3b4b5'
+    }, {
+      id: 'tttttttt-0000-4000-8000-000000000003', organizer_id: other, title: 'Uždaros registracijos turnyras',
+      description: null, format: 'biggest', top_n: 3, min_length_mm: 0, visibility: 'public', fee_cents: 0,
+      starts_at: iso(-3 * H), ends_at: iso(48 * H), created_at: iso(-48 * H), late_join_minutes: 60,
+      prizes: null, sponsor_name: null, sponsor_url: null, leaderboard_hidden: false, invite_code: 'c1c2c3c4c5'
     }],
     tournament_species: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', species_id: 1 }],
     entries: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', user_id: other, joined_at: iso(-20 * H) },
@@ -236,7 +244,7 @@ class Query {
             return { data: null, error: err('23505', 'duplicate key entries_pkey') };
           }
           const tt = db.tournaments.find((x) => x.id === row.tournament_id);
-          if (!tt || Date.now() >= new Date(tt.ends_at) || (tt.visibility !== 'public' && tt.organizer_id !== uid())) {
+          if (!tt || Date.now() >= new Date(tt.ends_at) || (tt.organizer_id !== uid() && (tt.visibility !== 'public' || !regOpen(tt)))) {
             return { data: null, error: err('42501', 'new row violates row-level security policy for table "entries"') };
           }
           row.joined_at = new Date().toISOString();
@@ -414,7 +422,7 @@ export function createClient(url, key) {
         return { data: db.catches.filter((c) => c.user_id === uid() && (c.bait || c.notes)).map((c) => ({ id: c.id, bait: c.bait ?? null, notes: c.notes ?? null })), error: null };
       }
       if (name === 'get_invite') {
-        const t = db.tournaments.find((x) => x.invite_code === String(args.p_code).trim().toLowerCase() && Date.now() < new Date(x.ends_at));
+        const t = db.tournaments.find((x) => x.invite_code === String(args.p_code).trim().toLowerCase() && regOpen(x));
         if (!t) return { data: [], error: null };
         const { id, title, format, top_n, min_length_mm, starts_at, ends_at } = t;
         return { data: [{ id, title, format, top_n, min_length_mm, starts_at, ends_at, participants: db.entries.filter((e) => e.tournament_id === id).length }], error: null };
@@ -423,7 +431,9 @@ export function createClient(url, key) {
         if (!uid()) return { data: null, error: err('P0001', 'not allowed') };
         const t = db.tournaments.find((x) => x.invite_code === String(args.p_code).trim().toLowerCase() && Date.now() < new Date(x.ends_at));
         if (!t) return { data: null, error: err('P0001', 'invite_invalid') };
-        if (!db.entries.some((e) => e.tournament_id === t.id && e.user_id === uid())) {
+        const already = db.entries.some((e) => e.tournament_id === t.id && e.user_id === uid());
+        if (!already && !regOpen(t)) return { data: null, error: err('P0001', 'registration_closed') };
+        if (!already) {
           db.entries.push({ tournament_id: t.id, user_id: uid(), joined_at: new Date().toISOString() });
           save();
         }

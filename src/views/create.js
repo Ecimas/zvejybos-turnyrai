@@ -1,6 +1,6 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { phase } from '../lib/format.js';
+import { phase, LATE_JOIN } from '../lib/format.js';
 import { backButton, loginPrompt, empty } from '../ui.js';
 import { PRESETS, eur, parseEur, validateSplit, placeAmounts, sponsorTotal } from '../lib/prizes.js';
 
@@ -85,6 +85,10 @@ export async function createView(ctx, [editId] = []) {
           </div>
           <span class="small muted" data-vis-hint>${visibility === 'private' ? 'Turnyras nerodomas sąraše. Po sukūrimo gausi kvietimo nuorodą.' : 'Turnyras matomas visiems sąraše.'}</span>
         </fieldset>
+
+        <label class="field"><span class="small muted strong">Registracija po starto</span>
+          <select name="late_join">${LATE_JOIN.map(([v, label]) => html`<option value="${v === null ? '' : v}" ${(t?.late_join_minutes ?? null) === v ? 'selected' : ''}>${label}</option>`)}</select>
+          <span class="small muted">Kiek laiko po starto dar galima prisijungti prie turnyro.</span></label>
 
         <label class="check-row"><input type="checkbox" name="leaderboard_hidden" ${t?.leaderboard_hidden ? 'checked' : ''}>
           <span class="stack-1"><span class="strong">Slėpti lentelę iki pabaigos</span><span class="small muted">Dalyviai mato tik savo rezultatą – intriga iki paskutinės minutės.</span></span></label>
@@ -317,6 +321,7 @@ export async function createView(ctx, [editId] = []) {
           ends_at: endsAt.toISOString(),
           visibility,
           leaderboard_hidden: form.leaderboard_hidden.checked,
+          late_join_minutes: form.late_join.value === '' ? null : Number(form.late_join.value),
           prizes: form.prizes.value.trim() || null,
           prize_fund_cents: fund,
           prize_split: fund > 0 ? split.slice() : null,

@@ -195,7 +195,7 @@ export async function createSupabaseBackend(url, anonKey) {
     },
     async joinWithInvite(code) {
       const { data, error } = await sb.rpc('join_with_invite', { p_code: code });
-      if (error) throw friendly(error, [[/invite_invalid/, 'Kvietimas negalioja arba turnyras jau baigėsi']]);
+      if (error) throw friendly(error, [[/invite_invalid/, 'Kvietimas negalioja arba turnyras jau baigėsi'], [/registration_closed/, 'Registracija į šį turnyrą jau baigėsi']]);
       return data;
     },
     async join(id) {

@@ -286,6 +286,23 @@ def more_real_tests(page, base):
     expect(page.get_by_text("Kvietimas negalioja")).to_be_visible()
     step("privatus turnyras: nematomas, kvietimas išlieka per prisijungimą, lentelė paslėpta")
 
+    # Vėlyva registracija: turnyras prasidėjo prieš 3 val., registruotis leista tik 1 val. po starto
+    T3 = "tttttttt-0000-4000-8000-000000000003"
+    go(page, base + f"#/t/{T3}")
+    expect(page.get_by_role("heading", name="Uždaros registracijos turnyras")).to_be_visible()
+    expect(page.locator(".reg-closed")).to_have_text("Registracija baigėsi")
+    expect(page.get_by_role("button", name="Dalyvauti")).to_have_count(0)
+    expect(page.locator(".list-row", has_text="Registracija")).to_contain_text("Iki ")
+    res = page.evaluate("(id) => window.__zt.backend.join(id).then(() => 'ok', e => e.code)", T3)
+    assert res == "42501", f"registracijai pasibaigus prisijungti neturėtų pavykti: {res}"
+    go(page, base + "#/kvietimas/c1c2c3c4c5")
+    expect(page.get_by_text("Kvietimas negalioja")).to_be_visible()
+    res = page.evaluate("() => window.__zt.backend.joinWithInvite('c1c2c3c4c5').then(() => 'ok', e => e.message)")
+    assert res == "Registracija į šį turnyrą jau baigėsi", res
+    go(page, base + f"#/t/{T2}")
+    expect(page.locator(".list-row", has_text="Registracija")).to_contain_text("Iki pabaigos")
+    step("vėlyva registracija: pasibaigus – mygtuko nėra, serveris ir kvietimas atmeta")
+
     # Duomenų eksportas
     go(page, base + "#/profilis")
     with page.expect_download() as dl:

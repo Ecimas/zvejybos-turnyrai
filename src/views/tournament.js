@@ -1,6 +1,6 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { phase, timeLabel, describeFormat, cm, dateTime, duration, count, gapText } from '../lib/format.js';
+import { phase, timeLabel, describeFormat, cm, dateTime, duration, count, gapText, registrationOpen, registrationLabel } from '../lib/format.js';
 import { fitReason, REASON_LT } from '../lib/scoring.js';
 import { phaseBadge, statusChip, backButton, thumb, hydratePhotos, empty, avatar, loginPrompt, notFound } from '../ui.js';
 import { eur, placeAmounts, payouts } from '../lib/prizes.js';
@@ -142,13 +142,16 @@ export async function tournamentView(ctx, [id]) {
     ['Įskaitoma', t.min_length_mm ? `nuo ${cm(t.min_length_mm)}` : 'bet koks ilgis'],
     ['Pradžia', dateTime(t.starts_at)],
     ['Pabaiga', dateTime(t.ends_at)],
+    ['Registracija', registrationLabel(t)],
     ['Įrodymas', 'Nuotrauka programėlės kamera'],
     ['Lentelė', t.leaderboard_hidden ? 'Paslėpta iki pabaigos' : 'Gyva'],
     ['Dalyvauti', t.visibility === 'private' ? 'Tik su kvietimu' : 'Visi']
   ];
 
   let cta = '';
-  if (!me && p !== 'done') cta = html`<a class="btn btn-primary btn-lg" href="#/prisijungti">${icon('mail', 22)}Prisijungti ir dalyvauti</a>`;
+  const regOpen = registrationOpen(t);
+  if (!t.joined && p !== 'done' && !regOpen && !organizer) cta = html`<p class="reg-closed strong" role="status">${icon('lock', 18, 2.6)}Registracija baigėsi</p>`;
+  else if (!me && p !== 'done') cta = html`<a class="btn btn-primary btn-lg" href="#/prisijungti">${icon('mail', 22)}Prisijungti ir dalyvauti</a>`;
   else if (me && !t.joined && p !== 'done') cta = html`<button class="btn btn-primary btn-lg" data-join>${icon('plus', 22, 2.6)}Dalyvauti</button>`;
   // Dalyvaujant laimikis registruojamas apatinio meniu „+“ mygtuku – atskiro mygtuko nebereikia.
 
@@ -258,7 +261,7 @@ export async function tournamentView(ctx, [id]) {
           ctx.rerender();
         } catch (err) {
           e.currentTarget.disabled = false;
-          ctx.toast('Nepavyko užsiregistruoti');
+          ctx.toast(registrationOpen(t) ? 'Nepavyko užsiregistruoti' : 'Registracija jau baigėsi');
         }
       });
       root.querySelector('[data-leave]')?.addEventListener('click', async () => {

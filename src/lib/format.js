@@ -49,6 +49,34 @@ export function phase(t, now = Date.now()) {
   return 'done';
 }
 
+// Vėlyva registracija: late_join_minutes null – iki pabaigos, 0 – tik iki starto, N – N min. po starto.
+export const LATE_JOIN = [
+  [null, 'Iki pabaigos'],
+  [0, 'Tik iki starto'],
+  [60, '1 val. po starto'],
+  [180, '3 val. po starto'],
+  [360, '6 val. po starto'],
+  [1440, '1 parą po starto']
+];
+
+export function registrationClosesAt(t) {
+  const end = new Date(t.ends_at).getTime();
+  const m = t.late_join_minutes;
+  if (m === null || m === undefined) return end;
+  return Math.min(end, new Date(t.starts_at).getTime() + m * 60e3);
+}
+
+export function registrationOpen(t, now = Date.now()) {
+  return now < registrationClosesAt(t);
+}
+
+export function registrationLabel(t) {
+  const m = t.late_join_minutes;
+  if (m === null || m === undefined) return 'Iki pabaigos';
+  if (m === 0) return 'Tik iki starto';
+  return `Iki ${dateTime(new Date(registrationClosesAt(t)))}`;
+}
+
 export function timeLabel(t, now = Date.now()) {
   const p = phase(t, now);
   if (p === 'soon') return `Startas po ${duration(new Date(t.starts_at) - now)}`;

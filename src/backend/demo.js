@@ -3,7 +3,7 @@
 import { SPECIES, speciesId } from './species.js';
 import { computeLeaderboard } from '../lib/scoring.js';
 import { PermanentError, RetryLaterError, idbStore, memoryStore } from '../lib/outbox.js';
-import { phase } from '../lib/format.js';
+import { phase, registrationOpen } from '../lib/format.js';
 
 const KEY = 'zt-demo-v1';
 const ME = '00000000-0000-4000-8000-000000000001';
@@ -40,7 +40,7 @@ function seed() {
       prizes: 'Rėmėjų dovanos: spiningas, ritė, masalų rinkinys', prize_fund_cents: 50000, prize_split: [50, 30, 20] }),
     T('t-sezonas', { title: 'Sezono iššūkis', format: 'biggest', starts_at: iso(-60 * D), ends_at: iso(39 * D),
       description: 'Didžiausia bet kurios rūšies žuvis per sezoną.' }),
-    T('t-eseriai', { title: 'Ešerių savaitgalis', format: 'biggest', min_length_mm: 200,
+    T('t-eseriai', { title: 'Ešerių savaitgalis', format: 'biggest', min_length_mm: 200, late_join_minutes: 0,
       starts_at: iso(30 * H), ends_at: iso(30 * H + 2 * D) }),
     T('t-plesrunai', { title: 'Rugsėjo plėšrūnai', format: 'top_n_sum', top_n: 3, min_length_mm: 400,
       starts_at: iso(-40 * D), ends_at: iso(-22 * D), prize_fund_cents: 10000, prize_split: [60, 40] }),
@@ -199,7 +199,7 @@ export function createDemoBackend({ photos } = {}) {
       save();
     },
     async getInvite(code) {
-      const t = db.tournaments.find((x) => x.invite_code === String(code).trim().toLowerCase() && Date.now() < new Date(x.ends_at));
+      const t = db.tournaments.find((x) => x.invite_code === String(code).trim().toLowerCase() && registrationOpen(x));
       if (!t) return null;
       const { id, title, format, top_n, min_length_mm, starts_at, ends_at } = t;
       return { id, title, format, top_n, min_length_mm, starts_at, ends_at, participants: db.entries.filter((e) => e.tournament_id === id).length };
@@ -214,6 +214,8 @@ export function createDemoBackend({ photos } = {}) {
       return t.id;
     },
     async join(id) {
+      const t = db.tournaments.find((x) => x.id === id);
+      if (!t || (t.organizer_id !== ME && !registrationOpen(t))) throw new Error('Registracija jau baigėsi');
       if (!db.entries.some((e) => e.tournament_id === id && e.user_id === ME)) {
         db.entries.push({ tournament_id: id, user_id: ME, joined_at: new Date().toISOString() });
         save();

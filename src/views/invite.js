@@ -27,7 +27,7 @@ export async function inviteView(ctx, [code]) {
   if (!t) {
     return { nav: 'turnyrai', title: 'Kvietimas', html: html`<div class="screen">${backButton('#/')}
       <h1 class="sr-only" tabindex="-1">Kvietimas</h1>
-      ${empty('Kvietimas negalioja', 'Nuoroda neteisinga arba turnyras jau baigėsi. Paprašyk organizatoriaus naujos nuorodos.')}</div>` };
+      ${empty('Kvietimas negalioja', 'Nuoroda neteisinga, registracija jau baigėsi arba turnyras pasibaigė. Jei jau dalyvauji – turnyrą rasi sąraše „Mano“.')}</div>` };
   }
   if (state.user) {
     const mine = await backend.tournament(t.id).catch(() => null);

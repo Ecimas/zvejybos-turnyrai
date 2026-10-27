@@ -63,3 +63,21 @@ test('atotrūkis iki aukštesnės vietos, įskaitant lygų rezultatą', async ()
   assert.equal(gapText({ rank: 2, score_mm: 810 }, { score_mm: 740 }), 'Iki #2 trūksta 7 cm');
   assert.equal(gapText({ rank: 5, score_mm: 620 }, { score_mm: 620 }), 'Tiek pat kaip #5 – jis pagavo anksčiau, reikia bent 1 mm daugiau');
 });
+
+test('vėlyva registracija: iki pabaigos, tik iki starto, N min. po starto', async () => {
+  const { registrationOpen, registrationClosesAt, registrationLabel } = await import('../../src/lib/format.js');
+  const H = 3600e3;
+  const now = Date.parse('2026-10-27T12:00:00Z');
+  const t = (startOff, endOff, late) => ({ starts_at: new Date(now + startOff).toISOString(), ends_at: new Date(now + endOff).toISOString(), late_join_minutes: late });
+  assert.equal(registrationOpen(t(-2 * H, 5 * H, null), now), true, 'null – iki pabaigos');
+  assert.equal(registrationOpen(t(-2 * H, 5 * H, undefined), now), true, 'senas turnyras be lauko');
+  assert.equal(registrationOpen(t(-2 * H, -1, null), now), false, 'pasibaigęs');
+  assert.equal(registrationOpen(t(1 * H, 5 * H, 0), now), true, 'prieš startą su 0');
+  assert.equal(registrationOpen(t(-1, 5 * H, 0), now), false, 'po starto su 0');
+  assert.equal(registrationOpen(t(-2 * H, 5 * H, 180), now), true, '3 val. riba');
+  assert.equal(registrationOpen(t(-3 * H, 5 * H, 180), now), false, 'lygiai riboje – jau uždaryta');
+  assert.equal(registrationClosesAt(t(-1 * H, 1 * H, 1440)), now + 1 * H, 'riba ne vėliau nei pabaiga');
+  assert.equal(registrationLabel(t(0, H, null)), 'Iki pabaigos');
+  assert.equal(registrationLabel(t(0, H, 0)), 'Tik iki starto');
+  assert.match(registrationLabel(t(0, 5 * H, 60)), /^Iki /);
+});
