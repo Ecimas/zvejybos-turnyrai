@@ -2,6 +2,7 @@
 // Visas saugumas – serveryje (RLS taisyklės ir funkcijos), ne čia.
 import { SPECIES } from './species.js';
 import { PermanentError, RetryLaterError } from '../lib/outbox.js';
+import { banActive } from '../lib/bans.js';
 
 const BUCKET = 'catch-photos';
 // Versija prisegta: CDN negali netikėtai pakeisti kodo, kuris tvarko prisijungimą.
@@ -351,6 +352,43 @@ export async function createSupabaseBackend(url, anonKey) {
       }
     },
 
+    // Blokavimai (0013). Jei lentelės serveryje dar nėra – blokavimų tiesiog nėra.
+    async myBan() {
+      if (!user) return null;
+      const { data, error } = await sb.from('user_bans').select('until, reason, created_at').eq('user_id', user.id).maybeSingle();
+      return !error && banActive(data) ? data : null;
+    },
+    async userBan(userId) {
+      const { data, error } = await sb.from('user_bans').select('until, reason, created_at').eq('user_id', userId).maybeSingle();
+      return !error && banActive(data) ? data : null;
+    },
+    async bans() {
+      const rows = check(await sb.from('user_bans')
+        .select('user_id, until, reason, created_at, profiles!user_bans_user_id_fkey(nickname)')
+        .order('created_at', { ascending: false }));
+      return rows.filter((b) => banActive(b)).map((b) => ({ ...b, nickname: b.profiles?.nickname ?? '' }));
+    },
+    async banUser(userId, days, reason) {
+      const { error } = await sb.rpc('ban_user', { p_user: userId, p_days: days, p_reason: reason });
+      if (error) {
+        throw friendly(error, [
+          [/ban_admin/, 'Moderatoriaus blokuoti negalima – pirma pašalink jį iš moderatorių'],
+          [/ban_self/, 'Savęs blokuoti negalima'],
+          [/ban_reason/, 'Įrašyk priežastį (bent 3 simboliai)'],
+          [/ban_days/, 'Netinkama trukmė'],
+          [/user not found/, 'Žvejys nerastas']
+        ], 'Nepavyko užblokuoti');
+      }
+    },
+    async unbanUser(userId) {
+      check(await sb.rpc('unban_user', { p_user: userId }));
+    },
+    async resetNickname(userId) {
+      const { data, error } = await sb.rpc('reset_nickname', { p_user: userId });
+      if (error) throw friendly(error, [[/duplicate|unique/, 'Automatinis slapyvardis užimtas']], 'Nepavyko pakeisti slapyvardžio');
+      return data;
+    },
+
     async exportData() {
       const me = uid();
       const [profile, catches, entries, organized, disputes, notes, trips, reports] = await Promise.all([
@@ -469,7 +507,7 @@ export async function createSupabaseBackend(url, anonKey) {
     },
 
     async profile(userId) {
-      return check(await sb.from('profiles').select('id, nickname, region, created_at').eq('id', userId).maybeSingle());
+      return check(await sb.from('profiles').select('id, nickname, region, is_admin, created_at').eq('id', userId).maybeSingle());
     },
     async userTournamentCount(userId) {
       const { count, error } = await sb.from('entries').select('tournament_id', { count: 'exact', head: true }).eq('user_id', userId);

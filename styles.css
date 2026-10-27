@@ -605,3 +605,8 @@ body:not(.no-nav) .screen.has-cta { padding-bottom: 130px; }
 .or-line { display: flex; align-items: center; gap: 10px; margin: 0; }
 .or-line::before, .or-line::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .nick-card { border: 1.5px solid var(--accent); }
+.ban-card { border: 1.5px solid var(--bad); background: var(--bad-bg); }
+.ban-card .strong { color: var(--bad); }
+.mod-card { border: 1.5px dashed var(--line-2); }
+.ban-row { gap: 12px; }
+.link-plain { color: inherit; text-decoration: none; }

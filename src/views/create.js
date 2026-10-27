@@ -1,7 +1,7 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { phase, LATE_JOIN } from '../lib/format.js';
-import { backButton, loginPrompt, empty } from '../ui.js';
+import { backButton, loginPrompt, empty, banNotice } from '../ui.js';
 import { PRESETS, eur, parseEur, validateSplit, placeAmounts, sponsorTotal } from '../lib/prizes.js';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -14,6 +14,9 @@ export async function createView(ctx, [editId] = []) {
   const heading = editId ? 'Turnyro redagavimas' : 'Naujas turnyras';
   if (!state.user) {
     return { nav: 'turnyrai', html: html`<div class="screen">${backButton('#/')}<h1 class="display-lg" tabindex="-1">${heading}</h1>${loginPrompt('Prisijunk, kad galėtum kurti turnyrus.')}</div>` };
+  }
+  if (state.ban) {
+    return { nav: 'turnyrai', html: html`<div class="screen">${backButton('#/')}<h1 class="display-lg" tabindex="-1">${heading}</h1>${banNotice(state.ban)}</div>` };
   }
   let t = null;
   if (editId) {

@@ -153,6 +153,70 @@ def more_real_tests(page, base):
     expect(page.locator("#toast")).to_have_text("Negalima pašalinti paskutinio moderatoriaus")
     step("moderatorių skyrimas per serverio funkciją")
 
+    # Blokavimas: moderatorius blokuoja kitą žvejį jo profilyje
+    other = fake(page, "return db.profiles.find(p => p.nickname === 'Kitas_Zvejys').id;")
+    assert any(r["user_id"] == other for r in page.evaluate("(id) => window.__zt.backend.leaderboard(id)", T1))
+    go(page, base + f"#/zvejys/{other}")
+    expect(page.get_by_role("heading", name="Moderatoriui")).to_be_visible()
+    page.get_by_label("Priežastis (matys pats žvejys)").fill(" x ")
+    page.get_by_role("button", name="Užblokuoti").click()
+    expect(page.locator("#toast")).to_have_text("Įrašyk priežastį (bent 3 simboliai)")
+    page.get_by_label("Trukmė").select_option(label="30 dienų")
+    page.get_by_label("Priežastis (matys pats žvejys)").fill("Sukčiavimas su laimikiais")
+    page.get_by_role("button", name="Užblokuoti").click()
+    expect(page.locator("#toast")).to_have_text("Kitas_Zvejys užblokuotas")
+    expect(page.locator("[data-ban-status]")).to_contain_text("Užblokuotas iki")
+    expect(page.locator("[data-ban-status]")).to_contain_text("Sukčiavimas su laimikiais")
+    ban = fake(page, "return db.user_bans.find(b => b.user_id === arg);", other)
+    assert ban["banned_by"] == me and ban["until"], ban
+    lb = page.evaluate("(id) => window.__zt.backend.leaderboard(id)", T1)
+    assert all(r["user_id"] != other for r in lb), f"užblokuotas vis dar lentelėje: {lb}"
+    go(page, base + "#/moderavimas/blokuoti")
+    expect(page.locator(".ban-row")).to_have_count(1)
+    expect(page.locator(".ban-row")).to_contain_text("Kitas_Zvejys")
+    # Netinkamas slapyvardis – į automatinį
+    go(page, base + f"#/zvejys/{other}")
+    page.get_by_role("button", name="Pakeisti slapyvardį į automatinį").click()
+    expect(page.locator("#toast")).to_have_text(re.compile("^Slapyvardis pakeistas į zvejys_"))
+    expect(page.get_by_role("heading", level=1)).to_have_text(re.compile("^zvejys_"))
+    fake(page, "db.profiles.find(p => p.id === arg).nickname = 'Kitas_Zvejys'; window.__fakeDb.save(); return 1;", other)
+    # Atblokavimas iš sąrašo
+    go(page, base + "#/moderavimas/blokuoti")
+    page.locator(".ban-row").get_by_role("button", name="Atblokuoti").click()
+    expect(page.locator("#toast")).to_have_text("Kitas_Zvejys atblokuotas")
+    expect(page.get_by_text("Užblokuotų žvejų nėra")).to_be_visible()
+    assert any(r["user_id"] == other for r in page.evaluate("(id) => window.__zt.backend.leaderboard(id)", T1))
+    # Savo profilyje moderatoriaus kortelės nėra; moderatoriaus blokuoti negalima
+    go(page, base + f"#/zvejys/{me}")
+    expect(page.locator(".mod-card")).to_have_count(0)
+    res = page.evaluate("(id) => window.__zt.backend.banUser(id, 1, 'Pats save').then(() => 'ok', e => e.message)", me)
+    assert res == "Savęs blokuoti negalima", res
+    step("blokavimas: moderatorius blokuoja, keičia slapyvardį, atblokuoja; lentelė be užblokuoto")
+
+    # Užblokuoto žvejo patirtis
+    fake(page, "db.user_bans.push({ user_id: arg, reason: 'Testinis blokavimas', until: null, created_at: new Date().toISOString() }); window.__fakeDb.save(); return 1;", me)
+    page.evaluate("async () => { window.__zt.state.ban = await window.__zt.backend.myBan(); }")
+    go(page, base + "#/laimikis")
+    expect(page.locator("[data-ban-notice]")).to_contain_text("Paskyra užblokuota visam laikui")
+    expect(page.locator("[data-ban-notice]")).to_contain_text("Testinis blokavimas")
+    go(page, base + "#/")
+    expect(page.locator("[data-ban-notice]")).to_be_visible()
+    go(page, base + "#/naujas")
+    expect(page.locator("[data-ban-notice]")).to_be_visible()
+    go(page, base + "#/profilis")
+    expect(page.locator("[data-ban-notice]")).to_be_visible()
+    expect(page.get_by_role("button", name="Redaguoti profilį")).to_have_count(0)
+    go(page, base + "#/l/cccccccc-0000-4000-8000-000000000001")
+    expect(page.get_by_role("heading", level=1)).to_be_visible()
+    expect(page.get_by_role("button", name="Pranešti apie įtartiną laimikį")).to_have_count(0)
+    res = page.evaluate("() => window.__zt.backend.reportCatch('cccccccc-0000-4000-8000-000000000001', 'other', '').then(() => 'ok', e => e.message)")
+    assert res == "Nepavyko pranešti", f"užblokuotas galėjo pranešti: {res}"
+    fake(page, "db.user_bans = []; window.__fakeDb.save(); return 1;")
+    page.evaluate("async () => { window.__zt.state.ban = await window.__zt.backend.myBan(); }")
+    go(page, base + "#/")
+    expect(page.locator("[data-ban-notice]")).to_have_count(0)
+    step("užblokuotas žvejys: pranešimas visur, laimikio ir turnyro kūrimo nėra, serveris atmeta")
+
     # „Nieko nekibo“ – privatus įrašas serveryje
     go(page, base + "#/dienorastis")
     page.get_by_role("button", name="Nieko nekibo").click()

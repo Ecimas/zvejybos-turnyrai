@@ -127,7 +127,7 @@ export async function diaryView(ctx) {
             <button class="btn btn-primary" type="submit">Išsaugoti</button>
           </form>
           ${d ? html`<span class="small ${d.status === 'accepted' ? 'ok' : d.status === 'rejected' ? 'bad' : 'muted'}">${DISPUTE_LT[d.status]}${d.resolution ? `: ${d.resolution}` : ''}</span>`
-            : c.status === 'rejected' ? html`<button class="btn btn-ghost" data-dispute="${c.id}">Nesutinku su sprendimu</button>
+            : c.status === 'rejected' && !state.ban ? html`<button class="btn btn-ghost" data-dispute="${c.id}">Nesutinku su sprendimu</button>
               <form class="stack-2" data-dispute-form="${c.id}" hidden>
                 <label class="field"><span class="small muted strong">Kodėl laimikis turėtų būti įskaitytas?</span>
                   <textarea name="message" rows="3" minlength="3" maxlength="500" required placeholder="pvz. liniuotė matosi antroje nuotraukos pusėje"></textarea></label>

@@ -150,7 +150,8 @@ export async function tournamentView(ctx, [id]) {
 
   let cta = '';
   const regOpen = registrationOpen(t);
-  if (!t.joined && p !== 'done' && !regOpen && !organizer) cta = html`<p class="reg-closed strong" role="status">${icon('lock', 18, 2.6)}Registracija baigėsi</p>`;
+  if (me && state.ban && !t.joined && p !== 'done') cta = html`<p class="reg-closed strong" role="status">${icon('lock', 18, 2.6)}Paskyra užblokuota</p>`;
+  else if (!t.joined && p !== 'done' && !regOpen && !organizer) cta = html`<p class="reg-closed strong" role="status">${icon('lock', 18, 2.6)}Registracija baigėsi</p>`;
   else if (!me && p !== 'done') cta = html`<a class="btn btn-primary btn-lg" href="#/prisijungti">${icon('mail', 22)}Prisijungti ir dalyvauti</a>`;
   else if (me && !t.joined && p !== 'done') cta = html`<button class="btn btn-primary btn-lg" data-join>${icon('plus', 22, 2.6)}Dalyvauti</button>`;
   // Dalyvaujant laimikis registruojamas apatinio meniu „+“ mygtuku – atskiro mygtuko nebereikia.

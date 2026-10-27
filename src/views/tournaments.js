@@ -1,7 +1,7 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { phase, timeLabel, describeFormat, cm, longDate, count, gapText } from '../lib/format.js';
-import { phaseBadge, empty, defaultNickname } from '../ui.js';
+import { phaseBadge, empty, defaultNickname, banNotice } from '../ui.js';
 import { eur } from '../lib/prizes.js';
 import { hasUnseen } from '../lib/seen.js';
 
@@ -109,7 +109,8 @@ export async function tournamentsView(ctx) {
         </div>
       </header>
       ${ctx.backend.mode === 'demo' ? html`<p class="demo-note">${icon('alert', 16)}Demonstracinis režimas: pavyzdiniai duomenys, saugomi tik šiame telefone.</p>` : ''}
-      ${ctx.state.user && defaultNickname(ctx.state.profile?.nickname) ? html`<a class="card card-link row ann-banner" href="#/profilis" data-nick-banner>
+      ${banNotice(ctx.state.ban)}
+      ${ctx.state.user && !ctx.state.ban && defaultNickname(ctx.state.profile?.nickname) ? html`<a class="card card-link row ann-banner" href="#/profilis" data-nick-banner>
         ${icon('user', 22)}<span class="grow stack-1"><span class="strong">Pasirink slapyvardį</span><span class="small muted">Jį matys kiti žvejai lentelėse</span></span>${icon('chevron', 18)}
       </a>` : ''}
       ${list.filter(hasUnseen).slice(0, 2).map((t) => html`<a class="card card-link row ann-banner" href="#/t/${t.id}">

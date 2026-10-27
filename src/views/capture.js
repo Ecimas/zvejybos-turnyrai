@@ -6,7 +6,7 @@ import { phase, cm } from '../lib/format.js';
 import { fitReason, REASON_LT } from '../lib/scoring.js';
 import { startCamera, stopCamera, captureFrame, sha256Hex, watchLocation, uuid, vibrate } from '../lib/device.js';
 import { mountRuler } from '../lib/ruler.js';
-import { loginPrompt, celebrate } from '../ui.js';
+import { loginPrompt, celebrate, banNotice } from '../ui.js';
 import { recordFor, fromQueue } from '../lib/records.js';
 import { fetchWeather, weatherLine } from '../lib/weather.js';
 
@@ -29,6 +29,9 @@ export async function captureView(ctx) {
   const { state, backend } = ctx;
   if (!state.user) {
     return { nav: 'turnyrai', title: 'Naujas laimikis', html: html`<div class="screen"><h1 class="display-lg" tabindex="-1">Naujas laimikis</h1>${loginPrompt('Prisijunk, kad galėtum registruoti laimikius.')}</div>` };
+  }
+  if (state.ban) {
+    return { nav: 'laimikis', title: 'Naujas laimikis', html: html`<div class="screen"><h1 class="display-lg" tabindex="-1">Naujas laimikis</h1>${banNotice(state.ban)}<a class="btn btn-ghost" href="#/">Į turnyrus</a></div>` };
   }
   const [allTournaments, mineSent, mineQueued] = await Promise.all([
     backend.tournaments().catch(() => []),

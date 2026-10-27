@@ -24,7 +24,7 @@ export async function catchView(ctx, [id]) {
   const me = state.user?.id;
   const own = !!me && c.user_id === me;
   const sp = state.species.find((s) => s.id === c.species_id)?.name_lt ?? '';
-  const canReport = !!me && !own && c.status === 'approved';
+  const canReport = !!me && !own && c.status === 'approved' && !state.ban;
   const [tournaments, entered, myReport] = await Promise.all([
     backend.tournaments().catch(() => []),
     backend.userEntries(c.user_id).catch(() => []),

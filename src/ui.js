@@ -2,6 +2,7 @@
 import { html } from './lib/html.js';
 import { icon } from './icons.js';
 import { phase } from './lib/format.js';
+import { banUntilText } from './lib/bans.js';
 
 export function phaseBadge(t, extra = '') {
   const p = phase(t);
@@ -68,6 +69,16 @@ export function initials(name) {
 
 export function avatar(name, cls = '') {
   return html`<span class="avatar ${cls}">${initials(name)}</span>`;
+}
+
+// Užblokuoto žvejo pranešimas (0013).
+export function banNotice(ban) {
+  if (!ban) return '';
+  return html`<div class="card stack-2 ban-card" role="status" data-ban-notice>
+    <p class="strong row gap-8">${icon('lock', 18, 2.6)}Paskyra užblokuota ${banUntilText(ban)}</p>
+    <p class="small">Priežastis: ${ban.reason}</p>
+    <p class="small muted">Gali žiūrėti turnyrus ir savo duomenis, bet registruoti laimikių, dalyvauti ir rašyti pranešimų negali. Blokavimą skyrė programėlės moderatorius.</p>
+  </div>`;
 }
 
 export function loginPrompt(text = 'Prisijunk, kad galėtum dalyvauti.') {

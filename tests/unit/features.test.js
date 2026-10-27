@@ -81,3 +81,15 @@ test('vėlyva registracija: iki pabaigos, tik iki starto, N min. po starto', asy
   assert.equal(registrationLabel(t(0, H, 0)), 'Tik iki starto');
   assert.match(registrationLabel(t(0, 5 * H, 60)), /^Iki /);
 });
+
+test('blokavimas: galiojimas ir tekstai', async () => {
+  const { banActive, banUntilText, BAN_DAYS } = await import('../../src/lib/bans.js');
+  const now = Date.parse('2026-10-27T12:00:00Z');
+  assert.equal(banActive(null, now), false);
+  assert.equal(banActive({ until: null }, now), true, 'visam laikui');
+  assert.equal(banActive({ until: '2026-10-28T12:00:00+00:00' }, now), true, 'Supabase laiko formatas');
+  assert.equal(banActive({ until: '2026-10-27T11:59:59Z' }, now), false, 'pasibaigęs');
+  assert.equal(banUntilText({ until: null }), 'visam laikui');
+  assert.match(banUntilText({ until: '2026-10-28T12:00:00Z' }), /^iki /);
+  assert.deepEqual(BAN_DAYS.map(([d]) => d), [1, 7, 30, null]);
+});

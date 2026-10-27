@@ -10,7 +10,7 @@ import { catchView } from './views/catch.js';
 import { diaryView } from './views/diary.js';
 import { profileView, anglerView } from './views/profile.js';
 import { createView } from './views/create.js';
-import { moderationView, disputesView, teamView, reportsView } from './views/moderation.js';
+import { moderationView, disputesView, teamView, reportsView, bansView } from './views/moderation.js';
 import { loginView } from './views/login.js';
 import { inviteView, takeInvite } from './views/invite.js';
 import { privacyView, rulesView } from './views/pages.js';
@@ -33,6 +33,7 @@ const ROUTES = [
   [/^\/moderavimas\/gincai$/, disputesView],
   [/^\/moderavimas\/pranesimai$/, reportsView],
   [/^\/moderavimas\/komanda$/, teamView],
+  [/^\/moderavimas\/blokuoti$/, bansView],
   [/^\/privatumas$/, privacyView],
   [/^\/taisykles$/, rulesView],
   [/^\/prisijungti$/, loginView]
@@ -97,6 +98,7 @@ async function main() {
   async function loadUser() {
     ctx.state.user = backend.getUser();
     ctx.state.profile = ctx.state.user ? await backend.myProfile().catch(() => null) : null;
+    ctx.state.ban = ctx.state.user ? await backend.myBan?.().catch(() => null) ?? null : null;
   }
 
   ctx.state.species = await backend.species().catch(() => []);

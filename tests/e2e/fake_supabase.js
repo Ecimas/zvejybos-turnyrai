@@ -39,6 +39,7 @@ function seed() {
       prizes: null, sponsor_name: null, sponsor_url: null, leaderboard_hidden: false, invite_code: 'c1c2c3c4c5'
     }],
     tournament_species: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', species_id: 1 }],
+    user_bans: [],
     entries: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', user_id: other, joined_at: iso(-20 * H) },
       { tournament_id: 'tttttttt-0000-4000-8000-000000000002', user_id: other, joined_at: iso(-20 * H) }],
     catches: [{
@@ -76,6 +77,10 @@ function session() {
 }
 const uid = () => session()?.user?.id ?? null;
 const isAdmin = () => !!db.profiles.find((p) => p.id === uid())?.is_admin;
+// 0013: aktyvus blokavimas
+db.user_bans ||= [];
+const bannedId = (id) => db.user_bans.some((b) => b.user_id === id && (!b.until || Date.parse(b.until) > Date.now()));
+const BAN_INSERT = ['catches', 'entries', 'tournaments', 'catch_reports', 'tournament_announcements', 'disputes'];
 
 // Paprastas RLS atitikmuo – kad testai pagautų užklausas, kurios tikroje bazėje grąžintų ne tai.
 function visible(table, row) {
@@ -85,6 +90,7 @@ function visible(table, row) {
   }
   if (table === 'disputes') return row.user_id === uid() || isAdmin();
   if (table === 'catch_reports') return row.reporter_id === uid() || isAdmin();
+  if (table === 'user_bans') return !!uid() && (row.user_id === uid() || isAdmin());
   if (table === 'blank_trips') return row.user_id === uid();
   if (table === 'tournament_announcements') {
     const t = db.tournaments.find((x) => x.id === row.tournament_id);
@@ -126,6 +132,9 @@ function embed(table, row, spec) {
     } else if (table === 'disputes' && part.startsWith('profiles!disputes_user_id_fkey(')) {
       const p = db.profiles.find((x) => x.id === row.user_id);
       out.profiles = p ? { nickname: p.nickname, trust_score: p.trust_score } : null;
+    } else if (table === 'user_bans' && part.startsWith('profiles!user_bans_user_id_fkey(')) {
+      const p = db.profiles.find((x) => x.id === row.user_id);
+      out.profiles = p ? { nickname: p.nickname } : null;
     } else if (table === 'catches' && part.startsWith('catch_locations(')) {
       const l = db.catch_locations.find((x) => x.catch_id === row.id);
       out.catch_locations = l && visible('catch_locations', l) ? { lat: l.lat, lng: l.lng, accuracy_m: l.accuracy_m } : null;
@@ -217,6 +226,10 @@ class Query {
     let data;
     if (this.op === 'insert') {
       if (!uid()) return { data: null, error: err('42501', 'new row violates row-level security policy') };
+      if (this.table === 'user_bans') return { data: null, error: err('42501', 'permission denied for table user_bans') };
+      if (BAN_INSERT.includes(this.table) && bannedId(uid())) {
+        return { data: null, error: err('42501', `new row violates row-level security policy for table "${this.table}"`) };
+      }
       const inserted = [];
       for (const r of this.rows) {
         const row = { ...r };
@@ -299,6 +312,8 @@ class Query {
       save();
       data = inserted;
     } else if (this.op === 'update') {
+      if (this.table === 'user_bans') return { data: null, error: err('42501', 'permission denied for table user_bans') };
+      if ((this.table === 'profiles' || this.table === 'tournaments') && bannedId(uid())) return { data: [], error: null };
       if (this.table === 'profiles') {
         const allowed = ['nickname', 'region'];
         if (Object.keys(this.patch).some((k) => !allowed.includes(k))) return { data: null, error: err('42501', 'permission denied') };
@@ -315,7 +330,7 @@ class Query {
       data.forEach((r) => Object.assign(r, this.patch));
       save();
     } else if (this.op === 'delete') {
-      if (this.table === 'catches' || this.table === 'disputes') return { data: null, error: err('42501', `permission denied for table ${this.table}`) };
+      if (this.table === 'catches' || this.table === 'disputes' || this.table === 'user_bans') return { data: null, error: err('42501', `permission denied for table ${this.table}`) };
       data = t.filter((r) => this.matches(r) && writable(this.table, r));
       db[this.table] = t.filter((r) => !data.includes(r));
       if (this.table === 'tournaments') {
@@ -469,6 +484,35 @@ export function createClient(url, key) {
         save();
         return { data: null, error: null };
       }
+      if (name === 'ban_user') {
+        if (!isAdmin()) return { data: null, error: err('P0001', 'not allowed') };
+        const p = db.profiles.find((x) => x.id === args.p_user);
+        const why = String(args.p_reason || '').trim();
+        if (args.p_user === uid()) return { data: null, error: err('P0001', 'ban_self') };
+        if (!p) return { data: null, error: err('P0001', 'user not found') };
+        if (p.is_admin) return { data: null, error: err('P0001', 'ban_admin') };
+        if (args.p_days !== null && (args.p_days < 1 || args.p_days > 3650)) return { data: null, error: err('P0001', 'ban_days') };
+        if (why.length < 3) return { data: null, error: err('P0001', 'ban_reason') };
+        db.user_bans = db.user_bans.filter((b) => b.user_id !== p.id);
+        db.user_bans.push({ user_id: p.id, reason: why.slice(0, 300), banned_by: uid(), created_at: new Date().toISOString(),
+          until: args.p_days === null ? null : new Date(Date.now() + args.p_days * 864e5).toISOString() });
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'unban_user') {
+        if (!isAdmin()) return { data: null, error: err('P0001', 'not allowed') };
+        db.user_bans = db.user_bans.filter((b) => b.user_id !== args.p_user);
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'reset_nickname') {
+        if (!isAdmin()) return { data: null, error: err('P0001', 'not allowed') };
+        const p = db.profiles.find((x) => x.id === args.p_user);
+        if (!p) return { data: null, error: err('P0001', 'user not found') };
+        p.nickname = 'zvejys_' + p.id.replace(/-/g, '').slice(0, 8);
+        save();
+        return { data: p.nickname, error: null };
+      }
       if (name === 'set_moderator') {
         if (!isAdmin()) return { data: null, error: err('P0001', 'not allowed') };
         const p = db.profiles.find((x) => x.nickname.toLowerCase() === String(args.p_nickname).trim().toLowerCase());
@@ -509,7 +553,7 @@ export function createClient(url, key) {
         const rows = computeLeaderboard({
           tournament: t,
           speciesIds: db.tournament_species.filter((x) => x.tournament_id === t.id).map((x) => x.species_id),
-          entries: db.entries.filter((e) => e.tournament_id === t.id),
+          entries: db.entries.filter((e) => e.tournament_id === t.id && !bannedId(e.user_id)),
           catches: db.catches,
           profiles
         });

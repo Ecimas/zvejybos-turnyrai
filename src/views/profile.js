@@ -1,9 +1,10 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { cm, shortDate } from '../lib/format.js';
-import { thumb, hydratePhotos, backButton, empty, avatar, loginPrompt, notFound, defaultNickname } from '../ui.js';
+import { thumb, hydratePhotos, backButton, empty, avatar, loginPrompt, notFound, defaultNickname, banNotice } from '../ui.js';
 import { computeBadges } from '../lib/badges.js';
 import { weatherEnabled } from './capture.js';
+import { BAN_DAYS, BAN_REASONS, banUntilText } from '../lib/bans.js';
 
 function badges(catches, tcount) {
   const list = computeBadges(catches, tcount);
@@ -124,10 +125,11 @@ export async function profileView(ctx) {
           <h1 class="display-md" tabindex="-1">${p.nickname}</h1>
           <span class="muted">${p.region || 'Regionas nenurodytas'}</span>
         </div>
-        <button class="icon-btn" data-edit aria-label="Redaguoti profilį">${icon('edit', 20)}</button>
+        ${state.ban ? '' : html`<button class="icon-btn" data-edit aria-label="Redaguoti profilį">${icon('edit', 20)}</button>`}
       </header>
 
-      ${defaultNickname(p.nickname) ? html`<div class="card stack-2 nick-card">
+      ${banNotice(state.ban)}
+      ${!state.ban && defaultNickname(p.nickname) ? html`<div class="card stack-2 nick-card">
         <p class="strong">Pasirink slapyvardį</p>
         <p class="small muted">Jį matys kiti žvejai lentelėse. Dabar rodomas automatiškai sukurtas „${p.nickname}“.</p>
         <button class="btn btn-primary" data-pick-nick>${icon('edit', 18)}Pasirinkti slapyvardį</button>
@@ -185,7 +187,7 @@ export async function profileView(ctx) {
     mount(root) {
       hydratePhotos(root, backend);
       const form = root.querySelector('[data-form]');
-      root.querySelector('[data-edit]').addEventListener('click', () => { form.hidden = !form.hidden; if (!form.hidden) form.nickname.focus(); });
+      root.querySelector('[data-edit]')?.addEventListener('click', () => { form.hidden = !form.hidden; if (!form.hidden) form.nickname.focus(); });
       root.querySelector('[data-pick-nick]')?.addEventListener('click', () => {
         form.hidden = false;
         form.nickname.select();
@@ -270,7 +272,11 @@ export async function anglerView(ctx, [id]) {
   const { backend, state } = ctx;
   const p = await backend.profile(id);
   if (!p) return { nav: 'lenteles', html: notFound('#/lenteles', 'Žvejys nerastas') };
-  const [catches, tcount] = await Promise.all([backend.userCatches(id), backend.userTournamentCount(id)]);
+  const moderating = !!state.profile?.is_admin && id !== state.user?.id;
+  const [catches, tcount, ban] = await Promise.all([
+    backend.userCatches(id), backend.userTournamentCount(id),
+    moderating ? backend.userBan(id).catch(() => null) : null
+  ]);
   const s = stats(catches, state.species);
   const gallery = s.ok.slice().sort((a, b) => b.captured_at_device.localeCompare(a.captured_at_device)).slice(0, 12);
 
@@ -296,13 +302,83 @@ export async function anglerView(ctx, [id]) {
         </figure></a>`)}</div>
       </section>` : empty('Patvirtintų laimikių dar nėra')}
       <p class="center small muted">${icon('lock', 14)} Laimikių vietos nerodomos</p>
+      ${moderating ? modCard(p, ban) : ''}
     </div>`,
     mount(root) {
       hydratePhotos(root, backend);
+      if (moderating) mountModCard(root, ctx, p);
       root.querySelector('[data-back]').addEventListener('click', () => {
         if (history.length > 1) history.back();
         else ctx.navigate('#/lenteles');
       });
     }
   };
+}
+
+// Moderatoriaus veiksmai kito žvejo profilyje: blokuoti / atblokuoti, netinkamą slapyvardį pakeisti automatiniu.
+function modCard(p, ban) {
+  return html`<section class="card stack mod-card" aria-labelledby="mod-h">
+    <h2 class="h2 row gap-8" id="mod-h">${icon('shield', 20)}Moderatoriui</h2>
+    ${p.is_admin ? html`<p class="small muted">Tai moderatorius – blokuoti negalima. Pirma pašalink jį iš moderatorių.</p>`
+      : ban ? html`<div class="stack-2" data-ban-status>
+          <p class="strong bad">Užblokuotas ${banUntilText(ban)}</p>
+          <p class="small">Priežastis: ${ban.reason}</p>
+          <button class="btn btn-ghost" type="button" data-unban>Atblokuoti</button>
+        </div>`
+      : html`<form class="stack" data-ban-form novalidate>
+          <label class="field"><span class="small muted strong">Trukmė</span>
+            <select name="days">${BAN_DAYS.map(([d, label]) => html`<option value="${d === null ? '' : d}" ${d === 7 ? 'selected' : ''}>${label}</option>`)}</select></label>
+          <label class="field"><span class="small muted strong">Priežastis (matys pats žvejys)</span>
+            <input name="reason" maxlength="300" autocomplete="off" list="ban-reasons" placeholder="pvz. Sukčiavimas su laimikiais"></label>
+          <datalist id="ban-reasons">${BAN_REASONS.map((r) => html`<option value="${r}"></option>`)}</datalist>
+          <button class="btn btn-danger" type="submit">${icon('lock', 18, 2.6)}Užblokuoti</button>
+          <p class="small muted">Užblokuotas negalės registruoti laimikių, dalyvauti turnyruose, kurti jų ir rašyti pranešimų. Kol blokavimas galioja, jo rezultatai lentelėse nerodomi.</p>
+        </form>`}
+    <button class="btn btn-ghost" type="button" data-reset-nick>Pakeisti slapyvardį į automatinį</button>
+  </section>`;
+}
+
+function mountModCard(root, ctx, p) {
+  const { backend } = ctx;
+  const form = root.querySelector('[data-ban-form]');
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const reason = form.reason.value.trim();
+    const days = form.days.value === '' ? null : Number(form.days.value);
+    if (reason.length < 3) { ctx.toast('Įrašyk priežastį (bent 3 simboliai)'); form.reason.focus(); return; }
+    if (!confirm(`Užblokuoti ${p.nickname}?`)) return;
+    const btn = form.querySelector('button[type=submit]');
+    btn.disabled = true;
+    try {
+      await backend.banUser(p.id, days, reason);
+      ctx.toast(`${p.nickname} užblokuotas`);
+      ctx.rerender();
+    } catch (err) {
+      btn.disabled = false;
+      ctx.toast(err.message || 'Nepavyko užblokuoti');
+    }
+  });
+  root.querySelector('[data-unban]')?.addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      await backend.unbanUser(p.id);
+      ctx.toast(`${p.nickname} atblokuotas`);
+      ctx.rerender();
+    } catch {
+      e.currentTarget.disabled = false;
+      ctx.toast('Nepavyko atblokuoti');
+    }
+  });
+  root.querySelector('[data-reset-nick]').addEventListener('click', async (e) => {
+    if (!confirm(`Pakeisti slapyvardį „${p.nickname}“ į automatinį? Žvejys galės pasirinkti naują.`)) return;
+    e.currentTarget.disabled = true;
+    try {
+      const nick = await backend.resetNickname(p.id);
+      ctx.toast(`Slapyvardis pakeistas į ${nick}`);
+      ctx.rerender();
+    } catch (err) {
+      e.currentTarget.disabled = false;
+      ctx.toast(err.message || 'Nepavyko pakeisti slapyvardžio');
+    }
+  });
 }

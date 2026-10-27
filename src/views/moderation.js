@@ -4,12 +4,14 @@ import { icon } from '../icons.js';
 import { cm, dateTime } from '../lib/format.js';
 import { SKEW_MS } from '../lib/scoring.js';
 import { backButton, empty, thumb, hydratePhotos, openPhoto } from '../ui.js';
+import { banUntilText } from '../lib/bans.js';
 
 const REASONS = ['Nesimato matavimo', 'Ne ta rūšis', 'Netikslus ilgis', 'Pakartota nuotrauka'];
 
 function tabs(active) {
   const items = [['#/moderavimas', 'queue', 'Laimikiai'], ['#/moderavimas/pranesimai', 'reports', 'Pranešimai'],
-    ['#/moderavimas/gincai', 'disputes', 'Ginčai'], ['#/moderavimas/komanda', 'team', 'Komanda']];
+    ['#/moderavimas/gincai', 'disputes', 'Ginčai'], ['#/moderavimas/blokuoti', 'bans', 'Blokuoti'],
+    ['#/moderavimas/komanda', 'team', 'Komanda']];
   return html`<nav class="seg" aria-label="Moderavimo skiltys">${items.map(([href, key, label]) =>
     html`<a href="${href}" role="button" aria-pressed="${key === active}"${key === active ? html` aria-current="page"` : ''}>${label}</a>`)}</nav>`;
 }
@@ -33,7 +35,7 @@ export async function moderationView(ctx) {
   const skew = new Date(c.captured_at_device) - new Date(c.received_at);
   const delayMin = Math.round(-skew / 60000);
   const signals = [
-    ['Dalyvis', `${c.nickname} · patikimumas ${c.trust_score}`],
+    ['Dalyvis', html`<a class="link" href="#/zvejys/${c.user_id}">${c.nickname}</a> · patikimumas ${c.trust_score}`],
     ['Rūšis ir ilgis', `${sp} · ${cm(c.length_mm)}`],
     ['Nufotografuota', dateTime(c.captured_at_device)],
     ['Gauta serveryje', delayMin > 1 ? `${dateTime(c.received_at)} (po ${delayMin} min.)` : dateTime(c.received_at)]
@@ -118,7 +120,7 @@ export async function disputesView(ctx) {
         <div class="row tight">
           ${thumb(d.catch?.photo_path, 72)}
           <div class="grow stack-1">
-            <span class="strong">${d.nickname} · patikimumas ${d.trust_score}</span>
+            <span class="strong"><a class="link" href="#/zvejys/${d.user_id}">${d.nickname}</a> · patikimumas ${d.trust_score}</span>
             <span class="small muted">${d.catch ? `${sp(d.catch.species_id)} · ${cm(d.catch.length_mm)} · ${dateTime(d.catch.captured_at_device)}` : 'Laimikis ištrintas'}</span>
             ${d.catch?.reject_reason ? html`<span class="small bad">Atmesta: ${d.catch.reject_reason}</span>` : ''}
           </div>
@@ -235,7 +237,7 @@ export async function reportsView(ctx) {
           <button class="thumb-btn" data-zoom aria-label="Rodyti nuotrauką per visą ekraną">${thumb(g.catch?.photo_path, 72)}</button>
           <div class="grow stack-1">
             <a class="strong link" href="#/l/${g.catchId}">${g.catch ? `${sp(g.catch.species_id)} · ${cm(g.catch.length_mm)}` : 'Laimikis'}</a>
-            <span class="small muted">${owners.get(g.catch?.user_id)?.nickname ?? ''}${g.catch ? ` · ${dateTime(g.catch.captured_at_device)}` : ''}</span>
+            <span class="small muted">${g.catch ? html`<a class="link" href="#/zvejys/${g.catch.user_id}">${owners.get(g.catch.user_id)?.nickname ?? 'Žvejys'}</a>` : ''}${g.catch ? ` · ${dateTime(g.catch.captured_at_device)}` : ''}</span>
             <span class="chip chip-wait">${icon('alert', 13, 2.6)}${g.reports.length} ${g.reports.length === 1 ? 'pranešimas' : g.reports.length < 10 ? 'pranešimai' : 'pranešimų'}</span>
           </div>
         </div>
@@ -274,6 +276,43 @@ export async function reportsView(ctx) {
         card.querySelector('[data-keep]').addEventListener('click', () => act(false));
         card.querySelector('[data-uphold]').addEventListener('click', () => act(true));
       });
+    }
+  };
+}
+
+// Užblokuoti žvejai. Blokuojama žvejo profilyje (paspaudus slapyvardį lentelėje ar laimikyje).
+export async function bansView(ctx) {
+  const { backend, state } = ctx;
+  if (!state.profile?.is_admin) return denied();
+  const list = await backend.bans().catch(() => []);
+  return {
+    nav: 'profilis',
+    title: 'Užblokuoti žvejai',
+    html: html`<div class="screen">
+      <header class="top-bar">${backButton('#/profilis')}<span class="muted strong">Užblokuoti</span><span></span></header>
+      <h1 class="sr-only" tabindex="-1">Užblokuoti žvejai</h1>
+      ${tabs('bans')}
+      ${list.length ? html`<div class="list">${list.map((b) => html`<div class="list-row ban-row">
+        <a class="grow stack-1 link-plain" href="#/zvejys/${b.user_id}">
+          <span class="strong">${b.nickname}</span>
+          <span class="small muted">${banUntilText(b)} · ${b.reason}</span>
+        </a>
+        <button class="btn-text" data-unban="${b.user_id}" data-nick="${b.nickname}">Atblokuoti</button>
+      </div>`)}</div>` : empty('Užblokuotų žvejų nėra')}
+      <p class="small muted">Užblokuoti žvejį gali jo profilyje – paspausk slapyvardį lentelėje, pranešime ar laimikio puslapyje.</p>
+    </div>`,
+    mount(root) {
+      root.querySelectorAll('[data-unban]').forEach((b) => b.addEventListener('click', async () => {
+        b.disabled = true;
+        try {
+          await backend.unbanUser(b.dataset.unban);
+          ctx.toast(`${b.dataset.nick} atblokuotas`);
+          ctx.rerender();
+        } catch {
+          b.disabled = false;
+          ctx.toast('Nepavyko atblokuoti');
+        }
+      }));
     }
   };
 }

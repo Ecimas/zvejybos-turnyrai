@@ -122,6 +122,10 @@ end $$;
 -- ---------------------------------------------------------------
 -- 1) Svetimų eilučių kiekvieno stulpelio keitimas
 -- ---------------------------------------------------------------
+-- Pasibaigęs B blokavimas: eilutė yra, bet B nebeblokuotas (kad teisėti B veiksmai veiktų).
+insert into public.user_bans (user_id, until, reason, banned_by)
+values ('b0000000-0000-4000-8000-00000000000b', now() - interval '1 day', 'Senas blokavimas', 'c0000000-0000-4000-8000-00000000000c');
+
 \echo 'R1. Svetimų eilučių stulpeliai (anon ir A prieš B duomenis)'
 insert into pg_temp.attempts (who, sql, kind)
 select who, format('update %I.%I set %I = %I where %s', s, t, c.column_name, c.column_name, w), 'nochange'
@@ -136,6 +140,7 @@ select who, format('update %I.%I set %I = %I where %s', s, t, c.column_name, c.c
                ('public', 'catch_reports',   $$true$$),
                ('public', 'blank_trips',     $$true$$),
                ('public', 'tournament_announcements', $$true$$),
+               ('public', 'user_bans',       $$true$$),
                ('storage', 'objects',        $$name like 'b0000000-%'$$)) as x(s, t, w)
   join information_schema.columns c on c.table_schema = x.s and c.table_name = x.t
  cross join (values ('anon'), ('A')) as who(who);
@@ -183,6 +188,7 @@ select who, format('delete from %I.%I where %s', s, t, w), 'nochange'
                ('public', 'blank_trips', $$user_id <> (select auth.uid())$$),
                ('public', 'tournament_announcements', $$true$$),
                ('public', 'species', $$true$$),
+               ('public', 'user_bans', $$true$$),
                ('storage', 'objects', $$true$$)) as x(s, t, w)
  cross join (values ('anon'), ('A'), ('B')) as who(who)
  where not (who = 'B' and t in ('tournaments', 'tournament_species', 'tournament_sponsors', 'entries', 'tournament_announcements', 'blank_trips')); -- B savo būsimą turnyrą trinti gali
@@ -211,7 +217,10 @@ insert into pg_temp.attempts (who, sql, kind) values
   ('anon', $$insert into public.catches (client_id, species_id, length_mm, captured_at_device, photo_path, photo_sha256) values (gen_random_uuid(), 1, 500, now(), 'x/x.jpg', repeat('fd', 32))$$, 'error'),
   ('anon', $$insert into public.tournaments (title, format, starts_at, ends_at) values ('anon', 'biggest', now() + interval '1 day', now() + interval '2 days')$$, 'error'),
   ('anon', $$insert into public.entries (tournament_id) values ((select id from fx where k = 'b_pub'))$$, 'error'),
-  ('anon', $$insert into storage.objects (bucket_id, name) values ('catch-photos', 'anon/x.jpg')$$, 'error');
+  ('anon', $$insert into storage.objects (bucket_id, name) values ('catch-photos', 'anon/x.jpg')$$, 'error'),
+  ('A', $$insert into public.user_bans (user_id, reason) values ('b0000000-0000-4000-8000-00000000000b', 'savavališkai')$$, 'error'),
+  ('A', $$insert into public.user_bans (user_id, reason) values ('a0000000-0000-4000-8000-00000000000a', 'pats sau')$$, 'error'),
+  ('anon', $$insert into public.user_bans (user_id, reason) values ('b0000000-0000-4000-8000-00000000000b', 'anon')$$, 'error');
 
 -- ---------------------------------------------------------------
 -- 4) Slapti duomenys
@@ -229,6 +238,7 @@ select who, q, 'zero' from (values
   ($$select count(*) from public.get_invite('%')$$),
   ($$select count(*) from public.catch_reports where reporter_id is distinct from auth.uid()$$),
   ($$select count(*) from public.blank_trips$$),
+  ($$select count(*) from public.user_bans where user_id is distinct from auth.uid()$$),
   ($$select count(*) from public.tournament_announcements a join public.tournaments t on t.id = a.tournament_id where t.visibility = 'private'$$)
 ) as q(q) cross join (values ('anon'), ('A')) as who(who);
 -- privatūs stulpeliai: kito žmogaus masalas ir pastabos (net patvirtinto laimikio)
@@ -252,7 +262,10 @@ select who, q, 'error' from (values
   ($$select public.set_moderator('fa', true)$$),
   ($$select public.purge_old_locations()$$),
   ($$select public.handle_new_user()$$),
-  ($$select public.finish_account_deletion()$$)
+  ($$select public.finish_account_deletion()$$),
+  ($$select public.ban_user('b0000000-0000-4000-8000-00000000000b', null, 'Neturiu teisių')$$),
+  ($$select public.unban_user('b0000000-0000-4000-8000-00000000000b')$$),
+  ($$select public.reset_nickname('b0000000-0000-4000-8000-00000000000b')$$)
 ) as q(q) cross join (values ('anon'), ('A')) as who(who);
 insert into pg_temp.attempts (who, sql, kind) values
   ('anon', $$select public.join_with_invite((select invite_code from public.tournaments limit 1))$$, 'error'),

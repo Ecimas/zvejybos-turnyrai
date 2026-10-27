@@ -4,6 +4,7 @@ import { SPECIES, speciesId } from './species.js';
 import { computeLeaderboard } from '../lib/scoring.js';
 import { PermanentError, RetryLaterError, idbStore, memoryStore } from '../lib/outbox.js';
 import { phase, registrationOpen } from '../lib/format.js';
+import { banActive } from '../lib/bans.js';
 
 const KEY = 'zt-demo-v1';
 const ME = '00000000-0000-4000-8000-000000000001';
@@ -104,7 +105,7 @@ function seed() {
       status: 'open', created_at: iso(-3 * H) }
   ];
   return { profiles, tournaments, tournament_species, tournament_sponsors, entries, catches, locations: {}, disputes: [],
-    announcements, reports, blank_trips: [] };
+    announcements, reports, blank_trips: [], bans: [] };
 }
 
 export function createDemoBackend({ photos } = {}) {
@@ -116,6 +117,7 @@ export function createDemoBackend({ photos } = {}) {
   db.reports ||= [];
   db.blank_trips ||= [];
   db.announcements ||= [];
+  db.bans ||= [];
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* pilna atmintis */ } };
   save();
   const photoStore = photos || (typeof indexedDB !== 'undefined' ? idbStore('zvejybos-turnyrai-demo', 'photos') : memoryStore());
@@ -239,7 +241,7 @@ export function createDemoBackend({ photos } = {}) {
       const rows = computeLeaderboard({
         tournament: t,
         speciesIds: db.tournament_species.filter((x) => x.tournament_id === id).map((x) => x.species_id),
-        entries: db.entries.filter((e) => e.tournament_id === id),
+        entries: db.entries.filter((e) => e.tournament_id === id && !banActive(db.bans.find((b) => b.user_id === e.user_id))),
         catches: db.catches,
         profiles: db.profiles
       });
@@ -350,6 +352,42 @@ export function createDemoBackend({ photos } = {}) {
       }
       p.is_admin = admin;
       save();
+    },
+
+    async myBan() {
+      const b = db.bans.find((x) => x.user_id === ME);
+      return banActive(b) ? b : null;
+    },
+    async userBan(userId) {
+      const b = db.bans.find((x) => x.user_id === userId);
+      return banActive(b) ? b : null;
+    },
+    async bans() {
+      return db.bans.filter((b) => banActive(b))
+        .map((b) => ({ ...b, nickname: db.profiles[b.user_id]?.nickname ?? '' }))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    },
+    async banUser(userId, days, reason) {
+      const p = db.profiles[userId];
+      const why = String(reason || '').trim();
+      if (!p) throw new Error('Žvejys nerastas');
+      if (userId === ME) throw new Error('Savęs blokuoti negalima');
+      if (p.is_admin) throw new Error('Moderatoriaus blokuoti negalima – pirma pašalink jį iš moderatorių');
+      if (why.length < 3) throw new Error('Įrašyk priežastį (bent 3 simboliai)');
+      db.bans = db.bans.filter((b) => b.user_id !== userId);
+      db.bans.push({ user_id: userId, reason: why.slice(0, 300), banned_by: ME, created_at: new Date().toISOString(),
+        until: days === null ? null : new Date(Date.now() + days * 864e5).toISOString() });
+      save();
+    },
+    async unbanUser(userId) {
+      db.bans = db.bans.filter((b) => b.user_id !== userId);
+      save();
+    },
+    async resetNickname(userId) {
+      const nick = `zvejys_${userId.replace(/[^0-9a-f]/gi, '').padEnd(8, '0').slice(0, 8).toLowerCase()}`;
+      db.profiles[userId].nickname = nick;
+      save();
+      return nick;
     },
 
     async exportData() {
