@@ -103,8 +103,8 @@ export async function profileView(ctx) {
     p?.is_admin ? backend.openDisputes().catch(() => []) : []
   ]);
   const s = stats(catches, state.species);
-  let theme = 'auto';
-  try { theme = localStorage.getItem('zt-theme') || 'auto'; } catch { /* nėra saugyklos */ }
+  let theme = 'dark';
+  try { theme = localStorage.getItem('zt-theme') || 'dark'; } catch { /* nėra saugyklos */ }
 
   return {
     nav: 'profilis',

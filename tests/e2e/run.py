@@ -283,6 +283,7 @@ def main():
         # 1. Turnyrų sąrašas
         page.goto(base)
         expect(page.get_by_role("heading", name="Turnyrai", level=1)).to_be_visible()
+        assert page.evaluate("() => document.documentElement.dataset.theme") == "dark", "numatyta tema turi būti tamsi"
         expect(page.locator(".demo-note")).to_be_visible()
         page.get_by_role("button", name=re.compile("^Vyksta")).click()
         expect(page.locator(".t-card", has_text="Rudens lydekų taurė")).to_be_visible()

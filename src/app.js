@@ -48,8 +48,9 @@ const NAV = [
 const $ = (s) => document.querySelector(s);
 
 function applyTheme() {
-  let t = 'auto';
-  try { t = localStorage.getItem('zt-theme') || 'auto'; } catch { /* nėra saugyklos */ }
+  // Numatyta – tamsi tema; „Pagal telefoną“ ir šviesią galima pasirinkti profilyje.
+  let t = 'dark';
+  try { t = localStorage.getItem('zt-theme') || 'dark'; } catch { /* nėra saugyklos */ }
   document.documentElement.dataset.theme = t;
 }
 
