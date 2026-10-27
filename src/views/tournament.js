@@ -2,7 +2,7 @@ import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { phase, timeLabel, describeFormat, cm, dateTime, duration, count } from '../lib/format.js';
 import { fitReason, REASON_LT } from '../lib/scoring.js';
-import { phaseBadge, statusChip, backButton, thumb, hydratePhotos, empty, avatar, loginPrompt } from '../ui.js';
+import { phaseBadge, statusChip, backButton, thumb, hydratePhotos, empty, avatar, loginPrompt, notFound } from '../ui.js';
 
 export const inviteUrl = (t) => `${location.origin}${location.pathname}#/kvietimas/${t.invite_code}`;
 
@@ -34,12 +34,13 @@ function winners(board, me) {
   </section>`;
 }
 
+// Rėmėjo nuoroda rodoma tik su https:// (serveris tai tikrina, bet tikrinam ir čia – jokių javascript: nuorodų).
 function prizesBlock(t) {
   if (!t.prizes && !t.sponsor_name) return '';
   return html`<section class="stack">
     <h2 class="h2">Prizai${t.sponsor_name ? ' ir rėmėjas' : ''}</h2>
     ${t.prizes ? html`<div class="card"><p class="prewrap">${t.prizes}</p></div>` : ''}
-    ${t.sponsor_name ? html`<p class="small muted">Rėmėjas: ${t.sponsor_url
+    ${t.sponsor_name ? html`<p class="small muted">Rėmėjas: ${/^https:\/\/[^\s<>"']{3,200}$/.test(t.sponsor_url || '')
       ? html`<a class="link" href="${t.sponsor_url}" target="_blank" rel="noopener noreferrer sponsored">${t.sponsor_name}</a>`
       : html`<span class="strong">${t.sponsor_name}</span>`}</p>` : ''}
   </section>`;
@@ -57,7 +58,7 @@ export async function tournamentView(ctx, [id]) {
   const { backend, state } = ctx;
   const t = await backend.tournament(id);
   if (!t) {
-    return { nav: 'turnyrai', html: html`<div class="screen">${backButton('#/')}${empty('Turnyras nerastas', 'Gal jis privatus arba ištrintas.')}</div>` };
+    return { nav: 'turnyrai', html: notFound('#/', 'Turnyras nerastas', 'Gal jis privatus arba ištrintas.') };
   }
   const me = state.user?.id;
   const [board, mineAll] = await Promise.all([
@@ -227,12 +228,11 @@ export async function tournamentView(ctx, [id]) {
 export async function tvView(ctx, [id]) {
   const { backend, state } = ctx;
   const [t, board] = await Promise.all([backend.tournament(id), backend.leaderboard(id)]);
-  if (!t) return { nav: null, html: html`<div class="screen">${backButton('#/')}${empty('Turnyras nerastas')}</div>` };
+  if (!t) return { nav: null, html: notFound('#/', 'Turnyras nerastas') };
   const hidden = boardHidden(t, state);
   const p = phase(t);
   return {
     nav: null,
-    dark: true,
     title: `Ekranas · ${t.title}`,
     html: html`<div class="tv">
       <header class="tv-head">
@@ -260,7 +260,7 @@ export async function boardView(ctx, [id]) {
   const { backend, state } = ctx;
   const me = state.user?.id;
   const [t, board] = await Promise.all([backend.tournament(id), backend.leaderboard(id)]);
-  if (!t) return { nav: 'lenteles', html: html`<div class="screen">${backButton('#/lenteles')}${empty('Turnyras nerastas')}</div>` };
+  if (!t) return { nav: 'lenteles', html: notFound('#/lenteles', 'Turnyras nerastas') };
   const p = phase(t);
   if (boardHidden(t, state)) {
     const mine = board.find((r) => r.user_id === me);

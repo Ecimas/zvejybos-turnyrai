@@ -60,7 +60,7 @@ export async function moderationView(ctx) {
       <fieldset class="field" data-reject-box hidden>
         <legend class="small muted strong">Atmetimo priežastis (matys dalyvis)</legend>
         <div class="chips">${REASONS.map((r) => html`<button type="button" class="sp-chip" data-reason="${r}">${r}</button>`)}</div>
-        <input data-reason-text maxlength="200" placeholder="Arba parašyk savo">
+        <input data-reason-text maxlength="200" placeholder="Arba parašyk savo" aria-label="Atmetimo priežastis">
         <button class="btn btn-danger" data-reject-confirm>Atmesti laimikį</button>
       </fieldset>
     </div>

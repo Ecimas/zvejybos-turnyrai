@@ -156,7 +156,7 @@ async function main() {
         nav: 'turnyrai',
         html: html`<div class="screen"><div class="empty">
           <div class="empty-icon">${icon('alert', 32)}</div>
-          <p class="empty-title">Nepavyko įkelti</p>
+          <h1 class="empty-title" tabindex="-1">Nepavyko įkelti</h1>
           <p class="muted">${navigator.onLine ? 'Bandyk dar kartą po akimirkos.' : 'Nėra interneto ryšio.'}</p>
           <button class="btn" data-retry>${icon('refresh', 18)}Bandyti dar kartą</button>
         </div></div>`,

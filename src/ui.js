@@ -50,6 +50,15 @@ export function empty(title, text, action) {
   </div>`;
 }
 
+// Visas ekranas „nerasta“ – su h1, kad ekrano skaitytuvai ir fokusas veiktų kaip kituose ekranuose.
+export function notFound(back, title, text = '') {
+  return html`<div class="screen">${backButton(back)}<div class="empty">
+    <div class="empty-icon">${icon('fish', 34, 1.6)}</div>
+    <h1 class="empty-title" tabindex="-1">${title}</h1>
+    ${text ? html`<p class="muted">${text}</p>` : ''}
+  </div></div>`;
+}
+
 export function initials(name) {
   return (name || '?').trim().charAt(0).toUpperCase() || '?';
 }

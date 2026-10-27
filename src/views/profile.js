@@ -1,7 +1,7 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { cm, shortDate } from '../lib/format.js';
-import { thumb, hydratePhotos, backButton, empty, avatar, loginPrompt } from '../ui.js';
+import { thumb, hydratePhotos, backButton, empty, avatar, loginPrompt, notFound } from '../ui.js';
 import { computeBadges } from '../lib/badges.js';
 import { weatherEnabled } from './capture.js';
 
@@ -247,7 +247,7 @@ export async function profileView(ctx) {
 export async function anglerView(ctx, [id]) {
   const { backend, state } = ctx;
   const p = await backend.profile(id);
-  if (!p) return { nav: 'lenteles', html: html`<div class="screen">${backButton('#/lenteles')}${empty('Žvejys nerastas')}</div>` };
+  if (!p) return { nav: 'lenteles', html: notFound('#/lenteles', 'Žvejys nerastas') };
   const [catches, tcount] = await Promise.all([backend.userCatches(id), backend.userTournamentCount(id)]);
   const s = stats(catches, state.species);
   const gallery = s.ok.slice().sort((a, b) => b.captured_at_device.localeCompare(a.captured_at_device)).slice(0, 12);
