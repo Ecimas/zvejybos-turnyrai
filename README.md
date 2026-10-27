@@ -85,7 +85,9 @@ Kompiliavimo žingsnio nėra – failai atiduodami tokie, kokie yra.
 
 ```
 node --test tests/unit/*.test.js   # taškų skaičiavimas, eilė, formatavimas, XSS
-bash tests/db/run.sh               # schema ir teisės su tikru PostgreSQL 16
+bash tests/db/run.sh               # schema, teisės ir RLS fuzz (548 atakos bandymai) su PostgreSQL 16
 python3 tests/e2e/run.py           # visas vartotojo kelias naršyklėje (Playwright, demo režimas)
 python3 tests/e2e/real_mode.py     # tikras režimas su Supabase imitacija
+python3 tests/e2e/audit.py         # 80 ekranų: XSS, kontrastas, 320 px plotis, prieinamumas
+bash tests/db/load.sh              # apkrova: 5000 žvejų, 120 000 laimikių, pgbench
 ```
