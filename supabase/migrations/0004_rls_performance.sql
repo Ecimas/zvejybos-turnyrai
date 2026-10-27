@@ -1,3 +1,4 @@
+-- BŪSENA: produkcijoje dar neįdiegta (Supabase patvirtinimas atšauktas). Programėlė veikia ir be jos.
 -- Našumas: auth.uid() ir is_admin() vertinami vieną kartą užklausai, ne kiekvienai eilutei
 -- ((select ...) forma), indeksai užsienio raktams. Logika nesikeičia.
 

@@ -163,6 +163,9 @@ def main():
         # 9. Turnyro kūrimas su rūšimis
         page.goto(base + "#/naujas")
         page.get_by_label("Pavadinimas").fill("Ešerių savaitgalis")
+        page.evaluate("""() => { const d = new Date(), p = (n) => String(n).padStart(2, '0');
+            document.querySelector('[name=starts_at]').value =
+              `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; }""")
         page.locator("[data-form]").get_by_role("button", name="Ešerys").click()
         page.get_by_role("button", name="Sukurti turnyrą").click()
         expect(page.get_by_role("heading", name="Ešerių savaitgalis")).to_be_visible()
@@ -170,6 +173,9 @@ def main():
         t = page.evaluate("() => window.__fakeDb.get().tournaments.find(t => t.title === 'Ešerių savaitgalis')")
         ts = page.evaluate("(id) => window.__fakeDb.get().tournament_species.filter(x => x.tournament_id === id)", t["id"])
         assert [x["species_id"] for x in ts] == [2], ts
+        import datetime as _dt
+        start = _dt.datetime.fromisoformat(t["starts_at"].replace("Z", "+00:00"))
+        assert start > _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=60), t["starts_at"]
         step("turnyro kūrimas su rūšimi")
 
         # 10. Atsijungimas

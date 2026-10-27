@@ -80,7 +80,7 @@ export async function createView(ctx) {
       root.querySelector('[data-submit]').addEventListener('click', async (e) => {
         errorEl.hidden = true;
         const title = form.title.value.trim();
-        const startsAt = new Date(form.starts_at.value);
+        let startsAt = new Date(form.starts_at.value);
         const endsAt = new Date(form.ends_at.value);
         const minCm = Number(form.min_cm.value || 0);
         if (title.length < 3) return fail('Pavadinimas per trumpas.');
@@ -88,6 +88,10 @@ export async function createView(ctx) {
         if (endsAt <= startsAt) return fail('Pabaiga turi būti vėliau nei pradžia.');
         if (endsAt - startsAt > 120 * 24 * 3600e3) return fail('Turnyras gali trukti ne ilgiau kaip 120 dienų.');
         if (startsAt < Date.now() - 5 * 60e3) return fail('Pradžia negali būti praeityje.');
+        // Pradžia „dabar“ -> po 2 min.: duomenų bazė leidžia keisti turnyro rūšis tik iki starto.
+        const soonest = new Date(Date.now() + 2 * 60e3);
+        if (startsAt < soonest) startsAt = soonest;
+        if (endsAt <= startsAt) return fail('Pabaiga turi būti vėliau nei pradžia.');
         if (minCm < 0 || minCm > 200) return fail('Minimalus ilgis turi būti 0–200 cm.');
         const btn = e.currentTarget;
         btn.disabled = true;
