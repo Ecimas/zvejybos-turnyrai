@@ -1,5 +1,4 @@
--- BŪSENA: produkcijoje laukia savininko patvirtinimo (Supabase prašo patvirtinti, nes funkcijos trina įrašus).
--- Kol neįdiegta, programėlė rodo, kad ištrynimas laikinai neprieinamas.
+-- BŪSENA: įdiegta produkcijoje 2026-10-27 (savininkas paleido per Supabase SQL redaktorių).
 
 -- ---------------------------------------------------------------
 -- Paskyros ištrynimas (BDAR): 1) duomenys, 2) nuotraukos (klientas per Storage API), 3) paskyra
