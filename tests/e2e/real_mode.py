@@ -86,6 +86,20 @@ def more_real_tests(page, base):
     assert sorted(upd["patch"]) == ["bait", "notes"], upd
     step("masalo ir pastabų redagavimas (tik leistini laukai)")
 
+    # Laimikio peržiūra: savas – su masalu ir vieta; svetimas – be jų; jokio „*“ iš catches
+    mine_id = fake(page, "return db.catches.filter(c => c.user_id === arg && c.bait === 'Sukriukė')[0].id;", me)
+    go(page, base + f"#/l/{mine_id}")
+    expect(page.locator("section", has_text="Tik tau")).to_contain_text("Sukriukė")
+    expect(page.locator("dl").first).to_contain_text("1,25 kg")
+    go(page, base + "#/l/cccccccc-0000-4000-8000-000000000001")
+    expect(page.get_by_role("heading", name="70 cm")).to_be_visible()
+    expect(page.get_by_text("Tik tau")).to_have_count(0)
+    expect(page.get_by_text("Laimikio vieta nerodoma")).to_be_visible()
+    bad = [c for c in calls(page, "from", table="catches") if c["op"] == "select" and ("*" in (c["sel"] or "*").split(",")[0] or "bait" in (c["sel"] or ""))]
+    assert not bad, f"catches skaitomi su * arba bait: {bad[:2]}"
+    assert calls(page, "rpc", name="my_catch_notes"), "savo masalas turi būti gaunamas per my_catch_notes"
+    step("laimikio peržiūra: privatūs laukai tik savininkui, užklausos be *")
+
     # Paros limitas: laimikis lieka eilėje su aiškiu pranešimu, vėliau išsiunčiamas
     fake(page, """for (let i = 0; i < 50; i++) db.catches.push({ id: 'lim' + i, user_id: arg, client_id: 'lim' + i, species_id: 2,
         length_mm: 200, captured_at_device: new Date().toISOString(), received_at: new Date().toISOString(),

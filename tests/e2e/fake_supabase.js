@@ -89,9 +89,10 @@ function embed(table, row, spec) {
       out.profiles = p ? { id: p.id, nickname: p.nickname, region: p.region } : null;
     } else if (table === 'catches' && part.startsWith('profiles!catches_user_id_fkey(')) {
       const p = db.profiles.find((x) => x.id === row.user_id);
-      out.profiles = p ? { nickname: p.nickname, trust_score: p.trust_score } : null;
-    } else if (table === 'disputes' && part === 'catches(*)') {
-      out.catches = db.catches.find((c) => c.id === row.catch_id) || null;
+      out.profiles = p ? { nickname: p.nickname, trust_score: p.trust_score, region: p.region } : null;
+    } else if (table === 'disputes' && part.startsWith('catches(')) {
+      const c = db.catches.find((x) => x.id === row.catch_id);
+      out.catches = c ? pick(c, part.slice(8, -1).split(',').map((x) => x.trim())) : null;
     } else if (table === 'disputes' && part.startsWith('profiles!disputes_user_id_fkey(')) {
       const p = db.profiles.find((x) => x.id === row.user_id);
       out.profiles = p ? { nickname: p.nickname, trust_score: p.trust_score } : null;
@@ -168,6 +169,17 @@ class Query {
 
   run() {
     log('from', { table: this.table, op: this.op, sel: this.sel, filters: this.filters, rows: this.rows, patch: this.patch });
+    // Stulpelių teisės (0008): masalo ir pastabų, taip pat „*“ iš catches skaityti negalima – kaip tikroje bazėje.
+    if (this.op === 'select' || this.returning) {
+      const { cols, embeds } = splitSelect(this.sel);
+      const catchCols = [
+        ...(this.table === 'catches' ? (cols.length ? cols : ['*']) : []),
+        ...embeds.filter((e) => e.startsWith('catches(')).flatMap((e) => e.slice(8, -1).split(',').map((x) => x.trim()))
+      ];
+      if (catchCols.some((c) => c === '*' || c === 'bait' || c === 'notes')) {
+        return { data: null, error: err('42501', 'permission denied for table catches') };
+      }
+    }
     const t = db[this.table];
     if (!t) return { data: null, error: err('42P01', `relation ${this.table} does not exist`) };
     let data;
@@ -326,6 +338,10 @@ export function createClient(url, key) {
         c.reject_reason = args.p_approve ? null : args.p_reason;
         save();
         return { data: null, error: null };
+      }
+      if (name === 'my_catch_notes') {
+        if (!uid()) return { data: null, error: err('42501', 'permission denied for function my_catch_notes') };
+        return { data: db.catches.filter((c) => c.user_id === uid() && (c.bait || c.notes)).map((c) => ({ id: c.id, bait: c.bait ?? null, notes: c.notes ?? null })), error: null };
       }
       if (name === 'get_invite') {
         const t = db.tournaments.find((x) => x.invite_code === String(args.p_code).trim().toLowerCase() && Date.now() < new Date(x.ends_at));

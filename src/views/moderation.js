@@ -3,7 +3,7 @@ import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { cm, dateTime } from '../lib/format.js';
 import { SKEW_MS } from '../lib/scoring.js';
-import { backButton, empty, thumb, hydratePhotos } from '../ui.js';
+import { backButton, empty, thumb, hydratePhotos, openPhoto } from '../ui.js';
 
 const REASONS = ['Nesimato matavimo', 'Ne ta rūšis', 'Netikslus ilgis', 'Pakartota nuotrauka'];
 
@@ -49,7 +49,7 @@ export async function moderationView(ctx) {
       <header class="top-bar">${backButton('#/profilis')}<span class="muted strong">Liko: ${list.length}</span><span></span></header>
       <h1 class="sr-only" tabindex="-1">Moderavimas</h1>
       ${tabs('queue')}
-      <div class="mod-photo">${thumb(c.photo_path, 358)}</div>
+      <button class="mod-photo" data-zoom aria-label="Rodyti nuotrauką per visą ekraną">${thumb(c.photo_path, 358)}</button>
       ${warnings.length ? html`<div class="stack-2">${warnings.map((w) => html`<p class="warn-box">${icon('alert', 18)}${w}</p>`)}</div>` : ''}
       <dl class="list">
         ${signals.map(([k, v]) => html`<div class="list-row"><dt class="muted">${k}</dt><dd class="strong right">${v}</dd></div>`)}
@@ -70,6 +70,10 @@ export async function moderationView(ctx) {
     </div>`,
     mount(root) {
       hydratePhotos(root, backend);
+      root.querySelector('[data-zoom]').addEventListener('click', () => {
+        const img = root.querySelector('.mod-photo img.loaded');
+        if (img) openPhoto(img.src, 'Laimikio nuotrauka');
+      });
       const act = async (approve, reason) => {
         root.querySelectorAll('button').forEach((b) => { b.disabled = true; });
         try {

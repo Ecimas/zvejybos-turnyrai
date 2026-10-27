@@ -73,3 +73,30 @@ export function loginPrompt(text = 'Prisijunk, kad galėtum dalyvauti.') {
     <a class="btn btn-primary" href="#/prisijungti">${icon('mail', 20)}Prisijungti</a>
   </div>`;
 }
+
+// Nuotrauka per visą ekraną. Uždaroma mygtuku, paspaudus fone, „Atgal“ ar Esc.
+// Didinti galima dviem pirštais (puslapio mastelis neužblokuotas).
+export function openPhoto(src, alt = '') {
+  document.querySelector('.lightbox')?.remove();
+  const box = document.createElement('div');
+  box.className = 'lightbox';
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-modal', 'true');
+  box.setAttribute('aria-label', 'Nuotrauka');
+  box.innerHTML = String(html`<img alt="${alt}"><button class="icon-btn lightbox-close" aria-label="Uždaryti nuotrauką">${icon('x', 24, 2.4)}</button>`);
+  box.querySelector('img').src = src;
+  const prevFocus = document.activeElement;
+  const close = () => {
+    box.remove();
+    document.removeEventListener('keydown', onKey);
+    window.removeEventListener('hashchange', close);
+    prevFocus?.focus?.({ preventScroll: true });
+  };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  box.addEventListener('click', (e) => { if (e.target === box || e.target.closest('.lightbox-close')) close(); });
+  document.addEventListener('keydown', onKey);
+  window.addEventListener('hashchange', close);
+  document.body.appendChild(box);
+  box.querySelector('.lightbox-close').focus();
+  return close;
+}

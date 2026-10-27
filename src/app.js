@@ -6,6 +6,7 @@ import { count } from './lib/format.js';
 import { tournamentsView, standingsView } from './views/tournaments.js';
 import { tournamentView, boardView, tvView } from './views/tournament.js';
 import { captureView } from './views/capture.js';
+import { catchView } from './views/catch.js';
 import { diaryView } from './views/diary.js';
 import { profileView, anglerView } from './views/profile.js';
 import { createView } from './views/create.js';
@@ -22,6 +23,7 @@ const ROUTES = [
   [/^\/t\/([\w-]+)\/redaguoti$/, createView],
   [/^\/kvietimas\/(\w+)$/, inviteView],
   [/^\/laimikis$/, captureView],
+  [/^\/l\/([\w-]+)$/, catchView],
   [/^\/dienorastis$/, diaryView],
   [/^\/lenteles$/, standingsView],
   [/^\/profilis$/, profileView],

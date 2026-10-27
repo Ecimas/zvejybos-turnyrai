@@ -220,6 +220,18 @@ export function createDemoBackend({ photos } = {}) {
     async userCatches(userId) {
       return db.catches.filter((c) => c.user_id === userId && (c.status === 'approved' || userId === ME));
     },
+    async catchDetail(id) {
+      const c = db.catches.find((x) => x.id === id);
+      if (!c || (c.status !== 'approved' && c.user_id !== ME && !db.profiles[ME]?.is_admin)) return null;
+      const p = db.profiles[c.user_id];
+      const own = c.user_id === ME;
+      return { ...c, bait: own ? c.bait ?? null : undefined, notes: own ? c.notes ?? null : undefined,
+        nickname: p?.nickname ?? '', region: p?.region ?? null,
+        location: own || db.profiles[ME]?.is_admin ? db.locations[c.id] || null : null };
+    },
+    async userEntries(userId) {
+      return db.entries.filter((e) => e.user_id === userId).map((e) => e.tournament_id);
+    },
     async photoUrl(path) {
       if (!path) return null;
       if (urls.has(path)) return urls.get(path);

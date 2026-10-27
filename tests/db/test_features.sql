@@ -102,7 +102,12 @@ insert into x values ('d3', pg_temp.c(600, now() - interval '3 hours'));
 do $$ begin
   -- masalas ir pastabos – galima; ilgis, būsena – ne
   update public.catches set bait = 'Vobleris', notes = 'Rytas, ramu' where id = (select id from x where k = 'd1');
-  assert (select bait from public.catches where id = (select id from x where k = 'd1')) = 'Vobleris', 'masalas neįsirašė';
+  assert (select bait from public.my_catch_notes() where id = (select id from x where k = 'd1')) = 'Vobleris', 'masalas neįsirašė';
+  -- masalas ir pastabos – privatūs: tiesiogiai skaityti negali niekas (net savininkas – tik per funkciją)
+  begin
+    perform bait from public.catches limit 1;
+    raise exception 'FAIL: bait stulpelis skaitomas tiesiogiai';
+  exception when insufficient_privilege then null; end;
   begin
     update public.catches set length_mm = 990 where id = (select id from x where k = 'd1');
     raise exception 'FAIL: pakeistas ilgis';

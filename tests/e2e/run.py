@@ -199,6 +199,13 @@ def extra_demo_tests(page, base, meteo_calls):
     # Ženkliukai, puslapiai, eksportas
     page.goto(base + "#/profilis")
     expect(page.locator(".badge-tile")).to_have_count(10)
+    grid = page.locator(".badges").bounding_box()
+    head = page.locator("h2", has_text="Ženkliukai").bounding_box()
+    first = page.locator(".badge-tile").first.bounding_box()
+    assert abs(grid["x"] - head["x"]) < 1 and abs(first["x"] - head["x"]) < 1, (grid, head, first)
+    vw = page.viewport_size["width"]
+    right_gap = vw - (grid["x"] + grid["width"])
+    assert abs(right_gap - head["x"]) < 2, f"ženkliukai necentruoti: kairėje {head['x']}, dešinėje {right_gap}"
     assert page.locator(".badge-tile.earned").count() >= 2
     page.get_by_role("link", name="Turnyrų taisyklės").click()
     expect(page.get_by_role("heading", name="Turnyrų taisyklės")).to_be_visible()
@@ -347,6 +354,25 @@ def main():
         expect(page.locator("#toast")).to_have_text("Išsaugota")
         expect(page.locator(".card", has_text="81 cm").first).to_contain_text("Masalas: Guminukas")
         step("dienoraštis: svoris, oras, masalo redagavimas")
+
+        # Laimikio peržiūra ir nuotrauka per visą ekraną
+        page.locator(".card", has_text="81 cm").first.locator("a.catch-link").click()
+        expect(page.get_by_role("heading", name="81 cm")).to_be_visible()
+        expect(page.locator("dl").first).to_contain_text("2,4 kg")
+        expect(page.locator("section", has_text="Tik tau")).to_contain_text("Guminukas")
+        expect(page.get_by_role("link", name=re.compile("žemėlapis"))).to_be_visible()
+        expect(page.locator(".list-row", has_text="Rudens lydekų taurė")).to_contain_text("Bus įskaitytas po patvirtinimo")
+        expect(page.locator(".photo-big img.loaded")).to_be_visible()
+        page.get_by_role("button", name="Rodyti nuotrauką per visą ekraną").click()
+        expect(page.locator(".lightbox img")).to_be_visible()
+        shot(page, "05b-nuotrauka")
+        page.keyboard.press("Escape")
+        expect(page.locator(".lightbox")).to_have_count(0)
+        page.get_by_role("button", name="Rodyti nuotrauką per visą ekraną").click()
+        page.get_by_role("button", name="Uždaryti nuotrauką").click()
+        expect(page.locator(".lightbox")).to_have_count(0)
+        shot(page, "05c-laimikis")
+        step("laimikio peržiūra ir nuotrauka per visą ekraną")
         shot(page, "05-dienorastis")
         step("išsaugota ir išsiųsta")
 
@@ -420,6 +446,13 @@ def main():
         expect(page.get_by_role("heading", name="Ąžuolas_K")).to_be_visible()
         expect(page.locator(".gallery figure").first).to_be_visible()
         step("kito žvejo profilis")
+
+        page.locator(".gallery a").first.click()
+        expect(page.locator(".card", has_text="Ąžuolas_K")).to_be_visible()
+        expect(page.get_by_text("Tik tau")).to_have_count(0)
+        expect(page.get_by_text("Laimikio vieta nerodoma")).to_be_visible()
+        expect(page.get_by_role("link", name=re.compile("žemėlapis"))).to_have_count(0)
+        step("kito žvejo laimikis: be masalo ir vietos")
 
         page.goto(base + "#/lenteles")
         expect(page.locator(".card", has_text="Rudens lydekų taurė")).to_contain_text("#10")

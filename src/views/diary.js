@@ -53,12 +53,14 @@ export async function diaryView(ctx) {
           const d = disputeOf.get(c.id);
           return html`<div class="card stack-2" data-catch="${c.id}">
           <div class="row tight">
+            <a class="catch-link" href="#/l/${c.id}" aria-label="Laimikis ${cm(c.length_mm)}, ${sp(c.species_id)} – daugiau">
             ${thumb(c.photo_path)}
             <div class="grow stack-1">
               <span class="num-md">${cm(c.length_mm)}${c.weight_g ? html` <span class="small muted">· ${kg(c.weight_g)}</span>` : ''}</span>
               <span class="small muted">${sp(c.species_id)} · ${dateTime(c.captured_at_device)}</span>
               ${c.status === 'rejected' && c.reject_reason ? html`<span class="small bad">${c.reject_reason}</span>` : ''}
             </div>
+            </a>
             <div class="stack-2 right">
               ${statusChip(c.status)}
               <button class="btn-text" data-edit-catch="${c.id}" aria-label="Redaguoti masalą ir pastabas">${icon('edit', 16)}</button>

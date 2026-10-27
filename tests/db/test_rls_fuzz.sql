@@ -38,8 +38,12 @@ with c as (insert into public.catches (client_id, species_id, length_mm, capture
 insert into fx select 'b_rejected', id from c;
 insert into public.catch_locations (catch_id, lat, lng, accuracy_m) select id, 54.9, 23.9, 10 from fx where k = 'b_pending';
 insert into storage.objects (bucket_id, name, owner) values ('catch-photos', 'b0000000-0000-4000-8000-00000000000b/p1.jpg', 'b0000000-0000-4000-8000-00000000000b');
+with c as (insert into public.catches (client_id, species_id, length_mm, captured_at_device, photo_path, photo_sha256, bait, notes)
+           values (gen_random_uuid(), 1, 800, now() - interval '30 minutes', 'b0000000-0000-4000-8000-00000000000b/p3.jpg', repeat('b3', 32), 'vobleris', 'slapta vieta prie tilto') returning id)
+insert into fx select 'b_approved', id from c;
 set request.jwt.claim.sub = 'c0000000-0000-4000-8000-00000000000c';
 select public.review_catch((select id from fx where k = 'b_rejected'), false, 'Netikslus ilgis');
+select public.review_catch((select id from fx where k = 'b_approved'), true, null);
 set request.jwt.claim.sub = 'b0000000-0000-4000-8000-00000000000b';
 with d as (insert into public.disputes (catch_id, message) select id, 'Nesutinku' from fx where k = 'b_rejected' returning id)
 insert into fx select 'b_dispute', id from d;
@@ -204,6 +208,15 @@ select who, q, 'zero' from (values
   ($$select count(*) from public.get_invite('')$$),
   ($$select count(*) from public.get_invite('%')$$)
 ) as q(q) cross join (values ('anon'), ('A')) as who(who);
+-- privatūs stulpeliai: kito žmogaus masalas ir pastabos (net patvirtinto laimikio)
+insert into pg_temp.attempts (who, sql, kind)
+select who, q, 'error' from (values
+  ($$select count(bait) from public.catches$$),
+  ($$select count(notes) from public.catches$$),
+  ($$select count(*) from public.catches c where c::text like '%vobleris%'$$)
+) as q(q) cross join (values ('anon'), ('A')) as who(who);
+insert into pg_temp.attempts (who, sql, kind) values
+  ('A', $$select count(*) from public.my_catch_notes() where id in (select id from fx where k like 'b_%')$$, 'zero');
 
 -- ---------------------------------------------------------------
 -- 5) Funkcijos be teisių

@@ -155,7 +155,7 @@ export async function tournamentView(ctx, [id]) {
         <h2 class="h2">Tavo laimikiai</h2>
         ${myCatches.map((c) => {
           const reason = fitReason(t, t.species_ids, true, c);
-          return html`<div class="card row tight">
+          return html`<a class="card card-link row tight" href="#/l/${c.id}">
             ${thumb(c.photo_path)}
             <div class="grow stack-1">
               <span class="num-md">${cm(c.length_mm)}</span>
@@ -163,7 +163,7 @@ export async function tournamentView(ctx, [id]) {
               ${reason !== 'ok' ? html`<span class="small warn">${REASON_LT[reason]}</span>` : ''}
             </div>
             ${statusChip(c.status)}
-          </div>`;
+          </a>`;
         })}
       </section>` : ''}
 

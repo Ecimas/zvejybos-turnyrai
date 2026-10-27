@@ -73,11 +73,12 @@ function records(s) {
   if (!s.records.length) return '';
   return html`<section class="stack">
     <h2 class="h2">Asmeniniai rekordai</h2>
-    <div class="list">${s.records.map((r) => html`<div class="list-row">
+    <div class="list">${s.records.map((r) => html`<a class="list-row" href="#/l/${r.id}">
       ${thumb(r.photo_path, 40)}
       <span class="grow stack-1"><span class="strong">${r.name}</span><span class="small muted">${shortDate(r.captured_at_device)}</span></span>
       <span class="num-md">${cm(r.length_mm)}</span>
-    </div>`)}</div>
+      ${icon('chevron', 18)}
+    </a>`)}</div>
   </section>`;
 }
 
@@ -268,10 +269,10 @@ export async function anglerView(ctx, [id]) {
       ${records(s)}
       ${gallery.length ? html`<section class="stack">
         <h2 class="h2">Laimikiai</h2>
-        <div class="gallery">${gallery.map((c) => html`<figure>
+        <div class="gallery">${gallery.map((c) => html`<a href="#/l/${c.id}"><figure>
           ${thumb(c.photo_path, 104)}
           <figcaption><span class="strong">${cm(c.length_mm)}</span> <span class="muted small">${state.species.find((x) => x.id === c.species_id)?.name_lt ?? ''}</span></figcaption>
-        </figure>`)}</div>
+        </figure></a>`)}</div>
       </section>` : empty('Patvirtintų laimikių dar nėra')}
       <p class="center small muted">${icon('lock', 14)} Laimikių vietos nerodomos</p>
     </div>`,

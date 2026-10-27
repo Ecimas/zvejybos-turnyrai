@@ -173,7 +173,8 @@ def main():
                 routes = ["#/", "#/t/t-taure", "#/t/t-taure/lentele", "#/t/t-taure/tv", "#/t/t-plesrunai", "#/t/t-slaptas",
                           "#/t/t-eseriai", "#/dienorastis", "#/lenteles", "#/profilis", f"#/zvejys/{ids['other']}",
                           "#/naujas", "#/moderavimas", "#/moderavimas/gincai", "#/moderavimas/komanda",
-                          "#/privatumas", "#/taisykles", "#/kvietimas/zzzzzz", "#/laimikis", "#/t/nera"]
+                          "#/privatumas", "#/taisykles", "#/kvietimas/zzzzzz", "#/laimikis", "#/t/nera",
+                          "#/l/demo-c1", "#/l/demo-c33", "#/l/nera"]
                 for r in routes:
                     page.goto("about:blank")
                     page.goto(base + r)

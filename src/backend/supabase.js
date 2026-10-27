@@ -6,6 +6,9 @@ import { PermanentError, RetryLaterError } from '../lib/outbox.js';
 const BUCKET = 'catch-photos';
 // Versija prisegta: CDN negali netikėtai pakeisti kodo, kuris tvarko prisijungimą.
 export const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
+// Viešai skaitomi laimikio stulpeliai. Masalas ir pastabos – tik savininkui per my_catch_notes() (0008).
+export const CATCH_COLS = 'id, user_id, client_id, species_id, length_mm, weight_g, weather, captured_at_device, received_at, ' +
+  'photo_path, photo_sha256, status, reject_reason, reviewed_by, reviewed_at, created_at';
 const PERMANENT_CODES = new Set(['42501', '23514', '23503', '22P02', 'P0001', '42883']);
 
 // Funkcijos dar nėra serveryje (migracija neįdiegta).
@@ -49,6 +52,14 @@ export async function createSupabaseBackend(url, anonKey) {
     participants: t.entries?.[0]?.count ?? 0,
     joined: mine.has(t.id)
   });
+  // Savo masalas ir pastabos. Jei funkcijos dar nėra serveryje – tiesiog be jų.
+  const myNotes = async () => {
+    if (!user) return new Map();
+    const { data, error } = await sb.rpc('my_catch_notes');
+    if (error) return new Map();
+    return new Map((data || []).map((r) => [r.id, r]));
+  };
+  const withNotes = (rows, notes) => rows.map((c) => ({ ...c, bait: notes.get(c.id)?.bait ?? null, notes: notes.get(c.id)?.notes ?? null }));
   const myEntries = async () => {
     if (!user) return new Set();
     const rows = check(await sb.from('entries').select('tournament_id').eq('user_id', user.id));
@@ -172,10 +183,30 @@ export async function createSupabaseBackend(url, anonKey) {
 
     async myCatches() {
       if (!user) return [];
-      return check(await sb.from('catches').select('*').eq('user_id', user.id).order('captured_at_device', { ascending: false }));
+      const [rows, notes] = await Promise.all([
+        sb.from('catches').select(CATCH_COLS).eq('user_id', user.id).order('captured_at_device', { ascending: false }),
+        myNotes()
+      ]);
+      return withNotes(check(rows), notes);
     },
     async userCatches(userId) {
-      return check(await sb.from('catches').select('*').eq('user_id', userId).order('captured_at_device', { ascending: false }));
+      return check(await sb.from('catches').select(CATCH_COLS).eq('user_id', userId).order('captured_at_device', { ascending: false }));
+    },
+    // Vienas laimikis peržiūrai. Vietą RLS grąžina tik savininkui ir moderatoriui.
+    async catchDetail(id) {
+      const row = check(await sb.from('catches')
+        .select(`${CATCH_COLS}, profiles!catches_user_id_fkey(nickname, region), catch_locations(lat, lng, accuracy_m)`)
+        .eq('id', id).maybeSingle());
+      if (!row) return null;
+      const loc = Array.isArray(row.catch_locations) ? row.catch_locations[0] : row.catch_locations;
+      const out = { ...row, nickname: row.profiles?.nickname ?? '', region: row.profiles?.region ?? null,
+        location: loc ? { lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy_m } : null };
+      if (user && row.user_id === user.id) return withNotes([out], await myNotes())[0];
+      return out;
+    },
+    async userEntries(userId) {
+      const rows = check(await sb.from('entries').select('tournament_id').eq('user_id', userId));
+      return rows.map((r) => r.tournament_id);
     },
     async photoUrl(path) {
       if (!path) return null;
@@ -214,7 +245,7 @@ export async function createSupabaseBackend(url, anonKey) {
         bait: item.bait || null,
         notes: item.notes || null,
         weather: item.weather ?? null
-      }).select().single();
+      }).select(CATCH_COLS).single();
       if (ins.error) {
         const msg = `${ins.error.message} ${ins.error.details || ''}`;
         if (/catch_limit/.test(msg)) {
@@ -224,7 +255,7 @@ export async function createSupabaseBackend(url, anonKey) {
           throw new PermanentError('Ši nuotrauka jau buvo įkelta', 'duplicate_photo');
         }
         if (ins.error.code === '23505') {
-          row = check(await sb.from('catches').select('*').eq('user_id', me).eq('client_id', item.clientId).single());
+          row = check(await sb.from('catches').select(CATCH_COLS).eq('user_id', me).eq('client_id', item.clientId).single());
         } else if (isPermanent(ins.error)) {
           throw new PermanentError('Laimikis atmestas: ' + ins.error.message, ins.error.code);
         } else {
@@ -266,7 +297,7 @@ export async function createSupabaseBackend(url, anonKey) {
     },
     async openDisputes() {
       const rows = check(await sb.from('disputes')
-        .select('*, catches(*), profiles!disputes_user_id_fkey(nickname, trust_score)')
+        .select(`*, catches(${CATCH_COLS}), profiles!disputes_user_id_fkey(nickname, trust_score)`)
         .eq('status', 'open')
         .order('created_at'));
       return rows.map((d) => ({ ...d, catch: d.catches, nickname: d.profiles?.nickname ?? '', trust_score: d.profiles?.trust_score ?? 50 }));
@@ -289,18 +320,19 @@ export async function createSupabaseBackend(url, anonKey) {
 
     async exportData() {
       const me = uid();
-      const [profile, catches, entries, organized, disputes] = await Promise.all([
+      const [profile, catches, entries, organized, disputes, notes] = await Promise.all([
         sb.from('profiles').select('*').eq('id', me).single(),
-        sb.from('catches').select('*, catch_locations(*)').eq('user_id', me).order('captured_at_device'),
+        sb.from('catches').select(`${CATCH_COLS}, catch_locations(*)`).eq('user_id', me).order('captured_at_device'),
         sb.from('entries').select('*').eq('user_id', me),
         sb.from('tournaments').select('*').eq('organizer_id', me),
-        sb.from('disputes').select('*').eq('user_id', me)
+        sb.from('disputes').select('*').eq('user_id', me),
+        myNotes()
       ]);
       return {
         exported_at: new Date().toISOString(),
         email: user.email ?? null,
         profile: check(profile),
-        catches: check(catches),
+        catches: withNotes(check(catches), notes),
         entries: check(entries),
         tournaments_organized: check(organized),
         disputes: check(disputes)
@@ -336,7 +368,7 @@ export async function createSupabaseBackend(url, anonKey) {
 
     async pending() {
       const rows = check(await sb.from('catches')
-        .select('*, profiles!catches_user_id_fkey(nickname, trust_score), catch_locations(lat, lng, accuracy_m)')
+        .select(`${CATCH_COLS}, profiles!catches_user_id_fkey(nickname, trust_score), catch_locations(lat, lng, accuracy_m)`)
         .eq('status', 'pending')
         .order('received_at'));
       return rows.map((r) => {
