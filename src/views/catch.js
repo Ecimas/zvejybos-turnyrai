@@ -31,9 +31,10 @@ export async function catchView(ctx, [id]) {
     canReport ? backend.myReport(c.id).catch(() => null) : null
   ]);
   const at = new Date(c.captured_at_device).getTime();
+  const joinedAt = new Map(entered.map((e) => [e.tournament_id, e.joined_at]));
   const relevant = tournaments
-    .filter((t) => entered.includes(t.id) && at >= new Date(t.starts_at).getTime() && at < new Date(t.ends_at).getTime())
-    .map((t) => ({ t, reason: fitReason(t, t.species_ids, true, c) }));
+    .filter((t) => joinedAt.has(t.id) && at >= new Date(t.starts_at).getTime() && at < new Date(t.ends_at).getTime())
+    .map((t) => ({ t, reason: fitReason(t, t.species_ids, joinedAt.get(t.id) || true, c) }));
 
   const rows = [
     ['Rūšis', sp],

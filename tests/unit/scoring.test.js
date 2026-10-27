@@ -83,3 +83,20 @@ test('priežastys', () => {
   assert.equal(fitReason(t, sp, true, { ...c(A, PIKE, 800, 71 * H), received_at: iso(97 * H) }), 'late');
   assert.equal(fitReason(t, sp, true, c(A, PIKE, 800, -1 * H)), 'ok');
 });
+
+test('vėlai prisijungusiam įskaitomi tik po prisijungimo pagauti laimikiai', () => {
+  const t = { format: 'biggest', top_n: 3, min_length_mm: 0, starts_at: '2026-10-27T10:00:00Z', ends_at: '2026-10-27T20:00:00Z' };
+  const c = (user_id, length_mm, at) => ({ user_id, length_mm, status: 'approved', species_id: 1, captured_at_device: at, received_at: at });
+  assert.equal(fitReason(t, [], '2026-10-27T12:00:00Z', c('a', 900, '2026-10-27T11:00:00Z')), 'before_join');
+  assert.equal(fitReason(t, [], '2026-10-27T12:00:00Z', c('a', 900, '2026-10-27T12:00:00Z')), 'ok', 'prisijungimo momentu – jau įskaitoma');
+  assert.equal(fitReason(t, [], true, c('a', 900, '2026-10-27T11:00:00Z')), 'ok', 'be joined_at – kaip anksčiau');
+  assert.equal(fitReason(t, [], '2026-10-27T09:00:00Z', c('a', 900, '2026-10-27T09:30:00Z')), 'before', 'prieš startą lieka „before“');
+  const rows = computeLeaderboard({
+    tournament: t,
+    entries: [{ user_id: 'late', joined_at: '2026-10-27T12:00:00Z' }, { user_id: 'early', joined_at: '2026-10-26T12:00:00Z' }],
+    catches: [c('late', 900, '2026-10-27T11:00:00Z'), c('late', 500, '2026-10-27T13:00:00Z'), c('early', 700, '2026-10-27T11:00:00Z')]
+  });
+  assert.deepEqual(rows.map((r) => [r.user_id, r.score_mm, r.rank]), [['early', 700, 1], ['late', 500, 2]]);
+  assert.deepEqual(computeLeaderboard({ tournament: t, entries: ['late'], catches: [c('late', 900, '2026-10-27T11:00:00Z')] })
+    .map((r) => r.score_mm), [900], 'senas formatas (tik ID) veikia');
+});

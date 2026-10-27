@@ -1,5 +1,5 @@
 // Turnyro lentelės skaičiavimas.
-// Ta pati logika kaip SQL funkcijoje public.leaderboard (supabase/migrations/0001_init.sql).
+// Ta pati logika kaip SQL funkcijoje public.leaderboard (supabase/migrations/0012_count_after_join.sql).
 // Naudojama demonstraciniame režime ir laimikio peržiūrai prieš išsaugant.
 
 export const SKEW_MS = 10 * 60 * 1000;      // telefono laikrodis gali skubėti ne daugiau
@@ -8,6 +8,8 @@ export const GRACE_MS = 24 * 60 * 60 * 1000; // offline laimikiai priimami 24 va
 const ts = (d) => new Date(d).getTime();
 
 // Kodėl laimikis (ne)tinka turnyrui – nepriklausomai nuo moderavimo.
+// entered: false – nedalyvauja; true – dalyvauja; eilutė – dalyvauja nuo šio laiko (joined_at):
+// vėlai prisijungusiam įskaitomi tik po prisijungimo pagauti laimikiai.
 // Grąžina 'ok' arba priežasties kodą.
 export function fitReason(t, speciesIds, entered, c, now = Date.now()) {
   if (!entered) return 'not_entered';
@@ -15,6 +17,7 @@ export function fitReason(t, speciesIds, entered, c, now = Date.now()) {
   if (c.length_mm < t.min_length_mm) return 'too_short';
   const cap = ts(c.captured_at_device);
   if (cap < ts(t.starts_at)) return 'before';
+  if (typeof entered === 'string' && cap < ts(entered)) return 'before_join';
   if (cap >= ts(t.ends_at)) return 'after';
   const rec = c.received_at ? ts(c.received_at) : now;
   if (cap > rec + SKEW_MS) return 'clock';
@@ -28,6 +31,7 @@ export const REASON_LT = {
   species: 'Neįskaitoma · kita rūšis',
   too_short: 'Neįskaitoma · per trumpa',
   before: 'Neįskaitoma · prieš startą',
+  before_join: 'Neįskaitoma · pagauta prieš prisiregistruojant',
   after: 'Neįskaitoma · po pabaigos',
   clock: 'Neįskaitoma · netikslus telefono laikas',
   late: 'Neįskaitoma · išsiųsta per vėlai'
@@ -37,12 +41,12 @@ export function isCounted(t, speciesIds, entered, c) {
   return c.status === 'approved' && fitReason(t, speciesIds, entered, c) === 'ok';
 }
 
-// entries: Set arba masyvas vartotojų ID; profiles: { [id]: { nickname, region } }
+// entries: vartotojų ID arba { user_id, joined_at } masyvas; profiles: { [id]: { nickname, region } }
 export function computeLeaderboard({ tournament: t, speciesIds = [], entries, catches, profiles = {} }) {
-  const entered = new Set(entries);
+  const entered = new Map([...entries].map((e) => (typeof e === 'string' ? [e, true] : [e.user_id, e.joined_at || true])));
   const perUser = new Map();
   for (const c of catches) {
-    if (!isCounted(t, speciesIds, entered.has(c.user_id), c)) continue;
+    if (!isCounted(t, speciesIds, entered.get(c.user_id) ?? false, c)) continue;
     if (!perUser.has(c.user_id)) perUser.set(c.user_id, []);
     perUser.get(c.user_id).push(c);
   }

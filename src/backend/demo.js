@@ -54,7 +54,11 @@ function seed() {
   ].map(([tournament_id, species_id]) => ({ tournament_id, species_id }));
 
   const entries = [];
-  const enter = (t, users) => users.forEach((u) => entries.push({ tournament_id: t, user_id: u, joined_at: iso(-5 * D) }));
+  // Demo dalyviai užsiregistravo dieną prieš startą – visi jų laimikiai įskaitomi.
+  const enter = (t, users) => {
+    const joined = new Date(new Date(tournaments.find((x) => x.id === t).starts_at).getTime() - D).toISOString();
+    users.forEach((u) => entries.push({ tournament_id: t, user_id: u, joined_at: joined }));
+  };
   enter('t-taure', ids);
   enter('t-sezonas', ids.slice(0, 7));
   enter('t-eseriai', ids.slice(2, 6));
@@ -129,7 +133,8 @@ export function createDemoBackend({ photos } = {}) {
     last_announcement_at: db.announcements.filter((a) => a.tournament_id === t.id)
       .reduce((m, a) => (!m || a.created_at > m ? a.created_at : m), null),
     participants: db.entries.filter((e) => e.tournament_id === t.id).length,
-    joined: db.entries.some((e) => e.tournament_id === t.id && e.user_id === ME)
+    joined: db.entries.some((e) => e.tournament_id === t.id && e.user_id === ME),
+    joined_at: db.entries.find((e) => e.tournament_id === t.id && e.user_id === ME)?.joined_at ?? null
   });
 
   return {
@@ -234,7 +239,7 @@ export function createDemoBackend({ photos } = {}) {
       const rows = computeLeaderboard({
         tournament: t,
         speciesIds: db.tournament_species.filter((x) => x.tournament_id === id).map((x) => x.species_id),
-        entries: db.entries.filter((e) => e.tournament_id === id).map((e) => e.user_id),
+        entries: db.entries.filter((e) => e.tournament_id === id),
         catches: db.catches,
         profiles: db.profiles
       });
@@ -261,7 +266,7 @@ export function createDemoBackend({ photos } = {}) {
         location: own || db.profiles[ME]?.is_admin ? db.locations[c.id] || null : null };
     },
     async userEntries(userId) {
-      return db.entries.filter((e) => e.user_id === userId).map((e) => e.tournament_id);
+      return db.entries.filter((e) => e.user_id === userId).map(({ tournament_id, joined_at }) => ({ tournament_id, joined_at }));
     },
     async photoUrl(path) {
       if (!path) return null;

@@ -211,7 +211,7 @@ export async function tournamentView(ctx, [id]) {
       ${t.joined && myCatches.length ? html`<section class="stack">
         <h2 class="h2">Tavo laimikiai</h2>
         ${myCatches.map((c) => {
-          const reason = fitReason(t, t.species_ids, true, c);
+          const reason = fitReason(t, t.species_ids, t.joined_at || true, c);
           return html`<a class="card card-link row tight" href="#/l/${c.id}">
             ${thumb(c.photo_path)}
             <div class="grow stack-1">

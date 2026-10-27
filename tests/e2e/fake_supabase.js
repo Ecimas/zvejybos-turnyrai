@@ -509,7 +509,7 @@ export function createClient(url, key) {
         const rows = computeLeaderboard({
           tournament: t,
           speciesIds: db.tournament_species.filter((x) => x.tournament_id === t.id).map((x) => x.species_id),
-          entries: db.entries.filter((e) => e.tournament_id === t.id).map((e) => e.user_id),
+          entries: db.entries.filter((e) => e.tournament_id === t.id),
           catches: db.catches,
           profiles
         });

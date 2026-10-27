@@ -89,6 +89,8 @@ end $$;
 reset role;
 update public.tournaments set starts_at = now() - interval '1 day'
  where id in ('bbbbbbbb-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000002');
+update public.entries set joined_at = now() - interval '2 days'
+ where tournament_id in ('bbbbbbbb-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000002');
 
 -- ---------------------------------------------------------------
 \echo 'F4. Laimikiai, patikimumas ir laukai'

@@ -109,3 +109,41 @@ do $$ begin
 end $$;
 
 \echo '   ok'
+\echo 'R2. Vėlai prisijungusiam – tik po prisijungimo pagauti laimikiai'
+
+update public.profiles set is_admin = true where id = 'b1000000-0000-4000-8000-0000000000b1';
+-- b2 prisijungė prie „Trys val. po“ (reg0000004) šiame teste, t. y. ~2 val. po starto.
+set request.jwt.claim.sub = 'b2000000-0000-4000-8000-0000000000b2';
+with c as (insert into public.catches (client_id, species_id, length_mm, captured_at_device, photo_path, photo_sha256)
+           values (gen_random_uuid(), 1, 900, now() - interval '1 hour', 'b2000000-0000-4000-8000-0000000000b2/pries.jpg', repeat('d1', 32)) returning id)
+insert into rx select 'c_before', id from c;
+with c as (insert into public.catches (client_id, species_id, length_mm, captured_at_device, photo_path, photo_sha256)
+           values (gen_random_uuid(), 1, 500, now(), 'b2000000-0000-4000-8000-0000000000b2/po.jpg', repeat('d2', 32)) returning id)
+insert into rx select 'c_after', id from c;
+
+-- Organizatorius b1 prisiregistravo iki starto – jo laimikis prieš valandą įskaitomas.
+insert into public.entries (tournament_id, user_id, joined_at)
+  select id, 'b1000000-0000-4000-8000-0000000000b1', now() - interval '1 day' from rx where k = 'reg0000004';
+set request.jwt.claim.sub = 'b1000000-0000-4000-8000-0000000000b1';
+with c as (insert into public.catches (client_id, species_id, length_mm, captured_at_device, photo_path, photo_sha256)
+           values (gen_random_uuid(), 1, 700, now() - interval '1 hour', 'b1000000-0000-4000-8000-0000000000b1/anks.jpg', repeat('d3', 32)) returning id)
+insert into rx select 'c_org', id from c;
+select public.review_catch(id, true, null) from rx where k in ('c_before', 'c_after', 'c_org');
+reset request.jwt.claim.sub;
+
+set role authenticated;
+set request.jwt.claim.sub = 'b2000000-0000-4000-8000-0000000000b2';
+do $$
+declare v_b2 bigint; v_b1 bigint; v_rank_b2 bigint;
+begin
+  select score_mm, rank into v_b2, v_rank_b2 from public.leaderboard((select id from rx where k = 'reg0000004'))
+   where user_id = 'b2000000-0000-4000-8000-0000000000b2';
+  select score_mm into v_b1 from public.leaderboard((select id from rx where k = 'reg0000004'))
+   where user_id = 'b1000000-0000-4000-8000-0000000000b1';
+  assert v_b2 = 500, format('vėlyvam dalyviui įskaityta %s, turi būti tik 500 (po prisijungimo)', v_b2);
+  assert v_b1 = 700, format('laiku užsiregistravusiam įskaityta %s, turi būti 700', v_b1);
+  assert v_rank_b2 = 2, 'vietos neteisingos';
+end $$;
+reset role;
+
+\echo '   ok'

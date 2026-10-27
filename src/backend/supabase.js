@@ -54,7 +54,8 @@ export async function createSupabaseBackend(url, anonKey) {
     sponsors: (t.tournament_sponsors || []).slice().sort((a, b) => a.sort - b.sort),
     last_announcement_at: (t.tournament_announcements || []).reduce((m, a) => (!m || a.created_at > m ? a.created_at : m), null),
     participants: t.entries?.[0]?.count ?? 0,
-    joined: mine.has(t.id)
+    joined: mine.has(t.id),
+    joined_at: mine.get(t.id) ?? null
   });
   // Savo masalas ir pastabos. Jei funkcijos dar nėra serveryje – tiesiog be jų.
   const myNotes = async () => {
@@ -64,10 +65,11 @@ export async function createSupabaseBackend(url, anonKey) {
     return new Map((data || []).map((r) => [r.id, r]));
   };
   const withNotes = (rows, notes) => rows.map((c) => ({ ...c, bait: notes.get(c.id)?.bait ?? null, notes: notes.get(c.id)?.notes ?? null }));
+  // Mano turnyrai: tournament_id → joined_at.
   const myEntries = async () => {
-    if (!user) return new Set();
-    const rows = check(await sb.from('entries').select('tournament_id').eq('user_id', user.id));
-    return new Set(rows.map((r) => r.tournament_id));
+    if (!user) return new Map();
+    const rows = check(await sb.from('entries').select('tournament_id, joined_at').eq('user_id', user.id));
+    return new Map(rows.map((r) => [r.tournament_id, r.joined_at]));
   };
 
   return {
@@ -237,8 +239,7 @@ export async function createSupabaseBackend(url, anonKey) {
       return out;
     },
     async userEntries(userId) {
-      const rows = check(await sb.from('entries').select('tournament_id').eq('user_id', userId));
-      return rows.map((r) => r.tournament_id);
+      return check(await sb.from('entries').select('tournament_id, joined_at').eq('user_id', userId));
     },
     async photoUrl(path) {
       if (!path) return null;

@@ -54,6 +54,9 @@ delete from public.tournaments where id = 'aaaaaaaa-0000-0000-0000-000000000002'
 -- Turnyras „prasideda“: perkeliam pradžią į praeitį.
 update public.tournaments set starts_at = now() - interval '1 day'
  where id = 'aaaaaaaa-0000-0000-0000-000000000001';
+-- Registruotasi iki starto (0012: įskaitoma tik po prisijungimo pagauta).
+update public.entries set joined_at = now() - interval '2 days'
+ where tournament_id = 'aaaaaaaa-0000-0000-0000-000000000001';
 
 -- ---------------------------------------------------------------
 \echo '3. Laimikiai'

@@ -279,8 +279,13 @@ def more_real_tests(page, base):
     go(page, base + f"#/t/{T2}/tv")
     expect(page.locator(".tv-empty")).to_contain_text("paslėpta")
     expect(page.locator(".tv-row")).to_have_count(0)
+    # Prisijungta po starto: anksčiau pagauti laimikiai neįskaitomi – lentelėje manęs dar nėra.
     lb = page.evaluate("(id) => window.__zt.backend.leaderboard(id)", T2)
+    assert lb == [], f"vėlai prisijungusiam įskaityti anksčiau pagauti laimikiai: {lb}"
+    # Tarkim, užsiregistravau iki starto – tada matau tik savo eilutę be vietos.
     me2 = fake(page, "return db.profiles.find(p => p.nickname === 'Ecimas_LT').id;")
+    fake(page, f"db.entries.find(e => e.tournament_id === '{T2}' && e.user_id === '{me2}').joined_at = new Date(Date.now() - 3 * 864e5).toISOString(); return 1;")
+    lb = page.evaluate("(id) => window.__zt.backend.leaderboard(id)", T2)
     assert lb and all(r["user_id"] == me2 and r["rank"] is None for r in lb), f"paslėptoje lentelėje tik sava eilutė be vietos: {lb}"
     go(page, base + "#/kvietimas/ffffffffff")
     expect(page.get_by_text("Kvietimas negalioja")).to_be_visible()
