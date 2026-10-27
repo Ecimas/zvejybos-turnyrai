@@ -93,3 +93,22 @@ test('blokavimas: galiojimas ir tekstai', async () => {
   assert.match(banUntilText({ until: '2026-10-28T12:00:00Z' }), /^iki /);
   assert.deepEqual(BAN_DAYS.map(([d]) => d), [1, 7, 30, null]);
 });
+
+test('rolės: teisės, senas is_admin, savininko neskiriama', async () => {
+  const { permsOf, rolesOf, isStaff, can, ASSIGNABLE, roleLabel } = await import('../../src/lib/roles.js');
+  const sorted = (s) => [...s].sort();
+  assert.deepEqual(sorted(permsOf({ roles: ['owner'] })), ['ban', 'disputes', 'review', 'roles']);
+  assert.deepEqual(sorted(permsOf({ roles: ['admin'] })), ['ban', 'disputes', 'review']);
+  assert.deepEqual(sorted(permsOf({ roles: ['moderator'] })), ['review']);
+  assert.deepEqual(sorted(permsOf({ roles: ['judge'] })), ['disputes']);
+  assert.deepEqual(sorted(permsOf({ roles: ['guard'] })), ['ban']);
+  assert.deepEqual(sorted(permsOf({ roles: ['judge', 'guard'] })), ['ban', 'disputes'], 'kelios rolės sudedamos');
+  assert.deepEqual(sorted(permsOf({ roles: [], is_admin: true })), [], 'roles svarbiau už is_admin');
+  assert.deepEqual(rolesOf({ is_admin: true }), ['owner'], 'senas profilis be roles');
+  assert.equal(isStaff({ roles: [] }), false);
+  assert.equal(isStaff(null), false);
+  assert.equal(can({ profile: { roles: ['moderator'] } }, 'ban'), false);
+  assert.equal(can({ profile: null }, 'review'), false);
+  assert.ok(!ASSIGNABLE.some((r) => r.key === 'owner'), 'savininko programėlėje skirti negalima');
+  assert.equal(roleLabel('judge'), 'Ginčų teisėjas');
+});

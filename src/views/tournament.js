@@ -5,6 +5,7 @@ import { fitReason, REASON_LT } from '../lib/scoring.js';
 import { phaseBadge, statusChip, backButton, thumb, hydratePhotos, empty, avatar, loginPrompt, notFound } from '../ui.js';
 import { eur, placeAmounts, payouts } from '../lib/prizes.js';
 import { lastSeen, markSeen } from '../lib/seen.js';
+import { isStaff } from '../lib/roles.js';
 
 // Organizatoriaus pranešimai dalyviams: rašo organizatorius, mato visi, kas mato turnyrą.
 function announcementsBlock(t, list, organizer, seenBefore) {
@@ -32,7 +33,7 @@ export const inviteUrl = (t) => `${location.origin}${location.pathname}#/kvietim
 // Ar šiam žiūrovui lentelė dabar paslėpta (serveris tokiu atveju grąžina tik jo eilutę be vietos).
 export function boardHidden(t, state) {
   if (!t.leaderboard_hidden || phase(t) === 'done') return false;
-  return t.organizer_id !== state.user?.id && !state.profile?.is_admin;
+  return t.organizer_id !== state.user?.id && !isStaff(state.profile);
 }
 
 async function share(ctx, title, url) {

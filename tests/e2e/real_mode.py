@@ -141,17 +141,43 @@ def more_real_tests(page, base):
     assert fake(page, "return db.profiles.find(p => p.id === arg).trust_score;", me) == min(100, trust0 + 5)
     step("ginčas: pateikimas, dublio apsauga, įskaitymas su patikimumo grąžinimu")
 
-    # Moderatorių komanda
+    # Komanda ir rolės (per serverio funkciją set_role)
     go(page, base + "#/moderavimas/komanda")
-    page.get_by_label("Pridėti moderatorių pagal slapyvardį").fill("kitas_zvejys")
-    page.get_by_role("button", name="Paskirti moderatoriumi").click()
-    expect(page.locator("#toast")).to_have_text("Moderatorius paskirtas")
-    assert fake(page, "return db.profiles.find(p => p.nickname === 'Kitas_Zvejys').is_admin;") is True
-    page.locator(".list-row", has_text="Kitas_Zvejys").get_by_role("button", name="Pašalinti").click()
-    expect(page.locator("#toast")).to_have_text("Moderatorius pašalintas")
-    page.locator(".list-row", has_text="(tu)").get_by_role("button", name="Pašalinti").click()
-    expect(page.locator("#toast")).to_have_text("Negalima pašalinti paskutinio moderatoriaus")
-    step("moderatorių skyrimas per serverio funkciją")
+    expect(page.locator(".team-card", has_text="(tu)")).to_contain_text("Savininkas")
+    page.get_by_label("Žvejo slapyvardis").fill("kitas_zvejys")
+    page.get_by_label("Rolė").select_option(label="Ginčų teisėjas")
+    page.get_by_role("button", name="Suteikti rolę").click()
+    expect(page.locator("#toast")).to_have_text("kitas_zvejys: suteikta rolė „Ginčų teisėjas“")
+    assert fake(page, "return db.profiles.find(p => p.nickname === 'Kitas_Zvejys').roles;") == ["judge"]
+    page.locator(".team-card", has_text="Kitas_Zvejys").get_by_label("Ginčų teisėjas").click()  # paskutinė rolė – kortelė dingsta
+    expect(page.locator("#toast")).to_have_text("Kitas_Zvejys: atimta rolė „Ginčų teisėjas“")
+    assert fake(page, "return db.profiles.find(p => p.nickname === 'Kitas_Zvejys').is_admin;") is False
+    res = page.evaluate("() => window.__zt.backend.setRole('Ecimas_LT', 'admin', false).then(() => 'ok', e => e.message)")
+    assert res == "Savininko rolių keisti negalima", res
+    step("komanda: rolės suteikiamos ir atimamos serverio funkcija, savininko apsauga")
+
+    # Ribota rolė: Bendruomenės prižiūrėtojas mato tik blokavimą
+    fake(page, "const p = db.profiles.find(p => p.id === arg); p.roles = ['guard']; p.is_admin = true; window.__fakeDb.save(); return 1;", me)
+    page.evaluate("async () => { window.__zt.state.profile = await window.__zt.backend.myProfile(); }")
+    go(page, base + "#/profilis")
+    expect(page.locator("[data-roles]")).to_contain_text("Bendruomenės prižiūrėtojas")
+    expect(page.get_by_role("link", name="Užblokuoti žvejai")).to_be_visible()
+    expect(page.get_by_role("link", name=re.compile("^Moderavimas"))).to_have_count(0)
+    expect(page.get_by_role("link", name=re.compile("^Ginčai"))).to_have_count(0)
+    expect(page.get_by_role("link", name="Komanda ir rolės")).to_have_count(0)
+    go(page, base + "#/moderavimas")
+    expect(page.get_by_role("heading", name="Užblokuoti žvejai")).to_be_attached()
+    assert page.evaluate("() => location.hash") == "#/moderavimas/blokuoti"
+    expect(page.locator("nav.seg")).to_have_count(0)  # tik viena skiltis – be perjungiklio
+    go(page, base + "#/moderavimas/gincai")
+    expect(page.get_by_text("Šiai skilčiai neturi teisių")).to_be_visible()
+    res = page.evaluate("() => window.__zt.backend.setRole('Kitas_Zvejys', 'moderator', true).then(() => 'ok', e => e.message)")
+    assert res == "Roles skirti gali tik savininkas", res
+    pending = fake(page, "return db.catches.filter(c => c.status === 'pending').length;")
+    res = page.evaluate("() => window.__zt.backend.pending().then(r => r.length, e => 'err')")
+    fake(page, "const p = db.profiles.find(p => p.id === arg); p.roles = ['owner']; p.is_admin = true; window.__fakeDb.save(); return 1;", me)
+    page.evaluate("async () => { window.__zt.state.profile = await window.__zt.backend.myProfile(); }")
+    step("ribota rolė: matomos tik jai priklausančios skiltys, kitos uždraustos")
 
     # Blokavimas: moderatorius blokuoja kitą žvejį jo profilyje
     other = fake(page, "return db.profiles.find(p => p.nickname === 'Kitas_Zvejys').id;")
@@ -314,7 +340,7 @@ def more_real_tests(page, base):
     step("redagavimas ir ištrynimas: savo iki starto – taip, svetimo prasidėjusio – ne")
 
     # Privatus turnyras: nesimato sąraše, kvietimas, paslėpta lentelė
-    fake(page, "db.profiles.find(p => p.id === arg).is_admin = false; window.__fakeDb.save();", me)
+    fake(page, "const p = db.profiles.find(p => p.id === arg); p.is_admin = false; p.roles = []; window.__fakeDb.save();", me)
     page.evaluate("async () => { window.__zt.state.profile = await window.__zt.backend.myProfile(); }")
     go(page, base + "#/")
     page.get_by_role("button", name=re.compile("^Vyksta")).click()
@@ -551,7 +577,7 @@ def main():
 
         # 7. Moderavimas (padarom vartotoją moderatoriumi, kaip SQL komanda README)
         page.evaluate("""async () => {
-            window.__fakeDb.set(db => { db.profiles.find(p => p.nickname === 'Ecimas_LT').is_admin = true; });
+            window.__fakeDb.set(db => { const me = db.profiles.find(p => p.nickname === 'Ecimas_LT'); me.is_admin = true; me.roles = ['owner']; });
             window.__zt.state.profile = await window.__zt.backend.myProfile();
         }""")
         page.goto(base + "#/profilis")

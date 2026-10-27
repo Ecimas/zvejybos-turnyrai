@@ -192,22 +192,28 @@ def extra_demo_tests(page, base, meteo_calls):
     expect(card).to_contain_text("Atsiprašome, ilgis teisingas")
     step("ginčas: dalyvis pateikia, moderatorius įskaito")
 
-    # Moderatorių komanda
+    # Komanda ir rolės
     page.goto(base + "#/moderavimas/komanda")
-    page.get_by_label("Pridėti moderatorių pagal slapyvardį").fill("nėra_tokio")
-    page.get_by_role("button", name="Paskirti moderatoriumi").click()
+    expect(page.locator(".team-card", has_text="(tu)")).to_contain_text("Savininkas")
+    page.get_by_label("Žvejo slapyvardis").fill("nėra_tokio")
+    page.get_by_role("button", name="Suteikti rolę").click()
     expect(page.locator("#toast")).to_have_text("Tokio slapyvardžio nėra")
-    page.get_by_label("Pridėti moderatorių pagal slapyvardį").fill("lydekininkas")
-    page.get_by_role("button", name="Paskirti moderatoriumi").click()
-    expect(page.locator("#toast")).to_have_text("Moderatorius paskirtas")
-    row = page.locator(".list-row", has_text="Lydekininkas")
-    expect(row).to_be_visible()
-    row.get_by_role("button", name="Pašalinti").click()
-    expect(page.locator("#toast")).to_have_text("Moderatorius pašalintas")
-    expect(page.locator(".list-row", has_text="Lydekininkas")).to_have_count(0)
-    page.locator(".list-row", has_text="(tu)").get_by_role("button", name="Pašalinti").click()
-    expect(page.locator("#toast")).to_have_text("Negalima pašalinti paskutinio moderatoriaus")
-    step("moderatorių skyrimas ir paskutinio apsauga")
+    page.get_by_label("Žvejo slapyvardis").fill("lydekininkas")
+    page.get_by_label("Rolė").select_option(label="Ginčų teisėjas")
+    page.get_by_role("button", name="Suteikti rolę").click()
+    expect(page.locator("#toast")).to_have_text("lydekininkas: suteikta rolė „Ginčų teisėjas“")
+    card = page.locator(".team-card", has_text="Lydekininkas")
+    expect(card.get_by_label("Ginčų teisėjas")).to_be_checked()
+    card.get_by_label("Laimikių tikrintojas").check()
+    expect(page.locator("#toast")).to_have_text("Lydekininkas: suteikta rolė „Laimikių tikrintojas“")
+    card = page.locator(".team-card", has_text="Lydekininkas")
+    card.get_by_label("Ginčų teisėjas").uncheck()
+    expect(page.locator("#toast")).to_have_text("Lydekininkas: atimta rolė „Ginčų teisėjas“")
+    page.locator(".team-card", has_text="Lydekininkas").get_by_label("Laimikių tikrintojas").click()  # paskutinė rolė – kortelė dingsta
+    expect(page.locator(".team-card", has_text="Lydekininkas")).to_have_count(0)
+    res = page.evaluate("() => window.__zt.backend.setRole(window.__zt.state.profile.nickname, 'admin', false).then(() => 'ok', e => e.message)")
+    assert res == "Savininko rolių keisti negalima", res
+    step("komanda: rolių suteikimas ir atėmimas, savininko apsauga")
 
     # Privatus turnyras su paslėpta lentele, prizais ir rėmėju
     page.goto(base + "#/naujas")

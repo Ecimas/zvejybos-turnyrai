@@ -8,7 +8,7 @@ insert into auth.users (id, email) values
   ('55555555-5555-5555-5555-555555555555', 'd@test.lt'),
   ('66666666-6666-6666-6666-666666666666', 'm2@test.lt');
 update public.profiles set is_admin = false where id <> '66666666-6666-6666-6666-666666666666';
-update public.profiles set is_admin = true where id = '66666666-6666-6666-6666-666666666666';
+update public.profiles set roles = array['owner'] where id = '66666666-6666-6666-6666-666666666666';  -- 0014: savininkas
 
 create function pg_temp.c(p_len int, p_captured timestamptz)
 returns uuid language plpgsql as $$
@@ -278,9 +278,9 @@ do $$ declare v text; begin
   v := (select nickname from public.profiles where id = '66666666-6666-6666-6666-666666666666');
   begin
     perform public.set_moderator(v, false);
-    raise exception 'FAIL: pašalintas paskutinis moderatorius';
+    raise exception 'FAIL: atimtos savininko teisės';
   exception when raise_exception then
-    if sqlerrm <> 'last_admin' then raise; end if;
+    if sqlerrm <> 'role_owner' then raise; end if;
   end;
 end $$;
 reset role;

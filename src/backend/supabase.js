@@ -342,6 +342,22 @@ export async function createSupabaseBackend(url, anonKey) {
     async moderators() {
       return check(await sb.from('profiles').select('id, nickname, region').eq('is_admin', true).order('nickname'));
     },
+    // Komanda: visi, turintys bent vieną rolę (is_admin sinchronizuojamas su roles, 0014).
+    async staff() {
+      return check(await sb.from('profiles').select('id, nickname, region, roles, is_admin').eq('is_admin', true).order('nickname'));
+    },
+    async setRole(nickname, role, on) {
+      const { error } = await sb.rpc('set_role', { p_nickname: nickname, p_role: role, p_on: on });
+      if (error) {
+        throw friendly(error, [
+          [/user not found/, 'Tokio slapyvardžio nėra'],
+          [/role_owner/, 'Savininko rolių keisti negalima'],
+          [/role_banned/, 'Užblokuotam žvejui rolės suteikti negalima'],
+          [/role_invalid/, 'Tokios rolės nėra'],
+          [/not allowed/, 'Roles skirti gali tik savininkas']
+        ], 'Nepavyko pakeisti rolės');
+      }
+    },
     async setModerator(nickname, admin) {
       const { error } = await sb.rpc('set_moderator', { p_nickname: nickname, p_admin: admin });
       if (error) {
@@ -372,7 +388,7 @@ export async function createSupabaseBackend(url, anonKey) {
       const { error } = await sb.rpc('ban_user', { p_user: userId, p_days: days, p_reason: reason });
       if (error) {
         throw friendly(error, [
-          [/ban_admin/, 'Moderatoriaus blokuoti negalima – pirma pašalink jį iš moderatorių'],
+          [/ban_admin/, 'Komandos nario blokuoti negalima – pirma atimk jo roles'],
           [/ban_self/, 'Savęs blokuoti negalima'],
           [/ban_reason/, 'Įrašyk priežastį (bent 3 simboliai)'],
           [/ban_days/, 'Netinkama trukmė'],
@@ -507,7 +523,7 @@ export async function createSupabaseBackend(url, anonKey) {
     },
 
     async profile(userId) {
-      return check(await sb.from('profiles').select('id, nickname, region, is_admin, created_at').eq('id', userId).maybeSingle());
+      return check(await sb.from('profiles').select('id, nickname, region, is_admin, roles, created_at').eq('id', userId).maybeSingle());
     },
     async userTournamentCount(userId) {
       const { count, error } = await sb.from('entries').select('tournament_id', { count: 'exact', head: true }).eq('user_id', userId);

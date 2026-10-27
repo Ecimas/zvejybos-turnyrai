@@ -141,6 +141,7 @@ select who, format('update %I.%I set %I = %I where %s', s, t, c.column_name, c.c
                ('public', 'blank_trips',     $$true$$),
                ('public', 'tournament_announcements', $$true$$),
                ('public', 'user_bans',       $$true$$),
+               ('public', 'role_changes',    $$true$$),
                ('storage', 'objects',        $$name like 'b0000000-%'$$)) as x(s, t, w)
   join information_schema.columns c on c.table_schema = x.s and c.table_name = x.t
  cross join (values ('anon'), ('A')) as who(who);
@@ -162,6 +163,8 @@ select 'B', format('update public.%I set %I = %I where %s', t, c.column_name, c.
 insert into pg_temp.attempts (who, sql, kind) values
   ('B', $$update public.profiles set is_admin = true where id = 'b0000000-0000-4000-8000-00000000000b'$$, 'nochange'),
   ('B', $$update public.profiles set trust_score = 100 where id = 'b0000000-0000-4000-8000-00000000000b'$$, 'nochange'),
+  ('B', $$update public.profiles set roles = array['owner'] where id = 'b0000000-0000-4000-8000-00000000000b'$$, 'nochange'),
+  ('B', $$insert into public.role_changes (user_id, role, granted) values ('b0000000-0000-4000-8000-00000000000b', 'owner', true)$$, 'error'),
   ('B', $$update public.catches set status = 'approved' where user_id = 'b0000000-0000-4000-8000-00000000000b'$$, 'nochange'),
   ('B', $$update public.catches set length_mm = 2000 where user_id = 'b0000000-0000-4000-8000-00000000000b'$$, 'nochange'),
   ('B', $$update public.catches set captured_at_device = now() where user_id = 'b0000000-0000-4000-8000-00000000000b'$$, 'nochange'),
@@ -189,6 +192,7 @@ select who, format('delete from %I.%I where %s', s, t, w), 'nochange'
                ('public', 'tournament_announcements', $$true$$),
                ('public', 'species', $$true$$),
                ('public', 'user_bans', $$true$$),
+               ('public', 'role_changes', $$true$$),
                ('storage', 'objects', $$true$$)) as x(s, t, w)
  cross join (values ('anon'), ('A'), ('B')) as who(who)
  where not (who = 'B' and t in ('tournaments', 'tournament_species', 'tournament_sponsors', 'entries', 'tournament_announcements', 'blank_trips')); -- B savo būsimą turnyrą trinti gali
@@ -239,6 +243,7 @@ select who, q, 'zero' from (values
   ($$select count(*) from public.catch_reports where reporter_id is distinct from auth.uid()$$),
   ($$select count(*) from public.blank_trips$$),
   ($$select count(*) from public.user_bans where user_id is distinct from auth.uid()$$),
+  ($$select count(*) from public.role_changes$$),
   ($$select count(*) from public.tournament_announcements a join public.tournaments t on t.id = a.tournament_id where t.visibility = 'private'$$)
 ) as q(q) cross join (values ('anon'), ('A')) as who(who);
 -- privatūs stulpeliai: kito žmogaus masalas ir pastabos (net patvirtinto laimikio)
@@ -265,7 +270,9 @@ select who, q, 'error' from (values
   ($$select public.finish_account_deletion()$$),
   ($$select public.ban_user('b0000000-0000-4000-8000-00000000000b', null, 'Neturiu teisių')$$),
   ($$select public.unban_user('b0000000-0000-4000-8000-00000000000b')$$),
-  ($$select public.reset_nickname('b0000000-0000-4000-8000-00000000000b')$$)
+  ($$select public.reset_nickname('b0000000-0000-4000-8000-00000000000b')$$),
+  ($$select public.set_role('fa', 'admin', true)$$),
+  ($$select public.set_role('fb', 'moderator', true)$$)
 ) as q(q) cross join (values ('anon'), ('A')) as who(who);
 insert into pg_temp.attempts (who, sql, kind) values
   ('anon', $$select public.join_with_invite((select invite_code from public.tournaments limit 1))$$, 'error'),

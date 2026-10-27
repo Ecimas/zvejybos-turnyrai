@@ -5,22 +5,34 @@ import { cm, dateTime } from '../lib/format.js';
 import { SKEW_MS } from '../lib/scoring.js';
 import { backButton, empty, thumb, hydratePhotos, openPhoto } from '../ui.js';
 import { banUntilText } from '../lib/bans.js';
+import { can, ASSIGNABLE, rolesOf, roleLabel, ROLES } from '../lib/roles.js';
 
 const REASONS = ['Nesimato matavimo', 'Ne ta rūšis', 'Netikslus ilgis', 'Pakartota nuotrauka'];
 
+// Skiltys rodomos tik tos, kurioms žmogus turi teisę.
+let tabState = null;
 function tabs(active) {
-  const items = [['#/moderavimas', 'queue', 'Laimikiai'], ['#/moderavimas/pranesimai', 'reports', 'Pranešimai'],
-    ['#/moderavimas/gincai', 'disputes', 'Ginčai'], ['#/moderavimas/blokuoti', 'bans', 'Blokuoti'],
-    ['#/moderavimas/komanda', 'team', 'Komanda']];
+  const all = [['#/moderavimas', 'queue', 'Laimikiai', 'review'], ['#/moderavimas/pranesimai', 'reports', 'Pranešimai', 'disputes'],
+    ['#/moderavimas/gincai', 'disputes', 'Ginčai', 'disputes'], ['#/moderavimas/blokuoti', 'bans', 'Blokuoti', 'ban'],
+    ['#/moderavimas/komanda', 'team', 'Komanda', 'roles']];
+  const items = all.filter(([, , , perm]) => can(tabState, perm));
+  if (items.length < 2) return '';
   return html`<nav class="seg" aria-label="Moderavimo skiltys">${items.map(([href, key, label]) =>
     html`<a href="${href}" role="button" aria-pressed="${key === active}"${key === active ? html` aria-current="page"` : ''}>${label}</a>`)}</nav>`;
 }
 
-const denied = () => ({ nav: 'profilis', html: html`<div class="screen">${backButton('#/profilis')}<h1 class="sr-only" tabindex="-1">Moderavimas</h1>${empty('Prieiga tik moderatoriams')}</div>` });
+const denied = () => ({ nav: 'profilis', html: html`<div class="screen">${backButton('#/profilis')}<h1 class="sr-only" tabindex="-1">Moderavimas</h1>${empty('Šiai skilčiai neturi teisių', 'Roles skiria programėlės savininkas.')}</div>` });
 
 export async function moderationView(ctx) {
   const { backend, state } = ctx;
-  if (!state.profile?.is_admin) return denied();
+  tabState = state;
+  if (!can(state, 'review')) {
+    // Kitos rolės – į savo skiltį
+    const first = [['disputes', '#/moderavimas/pranesimai'], ['ban', '#/moderavimas/blokuoti'], ['roles', '#/moderavimas/komanda']]
+      .find(([perm]) => can(state, perm));
+    if (first) { ctx.navigate(first[1]); return { nav: 'profilis', html: html`` }; }
+    return denied();
+  }
   const list = await backend.pending();
   const c = list[0];
   if (!c) {
@@ -106,7 +118,8 @@ export async function moderationView(ctx) {
 
 export async function disputesView(ctx) {
   const { backend, state } = ctx;
-  if (!state.profile?.is_admin) return denied();
+  tabState = state;
+  if (!can(state, 'disputes')) return denied();
   const list = await backend.openDisputes();
   const sp = (id) => state.species.find((s) => s.id === id)?.name_lt ?? '';
   return {
@@ -153,49 +166,61 @@ export async function disputesView(ctx) {
 
 export async function teamView(ctx) {
   const { backend, state } = ctx;
-  if (!state.profile?.is_admin) return denied();
-  const mods = await backend.moderators();
+  tabState = state;
+  if (!can(state, 'roles')) return denied();
+  const staff = (await backend.staff()).sort((a, b) => rolesOf(b).includes('owner') - rolesOf(a).includes('owner'));
   return {
     nav: 'profilis',
-    title: 'Moderatoriai',
+    title: 'Komanda ir rolės',
     html: html`<div class="screen">
-      <header class="top-bar">${backButton('#/profilis')}<span class="muted strong">Moderatoriai</span><span></span></header>
-      <h1 class="sr-only" tabindex="-1">Moderatoriai</h1>
+      <header class="top-bar">${backButton('#/profilis')}<span class="muted strong">Komanda</span><span></span></header>
+      <h1 class="sr-only" tabindex="-1">Komanda ir rolės</h1>
       ${tabs('team')}
-      <div class="list">${mods.map((m) => html`<div class="list-row">
-        ${icon('shield', 20)}<span class="grow strong">${m.nickname}${m.id === state.user.id ? ' (tu)' : ''}</span>
-        <button class="btn-text bad" data-remove="${m.nickname}">Pašalinti</button>
-      </div>`)}</div>
+      <section class="stack">${staff.map((m) => {
+        const roles = rolesOf(m);
+        const owner = roles.includes('owner');
+        return html`<article class="card stack-2 team-card" data-member="${m.nickname}">
+          <div class="row gap-8">${icon('shield', 20)}<a class="grow strong link-plain" href="#/zvejys/${m.id}">${m.nickname}${m.id === state.user.id ? ' (tu)' : ''}</a></div>
+          ${owner ? html`<p class="small muted">${icon('lock', 13, 2.6)} Savininkas – turi visas teises, jo rolių keisti negalima.</p>`
+            : html`<div class="stack-1">${ASSIGNABLE.map((r) => html`<label class="check-row role-row">
+                <input type="checkbox" data-role="${r.key}" data-nick="${m.nickname}" ${roles.includes(r.key) ? 'checked' : ''}>
+                <span class="strong">${r.label}</span></label>`)}</div>`}
+        </article>`;
+      })}</section>
       <form class="card stack" data-add>
-        <label class="field"><span class="small muted strong">Pridėti moderatorių pagal slapyvardį</span>
+        <h2 class="h2">Suteikti rolę</h2>
+        <label class="field"><span class="small muted strong">Žvejo slapyvardis</span>
           <input name="nickname" required minlength="3" maxlength="24" autocomplete="off" placeholder="Slapyvardis"></label>
-        <button class="btn btn-primary" type="submit">${icon('plus', 18, 2.6)}Paskirti moderatoriumi</button>
-        <p class="small muted">Moderatorius mato tikslias laimikių vietas ir tvirtina rezultatus – skirk tik žmones, kuriais pasitiki.</p>
+        <label class="field"><span class="small muted strong">Rolė</span>
+          <select name="role">${ASSIGNABLE.map((r) => html`<option value="${r.key}">${r.label}</option>`)}</select></label>
+        <button class="btn btn-primary" type="submit">${icon('plus', 18, 2.6)}Suteikti rolę</button>
       </form>
+      <section class="stack-2">
+        <h2 class="h2">Ką gali kiekviena rolė</h2>
+        <dl class="list">${ROLES.map((r) => html`<div class="list-row stack-1 role-desc"><dt class="strong">${r.label}</dt><dd class="small muted">${r.desc}</dd></div>`)}</dl>
+        <p class="small muted">Žmogus gali turėti kelias roles. Tikslias laimikių vietas mato tik Administratorius ir Laimikių tikrintojas – skirk jas tik žmonėms, kuriais pasitiki.</p>
+      </section>
     </div>`,
     mount(root) {
-      const set = async (nickname, admin) => {
+      const set = async (nickname, role, on) => {
         try {
-          await backend.setModerator(nickname, admin);
-          if (!admin && nickname.toLowerCase() === state.profile.nickname.toLowerCase()) {
-            ctx.state.profile = await backend.myProfile();
-            ctx.toast('Nebesi moderatorius');
-            ctx.navigate('#/profilis');
-            return;
-          }
-          ctx.toast(admin ? 'Moderatorius paskirtas' : 'Moderatorius pašalintas');
+          await backend.setRole(nickname, role, on);
+          ctx.toast(on ? `${nickname}: suteikta rolė „${roleLabel(role)}“` : `${nickname}: atimta rolė „${roleLabel(role)}“`);
           ctx.rerender();
         } catch (err) {
           ctx.toast(err.message || 'Nepavyko');
+          ctx.rerender();
         }
       };
-      root.querySelectorAll('[data-remove]').forEach((b) => b.addEventListener('click', () => {
-        if (confirm(`Pašalinti ${b.dataset.remove} iš moderatorių?`)) set(b.dataset.remove, false);
+      root.querySelectorAll('[data-role]').forEach((b) => b.addEventListener('change', () => {
+        if (!b.checked && !confirm(`Atimti iš ${b.dataset.nick} rolę „${roleLabel(b.dataset.role)}“?`)) { b.checked = true; return; }
+        set(b.dataset.nick, b.dataset.role, b.checked);
       }));
       root.querySelector('[data-add]').addEventListener('submit', (e) => {
         e.preventDefault();
-        const n = e.currentTarget.nickname.value.trim();
-        if (n) set(n, true);
+        const f = e.currentTarget;
+        const n = f.nickname.value.trim();
+        if (n) set(n, f.role.value, true);
       });
     }
   };
@@ -209,7 +234,8 @@ const REASON_TEXT = {
 // Dalyvių pranešimai apie įtartinus (jau patvirtintus) laimikius, sugrupuoti pagal laimikį.
 export async function reportsView(ctx) {
   const { backend, state } = ctx;
-  if (!state.profile?.is_admin) return denied();
+  tabState = state;
+  if (!can(state, 'disputes')) return denied();
   const list = await backend.openReports();
   const groups = [];
   for (const r of list) {
@@ -283,7 +309,8 @@ export async function reportsView(ctx) {
 // Užblokuoti žvejai. Blokuojama žvejo profilyje (paspaudus slapyvardį lentelėje ar laimikyje).
 export async function bansView(ctx) {
   const { backend, state } = ctx;
-  if (!state.profile?.is_admin) return denied();
+  tabState = state;
+  if (!can(state, 'ban')) return denied();
   const list = await backend.bans().catch(() => []);
   return {
     nav: 'profilis',

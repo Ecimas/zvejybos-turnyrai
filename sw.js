@@ -1,6 +1,6 @@
 // Service worker: programėlės apvalkalas veikia ir be ryšio.
 // API užklausų (Supabase) nesaugo – jos visada eina į tinklą.
-const VERSION = 'zt-v13';
+const VERSION = 'zt-v14';
 const SHELL = [
   './',
   'index.html',
@@ -24,6 +24,7 @@ const SHELL = [
   'src/lib/records.js',
   'src/lib/seen.js',
   'src/lib/bans.js',
+  'src/lib/roles.js',
   'src/backend/index.js',
   'src/backend/demo.js',
   'src/backend/supabase.js',

@@ -189,6 +189,11 @@ ol.plain { list-style: none; margin: 0; padding: 0; }
 .badge-soon { background: var(--wait-bg); color: var(--wait); }
 .badge-done { background: var(--queue-bg); color: var(--queue); }
 .badge-mine { background: var(--surface-2); color: var(--accent-ink); border: 1px solid var(--line-2); }
+.badge-role { background: var(--surface-2); color: var(--soft); border: 1px solid var(--line-2); }
+.team-card .role-row { min-height: 44px; }
+.team-card a.link-plain { min-height: 44px; display: flex; align-items: center; }
+.role-desc { align-items: flex-start; text-align: left; }
+.role-desc dt, .role-desc dd { text-align: left; width: 100%; }
 
 .chip {
   display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px;

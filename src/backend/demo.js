@@ -5,6 +5,7 @@ import { computeLeaderboard } from '../lib/scoring.js';
 import { PermanentError, RetryLaterError, idbStore, memoryStore } from '../lib/outbox.js';
 import { phase, registrationOpen } from '../lib/format.js';
 import { banActive } from '../lib/bans.js';
+import { rolesOf, ASSIGNABLE } from '../lib/roles.js';
 
 const KEY = 'zt-demo-v1';
 const ME = '00000000-0000-4000-8000-000000000001';
@@ -21,11 +22,11 @@ function seed() {
     ['Tomas_Ž', 'Alytaus r.'], ['Žvejė_Ieva', 'Zarasų r.'], ['Ešerys_LT', 'Šiaulių r.']
   ];
   const profiles = {
-    [ME]: { id: ME, nickname: 'zvejys_demo', region: 'Kaunas', is_admin: true, trust_score: 50, created_at: iso(-120 * D) }
+    [ME]: { id: ME, nickname: 'zvejys_demo', region: 'Kaunas', is_admin: true, roles: ['owner'], trust_score: 50, created_at: iso(-120 * D) }
   };
   const ids = people.map(([nickname, region], i) => {
     const id = `00000000-0000-4000-8000-0000000001${String(i).padStart(2, '0')}`;
-    profiles[id] = { id, nickname, region, is_admin: false, trust_score: 60, created_at: iso(-200 * D) };
+    profiles[id] = { id, nickname, region, is_admin: false, roles: [], trust_score: 60, created_at: iso(-200 * D) };
     return id;
   });
 
@@ -344,6 +345,23 @@ export function createDemoBackend({ photos } = {}) {
     async moderators() {
       return Object.values(db.profiles).filter((p) => p.is_admin).map(({ id, nickname, region }) => ({ id, nickname, region }));
     },
+    async staff() {
+      return Object.values(db.profiles).filter((p) => rolesOf(p).length)
+        .map((p) => ({ id: p.id, nickname: p.nickname, region: p.region, roles: rolesOf(p) }))
+        .sort((a, b) => a.nickname.localeCompare(b.nickname));
+    },
+    async setRole(nickname, role, on) {
+      if (!rolesOf(db.profiles[ME]).includes('owner')) throw new Error('Roles skirti gali tik savininkas');
+      const p = Object.values(db.profiles).find((x) => x.nickname.toLowerCase() === String(nickname).trim().toLowerCase());
+      if (!p) throw new Error('Tokio slapyvardžio nėra');
+      if (!ASSIGNABLE.some((r) => r.key === role)) throw new Error('Tokios rolės nėra');
+      const roles = rolesOf(p);
+      if (roles.includes('owner')) throw new Error('Savininko rolių keisti negalima');
+      if (on && banActive(db.bans.find((b) => b.user_id === p.id))) throw new Error('Užblokuotam žvejui rolės suteikti negalima');
+      p.roles = on ? [...new Set([...roles, role])].sort() : roles.filter((r) => r !== role);
+      p.is_admin = p.roles.length > 0;
+      save();
+    },
     async setModerator(nickname, admin) {
       const p = Object.values(db.profiles).find((x) => x.nickname.toLowerCase() === String(nickname).trim().toLowerCase());
       if (!p) throw new Error('Tokio slapyvardžio nėra');
@@ -372,7 +390,7 @@ export function createDemoBackend({ photos } = {}) {
       const why = String(reason || '').trim();
       if (!p) throw new Error('Žvejys nerastas');
       if (userId === ME) throw new Error('Savęs blokuoti negalima');
-      if (p.is_admin) throw new Error('Moderatoriaus blokuoti negalima – pirma pašalink jį iš moderatorių');
+      if (rolesOf(p).length) throw new Error('Komandos nario blokuoti negalima – pirma atimk jo roles');
       if (why.length < 3) throw new Error('Įrašyk priežastį (bent 3 simboliai)');
       db.bans = db.bans.filter((b) => b.user_id !== userId);
       db.bans.push({ user_id: userId, reason: why.slice(0, 300), banned_by: ME, created_at: new Date().toISOString(),

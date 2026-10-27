@@ -5,6 +5,7 @@ import { thumb, hydratePhotos, backButton, empty, avatar, loginPrompt, notFound,
 import { computeBadges } from '../lib/badges.js';
 import { weatherEnabled } from './capture.js';
 import { BAN_DAYS, BAN_REASONS, banUntilText } from '../lib/bans.js';
+import { permsOf, rolesOf, roleLabel, isStaff, can } from '../lib/roles.js';
 
 function badges(catches, tcount) {
   const list = computeBadges(catches, tcount);
@@ -97,12 +98,13 @@ export async function profileView(ctx) {
     return { nav: 'profilis', title: 'Profilis', html: html`<div class="screen"><h1 class="display-lg" tabindex="-1">Profilis</h1>${loginPrompt('Prisijunk, kad matytum savo profilį.')}</div>` };
   }
   const p = state.profile || (await backend.myProfile());
+  const perms = permsOf(p);
   const [catches, tcount, pendingList, disputes, reports, trips] = await Promise.all([
     backend.myCatches(),
     backend.userTournamentCount(state.user.id),
-    p?.is_admin ? backend.pending().catch(() => []) : [],
-    p?.is_admin ? backend.openDisputes().catch(() => []) : [],
-    p?.is_admin ? backend.openReports().catch(() => []) : [],
+    perms.has('review') ? backend.pending().catch(() => []) : [],
+    perms.has('disputes') ? backend.openDisputes().catch(() => []) : [],
+    perms.has('disputes') ? backend.openReports().catch(() => []) : [],
     backend.blankTrips().catch(() => [])
   ]);
   const reportedCatches = new Set(reports.map((r) => r.catch_id)).size;
@@ -124,6 +126,7 @@ export async function profileView(ctx) {
         <div class="grow stack-1">
           <h1 class="display-md" tabindex="-1">${p.nickname}</h1>
           <span class="muted">${p.region || 'Regionas nenurodytas'}</span>
+          ${roleBadges(p)}
         </div>
         ${state.ban ? '' : html`<button class="icon-btn" data-edit aria-label="Redaguoti profilį">${icon('edit', 20)}</button>`}
       </header>
@@ -153,9 +156,11 @@ export async function profileView(ctx) {
       <section class="stack">
         <h2 class="h2">Daugiau</h2>
         <div class="list">
-          ${p.is_admin ? html`<a class="list-row" href="#/moderavimas">${icon('shield', 20)}<span class="grow strong">Moderavimas</span>${pendingList.length ? html`<span class="chip chip-wait">${pendingList.length}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
-          ${p.is_admin ? html`<a class="list-row" href="#/moderavimas/pranesimai">${icon('alert', 20)}<span class="grow strong">Pranešimai apie laimikius</span>${reportedCatches ? html`<span class="chip chip-wait">${reportedCatches}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
-          ${p.is_admin ? html`<a class="list-row" href="#/moderavimas/gincai">${icon('alert', 20)}<span class="grow strong">Ginčai</span>${disputes.length ? html`<span class="chip chip-wait">${disputes.length}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
+          ${perms.has('review') ? html`<a class="list-row" href="#/moderavimas">${icon('shield', 20)}<span class="grow strong">Moderavimas</span>${pendingList.length ? html`<span class="chip chip-wait">${pendingList.length}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
+          ${perms.has('disputes') ? html`<a class="list-row" href="#/moderavimas/pranesimai">${icon('alert', 20)}<span class="grow strong">Pranešimai apie laimikius</span>${reportedCatches ? html`<span class="chip chip-wait">${reportedCatches}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
+          ${perms.has('disputes') ? html`<a class="list-row" href="#/moderavimas/gincai">${icon('alert', 20)}<span class="grow strong">Ginčai</span>${disputes.length ? html`<span class="chip chip-wait">${disputes.length}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
+          ${perms.has('ban') ? html`<a class="list-row" href="#/moderavimas/blokuoti">${icon('lock', 20)}<span class="grow strong">Užblokuoti žvejai</span>${icon('chevron', 18)}</a>` : ''}
+          ${perms.has('roles') ? html`<a class="list-row" href="#/moderavimas/komanda">${icon('user', 20)}<span class="grow strong">Komanda ir rolės</span>${icon('chevron', 18)}</a>` : ''}
           <a class="list-row" href="#/naujas">${icon('plus', 20)}<span class="grow strong">Sukurti turnyrą</span>${icon('chevron', 18)}</a>
           <a class="list-row" href="#/zvejys/${p.id}">${icon('user', 20)}<span class="grow strong">Kaip mane mato kiti</span>${icon('chevron', 18)}</a>
           <div class="list-row">${icon('sun', 20)}<span class="grow strong">Tema</span>
@@ -272,7 +277,7 @@ export async function anglerView(ctx, [id]) {
   const { backend, state } = ctx;
   const p = await backend.profile(id);
   if (!p) return { nav: 'lenteles', html: notFound('#/lenteles', 'Žvejys nerastas') };
-  const moderating = !!state.profile?.is_admin && id !== state.user?.id;
+  const moderating = can(state, 'ban') && id !== state.user?.id;
   const [catches, tcount, ban] = await Promise.all([
     backend.userCatches(id), backend.userTournamentCount(id),
     moderating ? backend.userBan(id).catch(() => null) : null
@@ -290,6 +295,7 @@ export async function anglerView(ctx, [id]) {
         <div class="grow stack-1">
           <h1 class="display-md" tabindex="-1">${p.nickname}</h1>
           <span class="muted">${p.region || ''}</span>
+          ${roleBadges(p)}
         </div>
       </header>
       ${statGrid(s, tcount)}
@@ -319,7 +325,7 @@ export async function anglerView(ctx, [id]) {
 function modCard(p, ban) {
   return html`<section class="card stack mod-card" aria-labelledby="mod-h">
     <h2 class="h2 row gap-8" id="mod-h">${icon('shield', 20)}Moderatoriui</h2>
-    ${p.is_admin ? html`<p class="small muted">Tai moderatorius – blokuoti negalima. Pirma pašalink jį iš moderatorių.</p>`
+    ${isStaff(p) ? html`<p class="small muted">Tai komandos narys – blokuoti negalima. Pirma atimk jo roles (Komanda ir rolės).</p>`
       : ban ? html`<div class="stack-2" data-ban-status>
           <p class="strong bad">Užblokuotas ${banUntilText(ban)}</p>
           <p class="small">Priežastis: ${ban.reason}</p>
@@ -381,4 +387,11 @@ function mountModCard(root, ctx, p) {
       ctx.toast(err.message || 'Nepavyko pakeisti slapyvardžio');
     }
   });
+}
+
+// Komandos nario rolės – matomos visiems, kad žvejai žinotų, kas tikrina.
+function roleBadges(p) {
+  const roles = rolesOf(p);
+  if (!roles.length) return '';
+  return html`<span class="row gap-8 wrap" data-roles>${roles.map((r) => html`<span class="badge badge-role">${icon('shield', 12, 2.6)}${roleLabel(r)}</span>`)}</span>`;
 }

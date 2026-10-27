@@ -76,7 +76,14 @@ function session() {
   try { return JSON.parse(localStorage.getItem(SESSION)); } catch { return null; }
 }
 const uid = () => session()?.user?.id ?? null;
-const isAdmin = () => !!db.profiles.find((p) => p.id === uid())?.is_admin;
+// 0014: rolės. is_admin = turi bent vieną rolę; konkrečios teisės – pagal roles.
+const myRoles = () => {
+  const p = db.profiles.find((x) => x.id === uid());
+  return p ? (Array.isArray(p.roles) ? p.roles : (p.is_admin ? ['owner'] : [])) : [];
+};
+const isAdmin = () => myRoles().length > 0;
+const PERMS = { owner: ['review', 'disputes', 'ban', 'roles'], admin: ['review', 'disputes', 'ban'], moderator: ['review'], judge: ['disputes'], guard: ['ban'] };
+const hasPerm = (perm) => myRoles().some((r) => PERMS[r]?.includes(perm));
 // 0013: aktyvus blokavimas
 db.user_bans ||= [];
 const bannedId = (id) => db.user_bans.some((b) => b.user_id === id && (!b.until || Date.parse(b.until) > Date.now()));
@@ -88,16 +95,16 @@ function visible(table, row) {
     return row.visibility === 'public' || row.organizer_id === uid()
       || db.entries.some((e) => e.tournament_id === row.id && e.user_id === uid());
   }
-  if (table === 'disputes') return row.user_id === uid() || isAdmin();
-  if (table === 'catch_reports') return row.reporter_id === uid() || isAdmin();
-  if (table === 'user_bans') return !!uid() && (row.user_id === uid() || isAdmin());
+  if (table === 'disputes') return row.user_id === uid() || hasPerm('disputes');
+  if (table === 'catch_reports') return row.reporter_id === uid() || hasPerm('disputes');
+  if (table === 'user_bans') return !!uid() && (row.user_id === uid() || hasPerm('ban'));
   if (table === 'blank_trips') return row.user_id === uid();
   if (table === 'tournament_announcements') {
     const t = db.tournaments.find((x) => x.id === row.tournament_id);
     return !!t && visible('tournaments', t);
   }
   if (table === 'catches') return row.user_id === uid() || row.status === 'approved' || isAdmin();
-  if (table === 'catch_locations') return isAdmin() || db.catches.some((c) => c.id === row.catch_id && c.user_id === uid());
+  if (table === 'catch_locations') return hasPerm('review') || db.catches.some((c) => c.id === row.catch_id && c.user_id === uid());
   return true;
 }
 
@@ -423,7 +430,7 @@ export function createClient(url, key) {
     async rpc(name, args) {
       log('rpc', { name, args });
       if (name === 'review_catch') {
-        if (!isAdmin()) return { data: null, error: err('P0001', 'not allowed') };
+        if (!hasPerm('review')) return { data: null, error: err('P0001', 'not allowed') };
         const c = db.catches.find((x) => x.id === args.p_catch_id);
         if (!c) return { data: null, error: err('P0001', 'catch not found') };
         if (!args.p_approve && !String(args.p_reason || '').trim()) return { data: null, error: err('P0001', 'reject reason is required') };
@@ -455,7 +462,7 @@ export function createClient(url, key) {
         return { data: t.id, error: null };
       }
       if (name === 'resolve_dispute') {
-        if (!isAdmin()) return { data: null, error: err('P0001', 'not allowed') };
+        if (!hasPerm('disputes')) return { data: null, error: err('P0001', 'not allowed') };
         const d = db.disputes.find((x) => x.id === args.p_id && x.status === 'open');
         if (!d) return { data: null, error: err('P0001', 'dispute not found') };
         Object.assign(d, { status: args.p_accept ? 'accepted' : 'rejected', resolution: String(args.p_note || '').trim() || null, resolved_by: uid(), resolved_at: new Date().toISOString() });
@@ -469,7 +476,7 @@ export function createClient(url, key) {
         return { data: null, error: null };
       }
       if (name === 'resolve_report') {
-        if (!isAdmin()) return { data: null, error: err('P0001', 'not allowed') };
+        if (!hasPerm('disputes')) return { data: null, error: err('P0001', 'not allowed') };
         const r = db.catch_reports.find((x) => x.id === args.p_id && x.status === 'open');
         if (!r) return { data: null, error: err('P0001', 'report not found') };
         if (args.p_uphold && !String(args.p_reason || '').trim()) return { data: null, error: err('P0001', 'reject reason is required') };
@@ -485,12 +492,12 @@ export function createClient(url, key) {
         return { data: null, error: null };
       }
       if (name === 'ban_user') {
-        if (!isAdmin()) return { data: null, error: err('P0001', 'not allowed') };
+        if (!hasPerm('ban')) return { data: null, error: err('P0001', 'not allowed') };
         const p = db.profiles.find((x) => x.id === args.p_user);
         const why = String(args.p_reason || '').trim();
         if (args.p_user === uid()) return { data: null, error: err('P0001', 'ban_self') };
         if (!p) return { data: null, error: err('P0001', 'user not found') };
-        if (p.is_admin) return { data: null, error: err('P0001', 'ban_admin') };
+        if (p.is_admin || (p.roles || []).length) return { data: null, error: err('P0001', 'ban_admin') };
         if (args.p_days !== null && (args.p_days < 1 || args.p_days > 3650)) return { data: null, error: err('P0001', 'ban_days') };
         if (why.length < 3) return { data: null, error: err('P0001', 'ban_reason') };
         db.user_bans = db.user_bans.filter((b) => b.user_id !== p.id);
@@ -500,25 +507,31 @@ export function createClient(url, key) {
         return { data: null, error: null };
       }
       if (name === 'unban_user') {
-        if (!isAdmin()) return { data: null, error: err('P0001', 'not allowed') };
+        if (!hasPerm('ban')) return { data: null, error: err('P0001', 'not allowed') };
         db.user_bans = db.user_bans.filter((b) => b.user_id !== args.p_user);
         save();
         return { data: null, error: null };
       }
       if (name === 'reset_nickname') {
-        if (!isAdmin()) return { data: null, error: err('P0001', 'not allowed') };
+        if (!hasPerm('ban')) return { data: null, error: err('P0001', 'not allowed') };
         const p = db.profiles.find((x) => x.id === args.p_user);
         if (!p) return { data: null, error: err('P0001', 'user not found') };
         p.nickname = 'zvejys_' + p.id.replace(/-/g, '').slice(0, 8);
         save();
         return { data: p.nickname, error: null };
       }
-      if (name === 'set_moderator') {
-        if (!isAdmin()) return { data: null, error: err('P0001', 'not allowed') };
+      if (name === 'set_role' || name === 'set_moderator') {
+        if (!hasPerm('roles')) return { data: null, error: err('P0001', 'not allowed') };
+        const role = name === 'set_moderator' ? 'admin' : args.p_role;
+        const on = name === 'set_moderator' ? !!args.p_admin : !!args.p_on;
+        if (!['admin', 'moderator', 'judge', 'guard'].includes(role)) return { data: null, error: err('P0001', 'role_invalid') };
         const p = db.profiles.find((x) => x.nickname.toLowerCase() === String(args.p_nickname).trim().toLowerCase());
         if (!p) return { data: null, error: err('P0001', 'user not found') };
-        if (!args.p_admin && p.is_admin && db.profiles.filter((x) => x.is_admin).length <= 1) return { data: null, error: err('P0001', 'last_admin') };
-        p.is_admin = !!args.p_admin;
+        const roles = Array.isArray(p.roles) ? p.roles : (p.is_admin ? ['owner'] : []);
+        if (roles.includes('owner')) return { data: null, error: err('P0001', 'role_owner') };
+        if (on && bannedId(p.id)) return { data: null, error: err('P0001', 'role_banned') };
+        p.roles = on ? [...new Set([...roles, role])].sort() : roles.filter((x) => x !== role);
+        p.is_admin = p.roles.length > 0;
         save();
         return { data: null, error: null };
       }
