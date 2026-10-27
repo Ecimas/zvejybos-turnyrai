@@ -32,5 +32,8 @@ PSQL=(psql -h "$WORK" -p "$PORT" -U postgres -d postgres -X -q -v ON_ERROR_STOP=
 "${PSQL[@]}" -f "$ROOT/supabase/migrations/0002_storage.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/migrations/0003_location_retention.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/migrations/0004_rls_performance.sql"
+"${PSQL[@]}" -f "$ROOT/supabase/migrations/0005_limits_and_trust.sql"
+for f in 0006a_catch_and_tournament_fields 0006b_disputes_and_moderators 0006c_account_deletion; do "${PSQL[@]}" -f "$ROOT/supabase/migrations/$f.sql"; done
 "${PSQL[@]}" -f "$ROOT/supabase/seed.sql"
 "${PSQL[@]}" -f "$ROOT/tests/db/test_schema.sql"
+"${PSQL[@]}" -f "$ROOT/tests/db/test_features.sql"
