@@ -49,8 +49,9 @@ Supabase nemokamas el. pašto siuntimas leidžia tik kelis laiškus per valandą
 
 ## Prisijungimas
 
-Prisijungiama kodu iš el. laiško (veikia ir į pradžios ekraną įdiegtoje programėlėje). Kad laiške būtų kodas,
-Supabase **Authentication → Emails** šablonuose „Magic Link“ ir „Confirm signup“ turi būti `{{ .Token }}`.
+Prisijungiama per nuorodą el. laiške (Supabase standartinis laiškas, implicit flow – veikia ir atidarius
+laišką kitoje naršyklėje). Supabase **Authentication → URL Configuration**: Site URL ir Redirect URL turi būti
+programėlės adresas. Kodas iš laiško įjungiamas, kai prijungiamas savo SMTP ir laiško šablone yra `{{ .Token }}`.
 
 ## Testai be tinklo
 

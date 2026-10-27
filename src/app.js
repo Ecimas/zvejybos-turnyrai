@@ -44,9 +44,18 @@ function applyTheme() {
 
 async function main() {
   applyTheme();
+  // Grįžimas iš el. laiško nuorodos: #access_token=... arba #error=... (Supabase implicit flow).
+  const authHash = /(^#|&)(access_token|error)=/.test(location.hash) ? location.hash : '';
+  const authError = authHash && /error/.test(authHash)
+    ? (/otp_expired|expired|invalid/i.test(decodeURIComponent(authHash)) ? 'Nuoroda nebegalioja – paprašyk naujos' : 'Nepavyko prisijungti per nuorodą')
+    : '';
   const backend = await createBackend();
   await backend.init();
   if (/[?&]code=/.test(location.search)) history.replaceState(null, '', location.pathname + location.hash);
+  if (authHash) {
+    const target = authError ? '#/prisijungti' : (backend.getUser() ? '#/profilis' : '#/prisijungti');
+    history.replaceState(null, '', location.pathname + target);
+  }
 
   const ctx = {
     backend,
@@ -174,6 +183,8 @@ async function main() {
 
   await refreshStatus();
   await render();
+  if (authError) toast(authError);
+  else if (authHash && ctx.state.user) toast('Prisijungei');
   ctx.flush();
 
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {

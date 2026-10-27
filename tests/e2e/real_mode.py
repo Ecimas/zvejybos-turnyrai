@@ -71,7 +71,10 @@ def main():
         # 2. Prisijungimas kodu
         page.get_by_role("link", name="Prisijungti ir dalyvauti").click()
         page.get_by_label("El. paštas").fill("  Ecimas@Pastas.LT ")
-        page.get_by_role("button", name="Siųsti kodą").click()
+        page.get_by_role("button", name="Siųsti nuorodą").click()
+        expect(page.get_by_text("Patikrink el. paštą")).to_be_visible()
+        expect(page.get_by_label("Kodas iš laiško")).to_be_hidden()
+        page.get_by_role("button", name="Laiške yra kodas?").click()
         expect(page.get_by_label("Kodas iš laiško")).to_be_visible()
         assert calls(page, "signInWithOtp")[-1]["email"] == "ecimas@pastas.lt"
         expect(page.get_by_role("button", name=re.compile("Siųsti dar kartą"))).to_be_disabled()
@@ -185,6 +188,23 @@ def main():
         page.goto(base + "#/dienorastis")
         expect(page.get_by_role("link", name="Prisijungti")).to_be_visible()
         step("atsijungimas")
+
+        # 11. Grįžimas iš laiško nuorodos: pasibaigusi nuoroda ir sėkmingas prisijungimas
+        page.goto("about:blank")
+        page.goto(base + "#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired")
+        expect(page.get_by_role("heading", name="Prisijungti")).to_be_visible()
+        expect(page.locator("#toast")).to_have_text("Nuoroda nebegalioja – paprašyk naujos")
+        assert "error" not in page.evaluate("() => location.hash")
+        page.evaluate("""() => {
+            const p = window.__fakeDb.get().profiles.find(x => x.nickname === 'Ecimas_LT');
+            localStorage.setItem('fake-sb-session', JSON.stringify({ access_token: 'x', user: { id: p.id, email: p.email } }));
+        }""")
+        page.goto("about:blank")
+        page.goto(base + "#access_token=abc&expires_in=3600&refresh_token=def&token_type=bearer&type=magiclink")
+        expect(page.get_by_role("heading", name="Ecimas_LT")).to_be_visible()
+        expect(page.locator("#toast")).to_have_text("Prisijungei")
+        assert page.evaluate("() => location.hash") == "#/profilis"
+        step("grįžimas iš laiško nuorodos (pasibaigusi ir sėkminga)")
 
         browser.close()
     httpd.shutdown()

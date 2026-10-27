@@ -1,5 +1,5 @@
-// Prisijungimas be slaptažodžio: kodas iš el. laiško (veikia ir įdiegtoje programėlėje),
-// nuoroda laiške – atsarginis būdas toje pačioje naršyklėje.
+// Prisijungimas be slaptažodžio: nuoroda el. laiške (pagrindinis būdas su standartiniu Supabase laišku)
+// arba kodas iš laiško, kai laiško šablone yra {{ .Token }} (reikia savo SMTP).
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { backButton } from '../ui.js';
@@ -27,21 +27,26 @@ export async function loginView(ctx) {
       <div class="stack-lg login">
         <div class="stack-2">
           <h1 class="display-lg" tabindex="-1">Prisijungti</h1>
-          <p class="muted" data-intro>Be slaptažodžio: atsiųsime kodą į el. paštą.</p>
+          <p class="muted" data-intro>Be slaptažodžio: atsiųsime prisijungimo nuorodą į el. paštą.</p>
         </div>
 
         <form class="stack" data-email-form novalidate>
           <label class="field"><span class="small muted strong">El. paštas</span>
             <input type="email" name="email" required autocomplete="email" inputmode="email" placeholder="vardas@pastas.lt"></label>
-          <button class="btn btn-primary btn-lg" type="submit">${icon('mail', 22)}Siųsti kodą</button>
+          <button class="btn btn-primary btn-lg" type="submit">${icon('mail', 22)}Siųsti nuorodą</button>
         </form>
 
         <form class="stack" data-code-form novalidate hidden>
-          <p class="muted">Kodą išsiuntėme į <strong data-email-shown></strong>. Jei laiško nėra, pažiūrėk į „Šlamštą“.</p>
-          <label class="field"><span class="small muted strong">Kodas iš laiško</span>
+          <div class="card stack-2">
+            <p class="strong">Patikrink el. paštą</p>
+            <p class="muted small">Išsiuntėme laišką į <strong data-email-shown></strong>. Atidaryk jį <strong>šiame telefone</strong> ir paspausk nuorodą „Sign in“ arba „Confirm“ – programėlė atsidarys jau prisijungus.</p>
+            <p class="muted small">Siuntėjas: Supabase Auth. Jei laiško nėra, pažiūrėk „Reklamos“ ir „Šlamštas“ skiltyse.</p>
+          </div>
+          <button class="btn-text" type="button" data-have-code>Laiške yra kodas?</button>
+          <label class="field" data-code-field hidden><span class="small muted strong">Kodas iš laiško</span>
             <input name="code" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,8}" maxlength="8"
                    placeholder="123456" class="code-input"></label>
-          <button class="btn btn-primary btn-lg" type="submit">${icon('check', 22, 3)}Prisijungti</button>
+          <button class="btn btn-primary btn-lg" type="submit" data-code-submit hidden>${icon('check', 22, 3)}Prisijungti</button>
           <div class="row-between">
             <button class="btn-text" type="button" data-change>Kitas el. paštas</button>
             <button class="btn-text" type="button" data-resend disabled>Siųsti dar kartą</button>
@@ -82,7 +87,6 @@ export async function loginView(ctx) {
         codeForm.hidden = false;
         root.querySelector('[data-intro]').hidden = true;
         codeForm.code.value = '';
-        codeForm.code.focus();
         countdown();
       };
 
@@ -95,10 +99,17 @@ export async function loginView(ctx) {
         try {
           await send();
         } catch (err) {
-          ctx.toast(errorText(err, 'Nepavyko išsiųsti kodo'));
+          ctx.toast(errorText(err, 'Nepavyko išsiųsti laiško'));
         } finally {
           btn.disabled = false;
         }
+      });
+
+      root.querySelector('[data-have-code]').addEventListener('click', (e) => {
+        e.currentTarget.hidden = true;
+        root.querySelector('[data-code-field]').hidden = false;
+        root.querySelector('[data-code-submit]').hidden = false;
+        codeForm.code.focus();
       });
 
       codeForm.code.addEventListener('input', () => {
@@ -133,10 +144,10 @@ export async function loginView(ctx) {
         resend.disabled = true;
         try {
           await send();
-          ctx.toast('Naujas kodas išsiųstas');
+          ctx.toast('Naujas laiškas išsiųstas');
         } catch (err) {
           resend.disabled = false;
-          ctx.toast(errorText(err, 'Nepavyko išsiųsti kodo'));
+          ctx.toast(errorText(err, 'Nepavyko išsiųsti laiško'));
         }
       });
 

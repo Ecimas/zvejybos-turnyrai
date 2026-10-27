@@ -15,7 +15,7 @@ function isPermanent(err) {
 export async function createSupabaseBackend(url, anonKey) {
   const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
   const sb = createClient(url, anonKey, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' }
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' }
   });
   let user = null;
   const signed = new Map();
