@@ -477,6 +477,7 @@ def more_real_tests(page, base):
     step("mano žemėlapis: vietos rodomos, kopijos išlieka po 90 d., išjungus ištrinamos")
 
     social_real_test(page, base, me)
+    formats_real_test(page, base, me)
 
     # Duomenų eksportas
     go(page, base + "#/profilis")
@@ -631,6 +632,110 @@ def social_real_test(page, base, me):
     page.evaluate("(a) => window.__zt.backend.leaveClub(a)", mine["id"])
     assert fake(page, "return db.club_members.some(m => m.club_id === arg[0] && m.user_id === arg[1] && m.role === 'owner');", [mine["id"], me])
     step("komandinė įskaita (tikras režimas): klubo pasirinkimas, svetimas klubas atmetamas, klubų lentelė, išėjimas")
+
+
+def formats_real_test(page, base, me):
+    year = page.evaluate("() => new Date().getFullYear()")
+    # Lyga per sąsają; savininką nustato serveris
+    go(page, base + "#/lygos")
+    page.locator("[data-create-league] summary").click()
+    page.get_by_label("Pavadinimas").fill("Ecimo lyga")
+    page.get_by_role("button", name="Sukurti lygą").click()
+    expect(page.get_by_role("heading", name="Ecimo lyga")).to_be_visible()
+    ins = calls(page, "from", table="leagues", op="insert")[-1]
+    assert "owner_id" not in ins["rows"][0], ins
+    league = fake(page, "return db.leagues.find(l => l.owner_id === arg);", me)
+    assert league and league["season"] == year, league
+    res = page.evaluate("() => window.__zt.backend.createLeague({ name: 'ecimo LYGA', season: new Date().getFullYear() }).then(() => 'ok', e => e.message)")
+    assert res == "Tokia lyga šiam sezonui jau yra", res
+
+    # Taškų turnyras su divizionais lygoje
+    go(page, base + "#/naujas")
+    page.get_by_label("Pavadinimas").fill("Ecimo taškų etapas")
+    page.locator("[data-format=species_points]").click()
+    page.locator("[data-sp='1']").click()
+    page.locator("[data-sp='2']").click()
+    page.locator("[data-coef='2']").select_option("250")
+    page.locator("[data-add-div]").click()
+    page.locator("[data-div-name]").nth(0).fill("Krantas")
+    page.locator("[data-add-div]").click()
+    page.locator("[data-div-name]").nth(1).fill("Valtis")
+    page.get_by_label("Sezono lyga").select_option(label=f"Ecimo lyga · {year}")
+    page.locator("[data-submit]").click()
+    expect(page.locator("#toast")).to_have_text("Turnyras sukurtas")
+    tid = page.evaluate("() => location.hash.split('/')[2]")
+    got = fake(page, """const t = db.tournaments.find(x => x.id === arg);
+      return { f: t.format, l: t.league_id, pct: db.tournament_species.filter(x => x.tournament_id === arg).map(x => [x.species_id, x.points_pct]).sort(),
+               d: db.tournament_divisions.filter(x => x.tournament_id === arg).sort((a, b) => a.sort - b.sort).map(x => x.name) };""", tid)
+    assert got == {"f": "species_points", "l": league["id"], "pct": [[1, 100], [2, 250]], "d": ["Krantas", "Valtis"]}, got
+    expect(page.locator("dl.list")).to_contain_text("Lydeka ×1, Ešerys ×2,5")
+    page.get_by_label("Mano divizionas").select_option(label="Valtis")
+    expect(page.locator("#toast")).to_have_text("Divizionas: Valtis")
+    valtis = fake(page, "return db.tournament_divisions.find(x => x.tournament_id === arg && x.name === 'Valtis').id;", tid)
+    assert fake(page, "return db.entries.find(e => e.tournament_id === arg[0] && e.user_id === arg[1]).division_id;", [tid, me]) == valtis
+    # Redagavimas: „Krantas“ pašalinamas, „Valtis“ pervadinama – dalyvio pasirinkimas išlieka (tas pats ID)
+    page.get_by_role("link", name="Redaguoti").click()
+    page.locator("[data-div-remove='0']").click()
+    page.locator("[data-div-name]").nth(0).fill("Valtys")
+    page.locator("[data-submit]").click()
+    expect(page.locator("#toast")).to_have_text("Pakeitimai išsaugoti")
+    divs = fake(page, "return db.tournament_divisions.filter(x => x.tournament_id === arg).map(x => [x.id, x.name, x.sort]);", tid)
+    assert divs == [[valtis, "Valtys", 0]], divs
+    assert fake(page, "return db.entries.find(e => e.tournament_id === arg[0] && e.user_id === arg[1]).division_id;", [tid, me]) == valtis
+    # Svetimas divizionas ir svetima lyga atmetami
+    res = page.evaluate("(a) => window.__zt.backend.setEntryDivision(a[0], 'nera').then(() => 'ok', e => e.message)", [tid])
+    assert res == "Tokio diviziono nėra", res
+    fake(page, "db.leagues.push({ id: 'kito-lyga', name: 'Kito lyga', season: 2026, owner_id: '00000000-0000-4000-8000-0000000000aa', created_at: new Date().toISOString() }); window.__fakeDb.save(); return 1;")
+    res = page.evaluate("""() => window.__zt.backend.createTournament({ title: 'Į svetimą lygą', format: 'biggest', top_n: 3, min_length_mm: 0,
+        starts_at: new Date(Date.now() + 864e5).toISOString(), ends_at: new Date(Date.now() + 2 * 864e5).toISOString(), visibility: 'public',
+        species_ids: [], league_id: 'kito-lyga' }).then(() => 'ok', e => e.message)""")
+    assert res == "Į lygą gali įtraukti tik lygos savininkas", res
+    step("lyga ir taškų etapas (tikras režimas): koeficientai, divizionai su ID, svetima lyga ir divizionas atmetami")
+
+    # Lygos lentelė iš serverio funkcijos: vykstantis viešas etapas
+    fake(page, "db.tournaments.find(t => t.id === arg[0]).league_id = arg[1]; window.__fakeDb.save(); return 1;", [T1, league["id"]])
+    go(page, base + f"#/lyga/{league['id']}")
+    expect(page.locator(".league-row").first).to_contain_text("25 tšk.")
+    assert calls(page, "rpc", name="league_standings")
+    expect(page.locator(".list-row", has_text="Testo lydekų taurė")).to_be_visible()
+
+    # Taškų lentelė: koeficientas pritaikomas serverio lentelėje
+    fake(page, """const t = db.tournaments.find(x => x.id === arg); t.format = 'species_points'; t.top_n = 1;
+      db.tournament_species.find(x => x.tournament_id === arg).points_pct = 200; window.__fakeDb.save(); return 1;""", T1)
+    lb = page.evaluate("(id) => window.__zt.backend.leaderboard(id)", T1)
+    other = next(r for r in lb if r["nickname"] == "Kitas_Zvejys")
+    assert other["score_mm"] == 1400, lb
+    go(page, base + f"#/t/{T1}/lentele")
+    expect(page.locator(".podium")).to_contain_text("140 tšk.")
+    fake(page, """const t = db.tournaments.find(x => x.id === arg); t.format = 'top_n_sum'; t.top_n = 3; t.league_id = null;
+      db.tournament_species.find(x => x.tournament_id === arg).points_pct = 100; window.__fakeDb.save(); return 1;""", T1)
+    step("lygos lentelė ir taškų lentelė (tikras režimas)")
+
+    # Dvikovos: 4 dalyviai, 2 ratai; pirmas baigtas
+    fake(page, """const now = Date.now(), H = 3600e3, iso = (o) => new Date(now + o).toISOString();
+      for (const [id, nick] of [['00000000-0000-4000-8000-0000000000b1', 'Dvikov_B'], ['00000000-0000-4000-8000-0000000000b2', 'Dvikov_C']])
+        db.profiles.push({ id, nickname: nick, region: null, trust_score: 50, is_admin: false, created_at: iso(-100 * H) });
+      db.tournaments.push({ id: 'dddddddd-0000-4000-8000-000000000001', organizer_id: '00000000-0000-4000-8000-0000000000aa', title: 'Testo dvikovos',
+        description: null, format: 'duels', top_n: 1, min_length_mm: 0, visibility: 'public', fee_cents: 0, starts_at: iso(-30 * H), ends_at: iso(18 * H),
+        created_at: iso(-50 * H), late_join_minutes: 0, leaderboard_hidden: false, invite_code: 'dddddddddd' });
+      const ids = [arg, '00000000-0000-4000-8000-0000000000aa', '00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000b2'];
+      ids.forEach((u, i) => {
+        db.entries.push({ tournament_id: 'dddddddd-0000-4000-8000-000000000001', user_id: u, joined_at: iso(-31 * H), club_id: null, division_id: null });
+        db.catches.push({ id: 'duel-c' + i, user_id: u, client_id: 'duel-c' + i, species_id: 2, length_mm: 200 + i * 50, captured_at_device: iso(-20 * H),
+          received_at: iso(-20 * H), photo_path: u + '/duel' + i + '.jpg', photo_sha256: String(i).repeat(64), status: 'approved', reject_reason: null, created_at: iso(-20 * H) });
+      });
+      window.__fakeDb.save(); return 1;""", me)
+    go(page, base + "#/t/dddddddd-0000-4000-8000-000000000001")
+    expect(page.locator("[data-duel-card]")).to_contain_text("Finalas")
+    go(page, base + "#/t/dddddddd-0000-4000-8000-000000000001/dvikovos")
+    expect(page.get_by_role("heading", name="Pusfinalis")).to_be_visible()
+    expect(page.locator("[data-round='1'] .duel-pair")).to_have_count(2)
+    expect(page.locator("[data-round='2'] .duel-pair")).to_have_count(1)
+    expect(page.locator("[data-round='1'] .duel-side.win")).to_have_count(2)
+    finalists = page.locator("[data-round='2'] .duel-side .strong").all_inner_texts()
+    assert "Dvikov_C" in finalists, finalists
+    assert calls(page, "rpc", name="duel_bracket")
+    step("dvikovos (tikras režimas): tinklelis iš serverio funkcijos, nugalėtojai pereina į finalą")
 
 
 def google_login_test(page, base, auth_settings):

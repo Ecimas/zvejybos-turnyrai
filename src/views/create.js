@@ -1,12 +1,24 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { phase, LATE_JOIN } from '../lib/format.js';
+import { phase, LATE_JOIN, COEFS, coefText } from '../lib/format.js';
 import { backButton, loginPrompt, empty, banNotice } from '../ui.js';
 import { PRESETS, eur, parseEur, validateSplit, placeAmounts, sponsorTotal } from '../lib/prizes.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 const local = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const SPONSOR_URL = /^https:\/\/[^\s<>"']{3,200}$/;
+const DIV_NAME = /^[A-Za-z0-9ĄČĘĖĮŠŲŪŽąčęėįšųūž .,_+()-]+$/;
+const FORMAT_HINT = {
+  biggest: 'Laimi didžiausią žuvį pagavęs žvejys.',
+  top_n_sum: 'Sumuojami kelių ilgiausių žuvų ilgiai.',
+  species_points: 'Taškai = ilgis cm × rūšies koeficientas. Retesnėms rūšims duok didesnį koeficientą.',
+  duels: 'Atkrintamosios poros: rate laimi daugiau pagavęs. Registracija tik iki starto; 8 dalyviai – 3 ratai, laikas padalinamas po lygiai.'
+};
+const TOPN_LABEL = {
+  top_n_sum: 'Kiek ilgiausių žuvų sumuoti',
+  species_points: 'Kiek geriausių žuvų įskaityti',
+  duels: 'Kiek ilgiausių žuvų sumuoti kiekviename rate'
+};
 
 // Naujas turnyras (#/naujas) ir esamo redagavimas iki starto (#/t/:id/redaguoti).
 export async function createView(ctx, [editId] = []) {
@@ -39,6 +51,9 @@ export async function createView(ctx, [editId] = []) {
     }
   });
   const picked = new Set(t?.species_ids || []);
+  const pct = { ...(t?.species_pct || {}) };
+  const myLeagues = backend.myLeagues ? await backend.myLeagues().catch(() => []) : [];
+  let divisions = (t?.divisions || []).map((d) => ({ id: d.id, name: d.name }));
   let format = t?.format || 'biggest';
   let visibility = t?.visibility || 'public';
   const back = t ? `#/t/${t.id}` : '#/';
@@ -57,17 +72,21 @@ export async function createView(ctx, [editId] = []) {
 
         <fieldset class="field">
           <legend class="small muted strong">Formatas</legend>
-          <div class="seg">
+          <div class="seg seg-grid">
             <button type="button" data-format="biggest" aria-pressed="${format === 'biggest'}">Didžiausia žuvis</button>
             <button type="button" data-format="top_n_sum" aria-pressed="${format === 'top_n_sum'}">Kelių ilgių suma</button>
+            <button type="button" data-format="species_points" aria-pressed="${format === 'species_points'}">Taškai už rūšį</button>
+            <button type="button" data-format="duels" aria-pressed="${format === 'duels'}">Dvikovos</button>
           </div>
-          <label class="field" data-topn ${format === 'top_n_sum' ? '' : 'hidden'}><span class="small muted">Kiek ilgiausių žuvų sumuoti</span>
-            <select name="top_n">${[2, 3, 4, 5].map((n) => html`<option value="${n}" ${n === (t?.top_n || 3) ? 'selected' : ''}>${n}</option>`)}</select></label>
+          <p class="small muted" data-format-hint>${FORMAT_HINT[format]}</p>
+          <label class="field" data-topn ${format === 'biggest' ? 'hidden' : ''}><span class="small muted" data-topn-label>${TOPN_LABEL[format] || ''}</span>
+            <select name="top_n">${[1, 2, 3, 4, 5].map((n) => html`<option value="${n}" ${n === (t?.top_n || 3) ? 'selected' : ''}>${n}</option>`)}</select></label>
         </fieldset>
 
         <fieldset class="field">
           <legend class="small muted strong">Rūšys <span class="muted">(nieko nepažymėjus – visos)</span></legend>
           <div class="chips">${popular.map((s) => html`<button type="button" class="sp-chip" data-sp="${s.id}" aria-pressed="${picked.has(s.id)}">${s.name_lt}</button>`)}</div>
+          <div class="list" data-coefs ${format === 'species_points' ? '' : 'hidden'}></div>
         </fieldset>
 
         <div class="grid-2">
@@ -89,15 +108,27 @@ export async function createView(ctx, [editId] = []) {
           <span class="small muted" data-vis-hint>${visibility === 'private' ? 'Turnyras nerodomas sąraše. Po sukūrimo gausi kvietimo nuorodą.' : 'Turnyras matomas visiems sąraše.'}</span>
         </fieldset>
 
-        <label class="field"><span class="small muted strong">Registracija po starto</span>
+        <label class="field" data-not-duels ${format === 'duels' ? 'hidden' : ''}><span class="small muted strong">Registracija po starto</span>
           <select name="late_join">${LATE_JOIN.map(([v, label]) => html`<option value="${v === null ? '' : v}" ${(t?.late_join_minutes ?? null) === v ? 'selected' : ''}>${label}</option>`)}</select>
           <span class="small muted">Kiek laiko po starto dar galima prisijungti prie turnyro.</span></label>
 
-        <label class="check-row"><input type="checkbox" name="team_mode" ${t?.team_mode ? 'checked' : ''}>
+        <label class="check-row" data-not-duels ${format === 'duels' ? 'hidden' : ''}><input type="checkbox" name="team_mode" ${t?.team_mode ? 'checked' : ''}>
           <span class="stack-1"><span class="strong">Komandinė įskaita (klubai)</span><span class="small muted">Dalyviai atstovauja savo klubams; klubo rezultatas – 3 geriausių narių suma.</span></span></label>
 
-        <label class="check-row"><input type="checkbox" name="leaderboard_hidden" ${t?.leaderboard_hidden ? 'checked' : ''}>
+        <label class="check-row" data-not-duels ${format === 'duels' ? 'hidden' : ''}><input type="checkbox" name="leaderboard_hidden" ${t?.leaderboard_hidden ? 'checked' : ''}>
           <span class="stack-1"><span class="strong">Slėpti lentelę iki pabaigos</span><span class="small muted">Dalyviai mato tik savo rezultatą – intriga iki paskutinės minutės.</span></span></label>
+
+        <fieldset class="field stack">
+          <legend class="small muted strong">Divizionai (nebūtina, iki 8)</legend>
+          <span class="small muted">Atskiros įskaitos tame pačiame turnyre, pvz. „Jaunimas“, „Moterys“, „Valtis“. Dalyvis pasirenka divizioną registruodamasis.</span>
+          <div class="stack-2" data-div-rows></div>
+          <button type="button" class="btn btn-ghost" data-add-div>${icon('plus', 18, 2.6)}Pridėti divizioną</button>
+        </fieldset>
+
+        ${myLeagues.length || t?.league_id ? html`<label class="field"><span class="small muted strong">Sezono lyga</span>
+          <select name="league_id"><option value="">Be lygos</option>${myLeagues.map((l) => html`<option value="${l.id}" ${t?.league_id === l.id ? 'selected' : ''}>${l.name} · ${l.season}</option>`)}</select>
+          <span class="small muted">Vietos šiame turnyre duos taškų lygos lentelėje.</span></label>`
+        : html`<p class="small muted">Rengi kelis etapus per sezoną? <a class="link" href="#/lygos">Sukurk sezono lygą</a> ir įtrauk į ją turnyrus.</p>`}
 
         <fieldset class="field card stack">
           <legend class="small muted strong">Prizinis fondas (nebūtina)</legend>
@@ -137,10 +168,27 @@ export async function createView(ctx, [editId] = []) {
     <div class="cta-bar"><button class="btn btn-primary btn-lg" data-submit>${icon('check', 22, 3)}${t ? 'Išsaugoti pakeitimus' : 'Sukurti turnyrą'}</button></div>`,
     mount(root) {
       const form = root.querySelector('[data-form]');
+      const coefBox = root.querySelector('[data-coefs]');
+      const renderCoefs = () => {
+        coefBox.hidden = format !== 'species_points';
+        const list = popular.filter((x) => picked.has(x.id));
+        coefBox.innerHTML = String(list.length ? html`${list.map((x) => html`<label class="list-row"><span class="grow strong">${x.name_lt}</span>
+          <select data-coef="${x.id}" aria-label="${x.name_lt} koeficientas">${COEFS.map((c) => html`<option value="${c}" ${(pct[x.id] ?? 100) === c ? 'selected' : ''}>${coefText(c)}</option>`)}</select></label>`)}`
+          : html`<p class="small warn">Pažymėk rūšis – kiekvienai galėsi nurodyti koeficientą.</p>`);
+      };
+      coefBox.addEventListener('change', (e) => {
+        if (e.target.dataset.coef) pct[e.target.dataset.coef] = Number(e.target.value);
+      });
+      renderCoefs();
       root.querySelectorAll('[data-format]').forEach((b) => b.addEventListener('click', () => {
         format = b.dataset.format;
         root.querySelectorAll('[data-format]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-        root.querySelector('[data-topn]').hidden = format !== 'top_n_sum';
+        root.querySelector('[data-topn]').hidden = format === 'biggest';
+        root.querySelector('[data-topn-label]').textContent = TOPN_LABEL[format] || '';
+        root.querySelector('[data-format-hint]').textContent = FORMAT_HINT[format];
+        root.querySelectorAll('[data-not-duels]').forEach((el) => { el.hidden = format === 'duels'; });
+        if (format === 'top_n_sum' && form.top_n.value === '1') form.top_n.value = '3';
+        renderCoefs();
       }));
       root.querySelectorAll('[data-vis]').forEach((b) => b.addEventListener('click', () => {
         visibility = b.dataset.vis;
@@ -153,7 +201,32 @@ export async function createView(ctx, [editId] = []) {
         const id = Number(b.dataset.sp);
         if (picked.has(id)) picked.delete(id); else picked.add(id);
         b.setAttribute('aria-pressed', String(picked.has(id)));
+        renderCoefs();
       }));
+
+      // --- Divizionai ---
+      const divRows = root.querySelector('[data-div-rows]');
+      const renderDivs = () => {
+        divRows.innerHTML = String(html`${divisions.map((d, i) => html`<div class="row gap-8" data-div="${i}">
+          <input class="grow" data-div-name maxlength="30" placeholder="pvz. Jaunimas" value="${d.name}" aria-label="Divizionas ${i + 1}">
+          <button type="button" class="icon-btn" data-div-remove="${i}" aria-label="Pašalinti divizioną ${i + 1}">${icon('x', 18, 2.4)}</button>
+        </div>`)}`);
+        root.querySelector('[data-add-div]').hidden = divisions.length >= 8;
+      };
+      divRows.addEventListener('input', (e) => {
+        const row = e.target.closest('[data-div]');
+        if (row) divisions[Number(row.dataset.div)].name = e.target.value;
+      });
+      divRows.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-div-remove]');
+        if (b) { divisions.splice(Number(b.dataset.divRemove), 1); renderDivs(); }
+      });
+      root.querySelector('[data-add-div]').addEventListener('click', () => {
+        divisions.push({ name: '' });
+        renderDivs();
+        divRows.querySelector(`[data-div="${divisions.length - 1}"] input`).focus();
+      });
+      renderDivs();
       const errorEl = root.querySelector('[data-error]');
       const fail = (msg) => { errorEl.hidden = false; errorEl.textContent = msg; errorEl.scrollIntoView({ block: 'center' }); };
 
@@ -306,6 +379,10 @@ export async function createView(ctx, [editId] = []) {
           const splitErr = validateSplit(split);
           if (splitErr) return fail(`Prizinis fondas: ${splitErr.charAt(0).toLowerCase()}${splitErr.slice(1)}.`);
         }
+        if (format === 'species_points' && !picked.size) return fail('Taškams už rūšį pažymėk bent vieną rūšį ir jos koeficientą.');
+        const cleanDivs = divisions.map((d) => ({ ...d, name: d.name.trim() })).filter((d) => d.name || d.id);
+        if (cleanDivs.some((d) => d.name.length < 2 || d.name.length > 30 || !DIV_NAME.test(d.name))) return fail('Diviziono pavadinimas: 2–30 raidžių, skaičių ar tarpų.');
+        if (new Set(cleanDivs.map((d) => d.name.toLowerCase())).size !== cleanDivs.length) return fail('Divizionų pavadinimai turi skirtis.');
         const cleanSponsors = [];
         for (const [i, sp] of sponsors.entries()) {
           const name = sp.name.trim();
@@ -321,19 +398,22 @@ export async function createView(ctx, [editId] = []) {
           title,
           description: form.description.value.trim() || null,
           format,
-          top_n: format === 'top_n_sum' ? Number(form.top_n.value) : 3,
+          top_n: format === 'biggest' ? 3 : format === 'top_n_sum' ? Math.max(2, Number(form.top_n.value)) : Number(form.top_n.value),
           min_length_mm: Math.round(minCm * 10),
           starts_at: startsAt.toISOString(),
           ends_at: endsAt.toISOString(),
           visibility,
-          leaderboard_hidden: form.leaderboard_hidden.checked,
-          team_mode: form.team_mode.checked,
-          late_join_minutes: form.late_join.value === '' ? null : Number(form.late_join.value),
+          leaderboard_hidden: format !== 'duels' && form.leaderboard_hidden.checked,
+          team_mode: format !== 'duels' && form.team_mode.checked,
+          late_join_minutes: format === 'duels' ? 0 : form.late_join.value === '' ? null : Number(form.late_join.value),
           prizes: form.prizes.value.trim() || null,
           prize_fund_cents: fund,
           prize_split: fund > 0 ? split.slice() : null,
           sponsors: cleanSponsors,
-          species_ids: [...picked]
+          species_ids: [...picked],
+          species_pct: format === 'species_points' ? Object.fromEntries([...picked].map((sid) => [sid, pct[sid] ?? 100])) : {},
+          divisions: cleanDivs,
+          ...(form.league_id ? { league_id: form.league_id.value || null } : {})
         };
         const btn = e.currentTarget;
         btn.disabled = true;

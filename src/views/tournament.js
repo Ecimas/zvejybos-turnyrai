@@ -1,7 +1,8 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { phase, timeLabel, describeFormat, cm, dateTime, duration, count, gapText, registrationOpen, registrationLabel } from '../lib/format.js';
-import { fitReason, REASON_LT } from '../lib/scoring.js';
+import { phase, timeLabel, describeFormat, cm, dateTime, duration, count, gapText, registrationOpen, registrationLabel, scoreText, coefText, isPoints } from '../lib/format.js';
+import { fitReason, REASON_LT, rerank } from '../lib/scoring.js';
+import { roundName } from '../lib/duels.js';
 import { phaseBadge, statusChip, backButton, thumb, hydratePhotos, empty, avatar, loginPrompt, notFound } from '../ui.js';
 import { eur, placeAmounts, payouts } from '../lib/prizes.js';
 import { lastSeen, markSeen } from '../lib/seen.js';
@@ -55,7 +56,7 @@ function winners(t, board, me) {
     <ol class="plain stack-2">${top.map((r) => html`<li class="row gap-10">
       <span class="medal" aria-hidden="true">${MEDALS[r.rank - 1] || r.rank}</span>
       <a class="grow strong" href="#/zvejys/${r.user_id}">${r.nickname}${r.user_id === me ? ' (tu)' : ''}</a>
-      <span class="stack-1 right"><span class="num-sm">${cm(r.score_mm)}</span>
+      <span class="stack-1 right"><span class="num-sm">${scoreText(t, r.score_mm)}</span>
         ${pay.get(r.user_id) ? html`<span class="prize-amt">${eur(pay.get(r.user_id))}</span>` : ''}</span>
     </li>`)}</ol>
     ${pay.size ? html`<p class="small muted">Prizus išmoka organizatorius arba rėmėjai.</p>` : ''}
@@ -112,11 +113,13 @@ export async function tournamentView(ctx, [id]) {
     return { nav: 'turnyrai', html: notFound('#/', 'Turnyras nerastas', 'Gal jis privatus arba ištrintas.') };
   }
   const me = state.user?.id;
-  const [board, mineAll, anns, myClubs] = await Promise.all([
+  const duels = t.format === 'duels';
+  const [board, mineAll, anns, myClubs, bracket] = await Promise.all([
     backend.leaderboard(id).catch(() => []),
     me ? backend.myCatches().catch(() => []) : [],
     backend.announcements(id).catch(() => []),
-    t.team_mode && t.joined && backend.myClubs ? backend.myClubs().catch(() => []) : []
+    t.team_mode && t.joined && backend.myClubs ? backend.myClubs().catch(() => []) : [],
+    duels && backend.duelBracket ? backend.duelBracket(id).catch(() => []) : []
   ]);
   const seenBefore = lastSeen(id);
   const p = phase(t);
@@ -138,9 +141,16 @@ export async function tournamentView(ctx, [id]) {
     .slice(0, 8);
   const cd = countdown(t);
 
+  const spName = (sid) => state.species.find((s) => s.id === sid)?.name_lt ?? '';
+  const divisions = t.divisions || [];
+  const myDivision = divisions.find((d) => d.id === t.my_division_id);
+  const canPickDivision = t.joined && divisions.length && (p === 'soon' || registrationOpen(t));
   const rules = [
     ['Formatas', describeFormat(t)],
     ['Rūšys', speciesNames],
+    ...(isPoints(t) ? [['Koeficientai', t.species_ids.map((sid) => `${spName(sid)} ${coefText(t.species_pct?.[sid])}`).join(', ') || 'Visos ×1']] : []),
+    ...(divisions.length ? [['Divizionai', divisions.map((d) => d.name).join(', ')]] : []),
+    ...(t.league ? [['Lyga', html`<a class="link" href="#/lyga/${t.league.id}">${t.league.name} · ${t.league.season}</a>`]] : []),
     ['Įskaitoma', t.min_length_mm ? `nuo ${cm(t.min_length_mm)}` : 'bet koks ilgis'],
     ['Pradžia', dateTime(t.starts_at)],
     ['Pabaiga', dateTime(t.ends_at)],
@@ -193,13 +203,21 @@ export async function tournamentView(ctx, [id]) {
         <span class="small muted right">${count(t.participants, 'dalyvis', 'dalyviai', 'dalyvių')}</span>
       </section>
 
+      ${duels ? duelCard(t, bracket, me, p) : ''}
+
+      ${canPickDivision ? html`<section class="card stack-2" data-division-card>
+        <label class="field"><span class="small muted strong">Mano divizionas</span>
+          <select data-division><option value="">Nepasirinktas</option>${divisions.map((d) => html`<option value="${d.id}" ${t.my_division_id === d.id ? 'selected' : ''}>${d.name}</option>`)}</select></label>
+        <span class="small muted">Rezultatas skaičiuojamas ir bendroje, ir diviziono lentelėje. Pakeisti galima, kol vyksta registracija.</span>
+      </section>` : t.joined && myDivision ? html`<p class="small muted">Tavo divizionas: <strong>${myDivision.name}</strong></p>` : ''}
+
       ${t.team_mode && t.joined && p !== 'done' ? html`<section class="card stack-2" data-team-card>
         <p class="strong row gap-8">${icon('users', 18)}Komandinė įskaita</p>
         ${myClubs.length ? html`<label class="field"><span class="small muted strong">Atstovauju klubui</span>
           <select data-team-club><option value="">Be klubo</option>${myClubs.map((c) => html`<option value="${c.id}" ${t.my_club_id === c.id ? 'selected' : ''}>${c.name}</option>`)}</select></label>`
           : html`<p class="small muted">Prisijunk prie klubo arba sukurk savo – tada galėsi atstovauti jam šiame turnyre. <a class="link" href="#/klubai">Klubai</a></p>`}
       </section>` : ''}
-      ${t.joined && p !== 'soon' ? html`<section class="card hero stack">
+      ${t.joined && p !== 'soon' && !duels ? html`<section class="card hero stack">
         <div class="row-between">
           <div class="row gap-8 baseline">
             <span class="rank-huge accent">${myRow && myRow.rank !== null ? `#${myRow.rank}` : '–'}</span>
@@ -207,11 +225,11 @@ export async function tournamentView(ctx, [id]) {
           </div>
           <div class="stack-1 right">
             <span class="small muted strong">Tavo rezultatas</span>
-            <span class="display-md">${myRow ? cm(myRow.score_mm) : '0 cm'}</span>
+            <span class="display-md">${scoreText(t, myRow ? myRow.score_mm : 0)}</span>
           </div>
         </div>
         ${myRow && above ? html`<div class="stack-2">
-          <div class="row-between small strong"><span>${gapText(above, myRow)}</span><span class="muted">${above.nickname}</span></div>
+          <div class="row-between small strong"><span>${gapText(above, myRow, t)}</span><span class="muted">${above.nickname}</span></div>
           <div class="progress"><div style="width:${Math.max(4, Math.round((myRow.score_mm / above.score_mm) * 100))}%"></div></div>
         </div>` : ''}
         ${!myRow ? html`<span class="small muted">Įskaityti bus tik moderatoriaus patvirtinti laimikiai.</span>` : ''}
@@ -225,7 +243,7 @@ export async function tournamentView(ctx, [id]) {
           return html`<a class="card card-link row tight" href="#/l/${c.id}">
             ${thumb(c.photo_path)}
             <div class="grow stack-1">
-              <span class="num-md">${cm(c.length_mm)}</span>
+              <span class="num-md">${cm(c.length_mm)}${isPoints(t) && reason === 'ok' ? html` <span class="small muted">· ${scoreText(t, Math.floor((c.length_mm * (t.species_pct?.[c.species_id] ?? 100)) / 100))}</span>` : ''}</span>
               <span class="small muted">${state.species.find((s) => s.id === c.species_id)?.name_lt ?? ''} · ${dateTime(c.captured_at_device)}</span>
               ${reason !== 'ok' ? html`<span class="small warn">${REASON_LT[reason]}</span>` : ''}
             </div>
@@ -236,7 +254,7 @@ export async function tournamentView(ctx, [id]) {
 
       <section class="stack">
         <div class="row-between">
-          <h2 class="h2">Lyderiai</h2>
+          <h2 class="h2">${duels ? 'Bendra lentelė' : 'Lyderiai'}</h2>
           ${hidden ? '' : html`<a class="link" href="#/t/${t.id}/lentele">Visa lentelė${icon('chevron', 18)}</a>`}
         </div>
         ${hidden ? html`<p class="muted">${icon('lock', 14)} Lentelė paslėpta iki turnyro pabaigos.</p>`
@@ -244,7 +262,7 @@ export async function tournamentView(ctx, [id]) {
           <a class="list-row" href="#/zvejys/${r.user_id}">
             <span class="rank r${r.rank}">${r.rank}</span>
             <span class="grow strong">${r.nickname}${r.user_id === me ? ' (tu)' : ''}</span>
-            <span class="num-sm">${cm(r.score_mm)}</span>
+            <span class="num-sm">${scoreText(t, r.score_mm)}</span>
           </a>`)}</div>` : html`<p class="muted">Patvirtintų laimikių dar nėra.</p>`}
         ${!hidden && t.leaderboard_hidden && p !== 'done' ? html`<p class="small muted">Dalyviams lentelė paslėpta iki pabaigos – tu ją matai kaip ${organizer ? 'organizatorius' : 'moderatorius'}.</p>` : ''}
         ${!hidden && board.length ? html`<a class="btn btn-ghost" href="#/t/${t.id}/tv">${icon('bars', 18)}Rodyti dideliame ekrane</a>` : ''}
@@ -263,6 +281,17 @@ export async function tournamentView(ctx, [id]) {
     ${cta ? html`<div class="cta-bar">${cta}</div>` : ''}`,
     mount(root) {
       hydratePhotos(root, backend);
+      root.querySelector('[data-division]')?.addEventListener('change', async (e) => {
+        const sel = e.currentTarget;
+        sel.disabled = true;
+        try {
+          await backend.setEntryDivision(t.id, sel.value || null);
+          ctx.toast(sel.value ? `Divizionas: ${sel.selectedOptions[0].textContent}` : 'Divizionas nepasirinktas');
+        } catch (err) {
+          ctx.toast(err.message || 'Nepavyko');
+        }
+        sel.disabled = false;
+      });
       root.querySelector('[data-team-club]')?.addEventListener('change', async (e) => {
         const sel = e.currentTarget;
         sel.disabled = true;
@@ -343,7 +372,7 @@ export async function tvView(ctx, [id]) {
       ${hidden ? html`<p class="tv-empty">${icon('lock', 40)} Lentelė paslėpta iki pabaigos</p>`
       : board.length ? html`<ol class="tv-list plain">${board.slice(0, 10).map((r) => html`<li class="tv-row r${r.rank}">
           <span class="tv-rank">${r.rank}</span><span class="tv-name ellipsis">${r.nickname}</span>
-          <span class="tv-meta">${count(Number(r.counted), 'žuvis', 'žuvys', 'žuvų')}</span><span class="tv-score">${cm(r.score_mm)}</span>
+          <span class="tv-meta">${count(Number(r.counted), 'žuvis', 'žuvys', 'žuvų')}</span><span class="tv-score">${scoreText(t, r.score_mm)}</span>
         </li>`)}</ol>`
         : html`<p class="tv-empty">Patvirtintų laimikių dar nėra</p>`}
       <footer class="tv-foot muted small">Žvejybos turnyrai · atnaujinama automatiškai</footer>
@@ -356,11 +385,14 @@ export async function tvView(ctx, [id]) {
   };
 }
 
-export async function boardView(ctx, [id]) {
+export async function boardView(ctx, [id], query) {
   const { backend, state } = ctx;
   const me = state.user?.id;
-  const [t, board] = await Promise.all([backend.tournament(id), backend.leaderboard(id)]);
+  const [t, full] = await Promise.all([backend.tournament(id), backend.leaderboard(id)]);
   if (!t) return { nav: 'lenteles', html: notFound('#/lenteles', 'Turnyras nerastas') };
+  const div = (t.divisions || []).find((d) => d.id === query?.get?.('div')) || null;
+  const map = div ? await backend.divisionMap(id).catch(() => new Map()) : null;
+  const board = div ? rerank(full.filter((r) => map.get(r.user_id) === div.id)) : full;
   const p = phase(t);
   if (boardHidden(t, state)) {
     const mine = board.find((r) => r.user_id === me);
@@ -374,7 +406,7 @@ export async function boardView(ctx, [id]) {
           <span class="empty-icon">${icon('lock', 30)}</span>
           <p class="empty-title">Paslėpta iki pabaigos</p>
           <p class="muted">Organizatorius nori intrigos: vietos paaiškės ${dateTime(t.ends_at)}.</p>
-          <p class="display-md">${mine ? `Tavo rezultatas: ${cm(mine.score_mm)}` : 'Tavo įskaitytų laimikių dar nėra'}</p>
+          <p class="display-md">${mine ? `Tavo rezultatas: ${scoreText(t, mine.score_mm)}` : 'Tavo įskaitytų laimikių dar nėra'}</p>
         </div>
       </div>`
     };
@@ -384,7 +416,7 @@ export async function boardView(ctx, [id]) {
   const myIdx = board.findIndex((r) => r.user_id === me);
   const mine = board[myIdx];
   const above = myIdx > 0 ? board[myIdx - 1] : null;
-  const pay = prizeMap(t, board);
+  const pay = div ? new Map() : prizeMap(t, board);
   const prizeTag = (r) => (pay.get(r.user_id) ? html`<span class="prize-amt">${eur(pay.get(r.user_id))}</span>` : '');
 
   const row = (r) => html`<li>
@@ -395,7 +427,7 @@ export async function boardView(ctx, [id]) {
         <span class="strong ellipsis">${r.user_id === me ? 'Tu' : r.nickname}</span>
         <span class="small muted">${count(Number(r.counted), 'žuvis', 'žuvys', 'žuvų')}${r.region ? ` · ${r.region}` : ''}</span>
       </span>
-      <span class="stack-1 right"><span class="num-md">${cm(r.score_mm)}</span>${prizeTag(r)}</span>
+      <span class="stack-1 right"><span class="num-md">${scoreText(t, r.score_mm)}</span>${prizeTag(r)}</span>
     </a>
   </li>`;
 
@@ -406,31 +438,31 @@ export async function boardView(ctx, [id]) {
       <header class="top-bar">
         ${backButton(`#/t/${t.id}`, 'Atgal į turnyrą')}
         <div class="grow stack-1 pad-x">
-          <h1 class="display-md" tabindex="-1">Lentelė</h1>
+          <h1 class="display-md" tabindex="-1">${div ? `Lentelė · ${div.name}` : 'Lentelė'}</h1>
           <span class="small muted ellipsis">${t.title} · ${describeFormat(t)}</span>
         </div>
         ${phaseBadge(t)}
       </header>
-      ${t.team_mode ? boardTabs(t, 'people') : ''}
+      ${hasTabs(t) ? boardTabs(t, div ? div.id : 'people') : ''}
 
       ${board.length ? html`
         <div class="podium">${podium.map((r) => html`
           <a class="podium-col p${r.rank}" href="#/zvejys/${r.user_id}">
             ${avatar(r.nickname, `ring-${r.rank}`)}
             <span class="small strong ellipsis">${r.user_id === me ? 'Tu' : r.nickname}</span>
-            <span class="num-md">${cm(r.score_mm)}</span>
+            <span class="num-md">${scoreText(t, r.score_mm)}</span>
             ${prizeTag(r)}
             <span class="rank r${r.rank}">${r.rank}</span>
           </a>`)}</div>
         ${rest.length ? html`<ol class="stack-6 plain">${rest.map(row)}</ol>` : ''}
-        <p class="center small muted">${count(board.length, 'dalyvis', 'dalyviai', 'dalyvių')} su įskaitytais laimikiais · vietos nerodomos${pay.size && p !== 'done' ? ' · sumos – jei turnyras baigtųsi dabar' : ''}</p>
+        <p class="center small muted">${count(board.length, 'dalyvis', 'dalyviai', 'dalyvių')} su įskaitytais laimikiais${div ? ` diviziono „${div.name}“ lentelėje` : ''}${pay.size && p !== 'done' && !div ? ' · sumos – jei turnyras baigtųsi dabar' : ''}</p>
       ` : empty('Lentelė dar tuščia', p === 'soon' ? `Turnyras prasidės ${dateTime(t.starts_at)}.` : 'Kai moderatorius patvirtins pirmus laimikius, jie atsiras čia.')}
     </div>
     ${mine ? html`<div class="my-sticky">
       <span class="rank-big accent">#${mine.rank}</span>
       <span class="grow stack-1">
-        <span class="strong">Tu · ${cm(mine.score_mm)}</span>
-        <span class="small">${above ? gapText(above, mine) : 'Tu pirmauji'}${p === 'live' ? ` · ${timeLabel(t).toLowerCase()}` : ''}</span>
+        <span class="strong">Tu · ${scoreText(t, mine.score_mm)}</span>
+        <span class="small">${above ? gapText(above, mine, t) : 'Tu pirmauji'}${p === 'live' ? ` · ${timeLabel(t).toLowerCase()}` : ''}</span>
       </span>
     </div>` : ''}`,
     mount() {
@@ -441,11 +473,82 @@ export async function boardView(ctx, [id]) {
   };
 }
 
+const hasTabs = (t) => t.team_mode || (t.divisions || []).length > 0;
+
 function boardTabs(t, active) {
-  return html`<nav class="seg" aria-label="Lentelės rūšis">
-    <a href="#/t/${t.id}/lentele" role="button" aria-pressed="${active === 'people'}"${active === 'people' ? html` aria-current="page"` : ''}>Žvejai</a>
-    <a href="#/t/${t.id}/klubai" role="button" aria-pressed="${active === 'teams'}"${active === 'teams' ? html` aria-current="page"` : ''}>Klubai</a>
+  const tab = (href, key, label) => html`<a href="${href}" role="button" aria-pressed="${active === key}"${active === key ? html` aria-current="page"` : ''}>${label}</a>`;
+  return html`<nav class="seg seg-tabs" aria-label="Lentelės rūšis">
+    ${tab(`#/t/${t.id}/lentele`, 'people', (t.divisions || []).length ? 'Visi' : 'Žvejai')}
+    ${(t.divisions || []).map((d) => tab(`#/t/${t.id}/lentele?div=${d.id}`, d.id, d.name))}
+    ${t.team_mode ? tab(`#/t/${t.id}/klubai`, 'teams', 'Klubai') : ''}
   </nav>`;
+}
+
+// Dvikovų kortelė turnyro puslapyje: mano dabartinė pora arba čempionas.
+function duelCard(t, bracket, me, p) {
+  const link = html`<a class="link" href="#/t/${t.id}/dvikovos">Visas tinklelis${icon('chevron', 18)}</a>`;
+  if (!bracket.length) {
+    return html`<section class="card stack-2" data-duel-card><p class="strong row gap-8">${icon('users', 18)}Dvikovos</p>
+      <p class="small muted">${p === 'soon' ? 'Poros bus sudarytos startui: registruotis galima tik iki starto. Reikia bent 2 dalyvių.' : 'Dalyvių per mažai dvikovoms.'}</p></section>`;
+  }
+  const rounds = bracket[0].rounds;
+  const last = bracket[bracket.length - 1];
+  const final = last.round === rounds && last.status === 'done' ? last : null;
+  const champion = final ? (final.winner_id === final.a_id ? final.a_nick : final.b_nick) : null;
+  const current = bracket.filter((r) => r.round === last.round);
+  const mine = me ? current.find((r) => r.a_id === me || r.b_id === me) : null;
+  const out = me && !mine && bracket.some((r) => r.a_id === me || r.b_id === me);
+  return html`<section class="card stack-2" data-duel-card>
+    <div class="row-between"><p class="strong row gap-8">${icon('trophy', 18)}${champion ? 'Dvikovos baigtos' : `${roundName(last.round, rounds)} · ${last.status === 'live' ? 'vyksta' : last.status === 'upcoming' ? 'prasidės ' + dateTime(last.starts_at) : 'baigtas'}`}</p>${link}</div>
+    ${champion ? html`<p class="display-md">🏆 ${champion}</p>`
+      : mine ? duelPair(t, mine, me)
+      : out ? html`<p class="small muted">Tu jau iškritai – stebėk, kas laimės.</p>`
+      : html`<p class="small muted">${count(current.length, 'pora', 'poros', 'porų')} šiame rate.</p>`}
+    ${!champion && last.status !== 'upcoming' ? html`<p class="small muted">Ratas baigsis ${dateTime(last.ends_at)}. Lygiųjų atveju laimi aukštesnio reitingo žvejys (pirmas poroje).</p>` : ''}
+  </section>`;
+}
+
+function duelPair(t, r, me) {
+  const side = (id, nick, score) => {
+    const win = r.winner_id && r.winner_id === id;
+    return html`<span class="duel-side ${win ? 'win' : ''} ${id === me ? 'mine' : ''}">
+      <span class="strong ellipsis">${id === me ? 'Tu' : nick}</span>
+      <span class="num-sm">${r.status === 'upcoming' ? '–' : cm(score)}</span></span>`;
+  };
+  if (!r.b_id) return html`<div class="duel-pair">${side(r.a_id, r.a_nick, r.a_score)}<span class="small muted">praeina be kovos</span></div>`;
+  return html`<div class="duel-pair">${side(r.a_id, r.a_nick, r.a_score)}<span class="small muted strong">prieš</span>${side(r.b_id, r.b_nick, r.b_score)}</div>`;
+}
+
+// Visas dvikovų tinklelis (#/t/:id/dvikovos)
+export async function duelsView(ctx, [id]) {
+  const { backend, state } = ctx;
+  const t = await backend.tournament(id);
+  if (!t || t.format !== 'duels') return { nav: 'lenteles', html: notFound('#/lenteles', 'Dvikovų nėra') };
+  const bracket = await backend.duelBracket(id).catch(() => []);
+  const me = state.user?.id;
+  const byRound = [...new Set(bracket.map((r) => r.round))].map((k) => bracket.filter((r) => r.round === k));
+  const rounds = bracket[0]?.rounds ?? 0;
+  const p = phase(t);
+  return {
+    nav: 'lenteles',
+    title: `Dvikovos · ${t.title}`,
+    html: html`<div class="screen">
+      <header class="top-bar">${backButton(`#/t/${t.id}`, 'Atgal į turnyrą')}
+        <div class="grow stack-1 pad-x"><h1 class="display-md" tabindex="-1">Dvikovos</h1><span class="small muted ellipsis">${t.title} · ${describeFormat(t)}</span></div>${phaseBadge(t)}</header>
+      ${byRound.length ? byRound.map((list) => html`<section class="stack-2" data-round="${list[0].round}">
+        <div class="row-between"><h2 class="h2">${roundName(list[0].round, rounds)}</h2>
+          <span class="small muted">${list[0].status === 'done' ? 'baigtas' : list[0].status === 'live' ? `vyksta iki ${dateTime(list[0].ends_at)}` : `nuo ${dateTime(list[0].starts_at)}`}</span></div>
+        <div class="stack-2">${list.map((r) => html`<div class="card ${r.a_id === me || r.b_id === me ? 'duel-mine' : ''}">${duelPair(t, r, me)}</div>`)}</div>
+      </section>`) : empty('Tinklelio dar nėra', p === 'soon' ? 'Poros bus sudarytos startui iš užsiregistravusių iki starto.' : 'Dvikovoms reikia bent 2 dalyvių.')}
+      ${byRound.length && byRound.length < rounds ? html`<p class="small muted center">Kitų ratų poros paaiškės pasibaigus šiam ratui.</p>` : ''}
+      <p class="small muted">Rato rezultatas – ${t.top_n === 1 ? 'didžiausia to rato žuvis' : `${t.top_n} ilgiausių to rato žuvų suma`}. Įskaitomi tik patvirtinti laimikiai, todėl rezultatai gali keistis, kol moderatoriai tikrina.</p>
+    </div>`,
+    mount() {
+      if (p !== 'live') return null;
+      const timer = setInterval(() => ctx.rerender(), 60000);
+      return () => clearInterval(timer);
+    }
+  };
 }
 
 // Komandinė lentelė: klubo rezultatas – 3 geriausių jo narių suma.
@@ -469,7 +572,7 @@ export async function teamBoardView(ctx, [id]) {
             ${icon('users', 20)}
             <span class="grow stack-1"><span class="strong ellipsis">${r.name}</span>
               <span class="small muted">${count(Number(r.counted), 'įskaitytas narys', 'įskaityti nariai', 'įskaitytų narių')} iš ${Number(r.members)}</span></span>
-            <span class="num-md">${cm(r.score_mm)}</span>
+            <span class="num-md">${scoreText(t, r.score_mm)}</span>
           </a></li>`)}</ol>
           <p class="center small muted">Klubo rezultatas – 3 geriausių jo narių rezultatų suma.</p>`
         : empty('Klubų lentelė dar tuščia', 'Dalyviai pasirenka klubą turnyro puslapyje.')}

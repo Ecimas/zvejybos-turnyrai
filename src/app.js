@@ -4,7 +4,8 @@ import { html } from './lib/html.js';
 import { icon } from './icons.js';
 import { count } from './lib/format.js';
 import { tournamentsView, standingsView } from './views/tournaments.js';
-import { tournamentView, boardView, tvView, teamBoardView } from './views/tournament.js';
+import { tournamentView, boardView, tvView, teamBoardView, duelsView } from './views/tournament.js';
+import { leaguesView, leagueView } from './views/leagues.js';
 import { captureView } from './views/capture.js';
 import { catchView } from './views/catch.js';
 import { diaryView } from './views/diary.js';
@@ -24,6 +25,9 @@ const ROUTES = [
   [/^\/t\/([\w-]+)\/lentele$/, boardView],
   [/^\/t\/([\w-]+)\/tv$/, tvView],
   [/^\/t\/([\w-]+)\/klubai$/, teamBoardView],
+  [/^\/t\/([\w-]+)\/dvikovos$/, duelsView],
+  [/^\/lygos$/, leaguesView],
+  [/^\/lyga\/([\w-]+)$/, leagueView],
   [/^\/t\/([\w-]+)\/redaguoti$/, createView],
   [/^\/kvietimas\/(\w+)$/, inviteView],
   [/^\/laimikis$/, captureView],

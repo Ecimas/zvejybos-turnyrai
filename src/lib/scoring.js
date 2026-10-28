@@ -1,5 +1,5 @@
 // Turnyro lentelės skaičiavimas.
-// Ta pati logika kaip SQL funkcijoje public.leaderboard (supabase/migrations/0012_count_after_join.sql).
+// Ta pati logika kaip SQL funkcijoje public.leaderboard_all (supabase/migrations/0020_formats.sql).
 // Naudojama demonstraciniame režime ir laimikio peržiūrai prieš išsaugant.
 
 export const SKEW_MS = 10 * 60 * 1000;      // telefono laikrodis gali skubėti ne daugiau
@@ -42,7 +42,14 @@ export function isCounted(t, speciesIds, entered, c) {
 }
 
 // entries: vartotojų ID arba { user_id, joined_at } masyvas; profiles: { [id]: { nickname, region } }
-export function computeLeaderboard({ tournament: t, speciesIds = [], entries, catches, profiles = {} }) {
+// Taškai už rūšį: ilgis mm × rūšies koeficientas / 100 (sveikoji dalis, kaip SQL). Kitiems formatams – ilgis.
+export function catchPoints(t, c, speciesPct = {}) {
+  if (t.format !== 'species_points') return c.length_mm;
+  return Math.floor((c.length_mm * (speciesPct[c.species_id] ?? 100)) / 100);
+}
+
+// speciesPct: { [species_id]: koeficientas procentais } (tik species_points formatui)
+export function computeLeaderboard({ tournament: t, speciesIds = [], speciesPct = {}, entries, catches, profiles = {} }) {
   const entered = new Map([...entries].map((e) => (typeof e === 'string' ? [e, true] : [e.user_id, e.joined_at || true])));
   const perUser = new Map();
   for (const c of catches) {
@@ -53,13 +60,14 @@ export function computeLeaderboard({ tournament: t, speciesIds = [], entries, ca
   const limit = t.format === 'biggest' ? 1 : t.top_n;
   const rows = [];
   for (const [userId, list] of perUser) {
-    list.sort((a, b) => b.length_mm - a.length_mm || ts(a.captured_at_device) - ts(b.captured_at_device));
+    const pts = (c) => catchPoints(t, c, speciesPct);
+    list.sort((a, b) => pts(b) - pts(a) || ts(a.captured_at_device) - ts(b.captured_at_device));
     const top = list.slice(0, limit);
     rows.push({
       user_id: userId,
       nickname: profiles[userId]?.nickname ?? '',
       region: profiles[userId]?.region ?? null,
-      score_mm: top.reduce((s, c) => s + c.length_mm, 0),
+      score_mm: top.reduce((s, c) => s + pts(c), 0),
       counted: top.length,
       last_counted: new Date(Math.max(...top.map((c) => ts(c.captured_at_device)))).toISOString()
     });
@@ -69,6 +77,42 @@ export function computeLeaderboard({ tournament: t, speciesIds = [], entries, ca
   rows.forEach((r, i) => {
     const prev = rows[i - 1];
     r.rank = prev && prev.score_mm === r.score_mm && prev.last_counted === r.last_counted ? prev.rank : i + 1;
+  });
+  return rows;
+}
+
+// Lentelė tik vieno diviziono dalyviams: vietos perskaičiuojamos kaip SQL rank().
+export function rerank(rows) {
+  const out = rows.map((r) => ({ ...r }));
+  out.forEach((r, i) => {
+    const prev = out[i - 1];
+    r.rank = prev && prev.score_mm === r.score_mm && prev.last_counted === r.last_counted ? prev.rank : i + 1;
+  });
+  return out;
+}
+
+// Sezono lygos taškai už vietą (kaip SQL league_points).
+const LEAGUE_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
+export const leaguePoints = (rank) => LEAGUE_POINTS[Number(rank) - 1] ?? 0;
+
+// boards: kiekvieno įskaitomo turnyro lentelė [{ user_id, nickname, rank }]
+export function leagueStandings(boards) {
+  const by = new Map();
+  for (const board of boards) {
+    for (const r of board) {
+      if (r.rank === null) continue;
+      const x = by.get(r.user_id) || { user_id: r.user_id, nickname: r.nickname, points: 0, events: 0, wins: 0, best_place: Infinity };
+      x.points += leaguePoints(r.rank);
+      x.events += 1;
+      if (r.rank === 1) x.wins += 1;
+      x.best_place = Math.min(x.best_place, r.rank);
+      by.set(r.user_id, x);
+    }
+  }
+  const rows = [...by.values()].sort((a, b) => b.points - a.points || b.wins - a.wins || a.best_place - b.best_place || a.nickname.localeCompare(b.nickname));
+  rows.forEach((r, i) => {
+    const p = rows[i - 1];
+    r.rank = p && p.points === r.points && p.wins === r.wins && p.best_place === r.best_place ? p.rank : i + 1;
   });
   return rows;
 }

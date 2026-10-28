@@ -10,8 +10,8 @@ export const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2
 // Viešai skaitomi laimikio stulpeliai. Masalas ir pastabos – tik savininkui per my_catch_notes() (0008).
 export const CATCH_COLS = 'id, user_id, client_id, species_id, length_mm, weight_g, weather, captured_at_device, received_at, ' +
   'photo_path, photo_sha256, status, reject_reason, reviewed_by, reviewed_at, created_at';
-const TOURNAMENT_SEL = '*, tournament_species(species_id), entries(count), tournament_sponsors(id, name, url, amount_cents, sort), ' +
-  'tournament_announcements(created_at)';
+const TOURNAMENT_SEL = '*, tournament_species(species_id, points_pct), entries(count), tournament_sponsors(id, name, url, amount_cents, sort), ' +
+  'tournament_announcements(created_at), tournament_divisions(id, name, sort), leagues(id, name, season)';
 const PERMANENT_CODES = new Set(['42501', '23514', '23503', '22P02', 'P0001', '42883']);
 
 // Funkcijos dar nėra serveryje (migracija neįdiegta).
@@ -52,13 +52,35 @@ export async function createSupabaseBackend(url, anonKey) {
   const decorate = (t, mine) => ({
     ...t,
     species_ids: (t.tournament_species || []).map((x) => x.species_id),
+    species_pct: Object.fromEntries((t.tournament_species || []).map((x) => [x.species_id, x.points_pct ?? 100])),
+    divisions: (t.tournament_divisions || []).slice().sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name)),
+    league: t.leagues ?? null,
     sponsors: (t.tournament_sponsors || []).slice().sort((a, b) => a.sort - b.sort),
     last_announcement_at: (t.tournament_announcements || []).reduce((m, a) => (!m || a.created_at > m ? a.created_at : m), null),
     participants: t.entries?.[0]?.count ?? 0,
     joined: mine.has(t.id),
     joined_at: mine.get(t.id)?.joined_at ?? null,
-    my_club_id: mine.get(t.id)?.club_id ?? null
+    my_club_id: mine.get(t.id)?.club_id ?? null,
+    my_division_id: mine.get(t.id)?.division_id ?? null
   });
+  const speciesRows = (id, ids, pct = {}) => ids.map((species_id) => ({ tournament_id: id, species_id, points_pct: pct[species_id] ?? 100 }));
+  // Divizionai: esami pervadinami, nauji įterpiami, pašalinti ištrinami (dalyvių pasirinkimai išlieka).
+  async function saveDivisions(id, list, existing = []) {
+    const keep = new Set(list.filter((d) => d.id).map((d) => d.id));
+    const gone = existing.filter((d) => !keep.has(d.id)).map((d) => d.id);
+    if (gone.length) check(await sb.from('tournament_divisions').delete().in('id', gone));
+    for (const [i, d] of list.entries()) {
+      if (d.id) {
+        const old = existing.find((x) => x.id === d.id);
+        if (old && (old.name !== d.name || old.sort !== i)) check(await sb.from('tournament_divisions').update({ name: d.name, sort: i }).eq('id', d.id));
+      }
+    }
+    const fresh = list.map((d, i) => ({ ...d, sort: i })).filter((d) => !d.id);
+    if (fresh.length) {
+      const { error } = await sb.from('tournament_divisions').insert(fresh.map((d) => ({ tournament_id: id, name: d.name, sort: d.sort })));
+      if (error) throw friendly(error, [[/division_limit/, 'Daugiausia 8 divizionai'], [/duplicate|uniq/, 'Divizionų pavadinimai turi skirtis'], [/check/, 'Diviziono pavadinimas: 2–30 raidžių']]);
+    }
+  }
   // Savo masalas ir pastabos. Jei funkcijos dar nėra serveryje – tiesiog be jų.
   const myNotes = async () => {
     if (!user) return new Map();
@@ -70,9 +92,9 @@ export async function createSupabaseBackend(url, anonKey) {
   // Mano turnyrai: tournament_id → { joined_at, club_id }.
   const myEntries = async () => {
     if (!user) return new Map();
-    const { data, error } = await sb.from('entries').select('tournament_id, joined_at, club_id').eq('user_id', user.id);
+    const { data, error } = await sb.from('entries').select('tournament_id, joined_at, club_id, division_id').eq('user_id', user.id);
     const rows = error ? check(await sb.from('entries').select('tournament_id, joined_at').eq('user_id', user.id)) : data;
-    return new Map(rows.map((r) => [r.tournament_id, { joined_at: r.joined_at, club_id: r.club_id ?? null }]));
+    return new Map(rows.map((r) => [r.tournament_id, { joined_at: r.joined_at, club_id: r.club_id ?? null, division_id: r.division_id ?? null }]));
   };
   const CLUB_COLS = 'id, name, region, description, owner_id, open, created_at';
 
@@ -161,13 +183,14 @@ export async function createSupabaseBackend(url, anonKey) {
       return t ? decorate(t, mine) : null;
     },
     async createTournament(data) {
-      const { species_ids, sponsors = [], ...rest } = data;
+      const { species_ids, species_pct = {}, sponsors = [], divisions = [], ...rest } = data;
       const ins = await sb.from('tournaments').insert({ ...rest, organizer_id: uid() }).select('id').single();
-      if (ins.error) throw friendly(ins.error, [[/tournament_limit/, 'Per parą galima sukurti ne daugiau kaip 10 turnyrų']]);
+      if (ins.error) throw friendly(ins.error, [[/tournament_limit/, 'Per parą galima sukurti ne daugiau kaip 10 turnyrų'], [/league_owner/, 'Į lygą gali įtraukti tik lygos savininkas']]);
       const t = ins.data;
       if (species_ids.length) {
-        check(await sb.from('tournament_species').insert(species_ids.map((species_id) => ({ tournament_id: t.id, species_id }))));
+        check(await sb.from('tournament_species').insert(speciesRows(t.id, species_ids, species_pct)));
       }
+      if (divisions.length) await saveDivisions(t.id, divisions);
       if (sponsors.length) {
         check(await sb.from('tournament_sponsors').insert(sponsors.map((s, i) => ({ ...s, tournament_id: t.id, sort: i }))));
       }
@@ -175,15 +198,18 @@ export async function createSupabaseBackend(url, anonKey) {
       return t.id;
     },
     async updateTournament(id, data) {
-      const { species_ids, sponsors, ...rest } = data;
-      const rows = check(await sb.from('tournaments').update(rest).eq('id', id).select('id'));
+      const { species_ids, species_pct = {}, sponsors, divisions, ...rest } = data;
+      const before = divisions ? check(await sb.from('tournament_divisions').select('id, name, sort').eq('tournament_id', id)) : [];
+      const { data: rows, error } = await sb.from('tournaments').update(rest).eq('id', id).select('id');
+      if (error) throw friendly(error, [[/league_owner/, 'Į lygą gali įtraukti tik lygos savininkas']]);
       if (!rows?.length) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
       if (species_ids) {
         check(await sb.from('tournament_species').delete().eq('tournament_id', id));
         if (species_ids.length) {
-          check(await sb.from('tournament_species').insert(species_ids.map((species_id) => ({ tournament_id: id, species_id }))));
+          check(await sb.from('tournament_species').insert(speciesRows(id, species_ids, species_pct)));
         }
       }
+      if (divisions) await saveDivisions(id, divisions, before);
       if (sponsors) {
         check(await sb.from('tournament_sponsors').delete().eq('tournament_id', id));
         if (sponsors.length) {
@@ -217,6 +243,57 @@ export async function createSupabaseBackend(url, anonKey) {
     },
     async leaderboard(id) {
       return check(await sb.rpc('leaderboard', { p_tournament_id: id }));
+    },
+    // Kuriam divizionui priklauso dalyviai: user_id → division_id
+    async divisionMap(id) {
+      const rows = check(await sb.from('entries').select('user_id, division_id').eq('tournament_id', id));
+      return new Map(rows.map((r) => [r.user_id, r.division_id]));
+    },
+    async setEntryDivision(tournamentId, divisionId) {
+      const { error } = await sb.rpc('set_entry_division', { p_tournament: tournamentId, p_division: divisionId || null });
+      if (error) throw friendly(error, [[/division_closed/, 'Registracija baigėsi – diviziono keisti nebegalima'], [/division_invalid/, 'Tokio diviziono nėra']], 'Nepavyko išsaugoti');
+    },
+    async duelBracket(id) {
+      return check(await sb.rpc('duel_bracket', { p_tournament_id: id }));
+    },
+
+    // Sezono lygos
+    async leagues() {
+      const rows = check(await sb.from('leagues').select('id, name, season, description, owner_id, created_at, tournaments(count)').order('season', { ascending: false }));
+      return rows.map((l) => ({ ...l, events: l.tournaments?.[0]?.count ?? 0 })).sort((a, b) => b.season - a.season || a.name.localeCompare(b.name));
+    },
+    async league(id) {
+      const { data, error } = await sb.from('leagues').select('id, name, season, description, owner_id, created_at').eq('id', id).maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      const [standings, list, mine] = await Promise.all([
+        sb.rpc('league_standings', { p_league: id }),
+        sb.from('tournaments').select(TOURNAMENT_SEL).eq('league_id', id).order('starts_at'),
+        myEntries()
+      ]);
+      return { ...data, standings: check(standings), tournaments: check(list).map((t) => decorate(t, mine)) };
+    },
+    async myLeagues() {
+      if (!user) return [];
+      return check(await sb.from('leagues').select('id, name, season').eq('owner_id', user.id).order('season', { ascending: false }));
+    },
+    async createLeague({ name, season, description }) {
+      const { data, error } = await sb.from('leagues').insert({ name, season, description: description || null }).select('id').single();
+      if (error) {
+        throw friendly(error, [
+          [/league_limit/, 'Galima sukurti iki 5 lygų'],
+          [/leagues_name_uniq|duplicate/, 'Tokia lyga šiam sezonui jau yra'],
+          [/check/, 'Pavadinime gali būti raidės, skaičiai, tarpai ir . , - _ ( ) (3–60 simbolių)']
+        ], 'Nepavyko sukurti lygos');
+      }
+      return data.id;
+    },
+    async updateLeague(id, patch) {
+      const { error } = await sb.from('leagues').update(patch).eq('id', id);
+      if (error) throw friendly(error, [[/leagues_name_uniq|duplicate/, 'Tokia lyga šiam sezonui jau yra'], [/check/, 'Netinkamas pavadinimas']], 'Nepavyko išsaugoti');
+    },
+    async deleteLeague(id) {
+      check(await sb.from('leagues').delete().eq('id', id));
     },
 
     async myCatches() {

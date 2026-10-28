@@ -98,13 +98,36 @@ export function count(n, one, few, many) {
   return `${n} ${plural(n, one, few, many)}`;
 }
 
+export const FORMATS = {
+  biggest: 'Didžiausia žuvis',
+  top_n_sum: 'Kelių ilgių suma',
+  species_points: 'Taškai už rūšį',
+  duels: 'Dvikovos'
+};
+
 export function describeFormat(t) {
-  return t.format === 'biggest' ? 'Didžiausia žuvis' : `TOP-${t.top_n} ilgių suma`;
+  if (t.format === 'biggest') return 'Didžiausia žuvis';
+  if (t.format === 'species_points') return t.top_n === 1 ? 'Taškai už rūšį · geriausia žuvis' : `Taškai už rūšį · TOP-${t.top_n}`;
+  if (t.format === 'duels') return t.top_n === 1 ? 'Dvikovos · didžiausia žuvis rate' : `Dvikovos · TOP-${t.top_n} suma rate`;
+  return `TOP-${t.top_n} ilgių suma`;
 }
 
+// Taškai saugomi dešimtosiomis (ilgis mm × koeficientas / 100): 1177 -> „117,7 tšk.“
+export function points(v) {
+  const n = (Number(v) || 0) / 10;
+  return (Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',')) + ' tšk.';
+}
+
+export const isPoints = (t) => t?.format === 'species_points';
+export const scoreText = (t, v) => (isPoints(t) ? points(v) : cm(v));
+
+// Rūšies koeficientas: 100 -> „×1“, 150 -> „×1,5“
+export const coefText = (pct) => `×${String((Number(pct) || 100) / 100).replace('.', ',')}`;
+export const COEFS = [50, 100, 150, 200, 250, 300, 400, 500];
+
 // Kiek trūksta iki aukštesnės vietos. Lygus rezultatas: aukščiau tas, kas jį pasiekė anksčiau.
-export function gapText(above, mine) {
+export function gapText(above, mine, t = null) {
   const gap = above.score_mm - mine.score_mm;
-  if (gap <= 0) return `Tiek pat kaip #${above.rank} – jis pagavo anksčiau, reikia bent 1 mm daugiau`;
-  return `Iki #${above.rank} trūksta ${cm(gap)}`;
+  if (gap <= 0) return `Tiek pat kaip #${above.rank} – jis pagavo anksčiau, reikia bent ${isPoints(t) ? '0,1 tšk.' : '1 mm'} daugiau`;
+  return `Iki #${above.rank} trūksta ${scoreText(t, gap)}`;
 }

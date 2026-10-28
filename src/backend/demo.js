@@ -1,7 +1,8 @@
 // Demonstracinis režimas: visi duomenys tik šiame telefone (localStorage + IndexedDB).
 // Leidžia išbandyti programėlę dar prieš prijungiant Supabase.
 import { SPECIES, speciesId } from './species.js';
-import { computeLeaderboard } from '../lib/scoring.js';
+import { computeLeaderboard, leagueStandings } from '../lib/scoring.js';
+import { duelBracket } from '../lib/duels.js';
 import { PermanentError, RetryLaterError, idbStore, memoryStore } from '../lib/outbox.js';
 import { phase, registrationOpen } from '../lib/format.js';
 import { banActive } from '../lib/bans.js';
@@ -11,6 +12,8 @@ const KEY = 'zt-demo-v1';
 const ME = '00000000-0000-4000-8000-000000000001';
 const H = 3600e3;
 const D = 24 * H;
+const LEAGUE_NAME = /^[A-Za-z0-9ĄČĘĖĮŠŲŪŽąčęėįšųūž .,_"„“()-]+$/;
+const DIV_NAME = /^[A-Za-z0-9ĄČĘĖĮŠŲŪŽąčęėįšųūž .,_+()-]+$/;
 const code10 = () => Array.from(crypto.getRandomValues(new Uint8Array(5)), (b) => b.toString(16).padStart(2, '0')).join('');
 
 function seed() {
@@ -48,12 +51,20 @@ function seed() {
       starts_at: iso(-40 * D), ends_at: iso(-22 * D), prize_fund_cents: 10000, prize_split: [60, 40] }),
     T('t-slaptas', { title: 'Draugų iššūkis', format: 'biggest', organizer_id: ME, visibility: 'private',
       leaderboard_hidden: true, starts_at: iso(-2 * D), ends_at: iso(5 * D),
-      description: 'Privatus turnyras tik su kvietimu. Lentelė paslėpta iki pabaigos.' })
+      description: 'Privatus turnyras tik su kvietimu. Lentelė paslėpta iki pabaigos.' }),
+    T('t-taskai', { title: 'Marių taškų taurė', format: 'species_points', top_n: 3, starts_at: iso(-3 * D), ends_at: iso(3 * D),
+      league_id: 'lyga-marios', description: 'Retesnė žuvis – daugiau taškų: starkis ×1,5, karšis ×2.' }),
+    T('t-dvikovos', { title: 'Ešerių dvikovos', format: 'duels', top_n: 1, late_join_minutes: 0,
+      starts_at: iso(-2.5 * D), ends_at: iso(0.5 * D), description: 'Atkrintamosios poros: rate laimi didesnį ešerį pagavęs.' })
   ];
+  tournaments.find((t) => t.id === 't-taure').league_id = 'lyga-marios';
+  tournaments.find((t) => t.id === 't-plesrunai').league_id = 'lyga-marios';
   const tournament_species = [
     ['t-taure', speciesId('lydeka')], ['t-eseriai', speciesId('eserys')],
-    ['t-plesrunai', speciesId('lydeka')], ['t-plesrunai', speciesId('starkis')]
-  ].map(([tournament_id, species_id]) => ({ tournament_id, species_id }));
+    ['t-plesrunai', speciesId('lydeka')], ['t-plesrunai', speciesId('starkis')],
+    ['t-taskai', speciesId('lydeka'), 100], ['t-taskai', speciesId('starkis'), 150], ['t-taskai', speciesId('karsis'), 200],
+    ['t-dvikovos', speciesId('eserys')]
+  ].map(([tournament_id, species_id, points_pct = 100]) => ({ tournament_id, species_id, points_pct }));
 
   const entries = [];
   // Demo dalyviai užsiregistravo dieną prieš startą – visi jų laimikiai įskaitomi.
@@ -66,6 +77,8 @@ function seed() {
   enter('t-eseriai', ids.slice(2, 6));
   enter('t-plesrunai', [...ids, ME]);
   enter('t-slaptas', [ME, ids[2], ids[5]]);
+  enter('t-taskai', [ids[1], ids[3], ids[5], ids[7], ids[8]]);
+  enter('t-dvikovos', [ME, ...ids.slice(0, 7)]);
 
   const catches = [];
   let n = 0;
@@ -91,6 +104,16 @@ function seed() {
   add(ME, 'starkis', 540, -31 * D);
   add(ME, 'eserys', 340, -50 * D);
   add(ME, 'karsis', 520, -70 * D);
+  // Taškų taurė: lydekos ×1, starkiai ×1,5, karšiai ×2
+  [[1, 'starkis', 640], [1, 'lydeka', 720], [3, 'karsis', 480], [3, 'karsis', 455], [5, 'lydeka', 810], [5, 'starkis', 520],
+   [7, 'karsis', 510], [8, 'starkis', 600], [8, 'lydeka', 690], [8, 'karsis', 420]]
+    .forEach(([i, code, len], j) => add(ids[i], code, len, -(2.6 * D) + j * 7 * H));
+  // Dvikovos: 8 dalyviai, 3 ratai po parą; du ratai baigti, finalas vyksta
+  [ME, ...ids.slice(0, 7)].forEach((u, i) => {
+    add(u, 'eserys', 280 + ((i * 137) % 240), -2.3 * D + i * H);
+    add(u, 'eserys', 300 + ((i * 89 + 50) % 230), -1.2 * D + i * H);
+    if (i % 2) add(u, 'eserys', 310 + ((i * 53) % 200), -0.4 * D + i * H);
+  });
 
   const tournament_sponsors = [
     { id: 's1', tournament_id: 't-taure', name: 'Ežero žvejybos parduotuvė', url: 'https://example.com', amount_cents: 30000, sort: 0 },
@@ -125,8 +148,16 @@ function seed() {
   entries.filter((e) => e.tournament_id === 't-sezonas').forEach((e) => {
     e.club_id = club_members.find((m) => m.user_id === e.user_id)?.club_id ?? null;
   });
+  // Sezono lyga ir divizionai (Rudens lydekų taurė: krantas ir valtis)
+  const leagues = [{ id: 'lyga-marios', name: 'Kauno marių lyga', season: new Date(now).getFullYear(), owner_id: ids[0],
+    description: 'Etapų taškai: 25, 18, 15, 12, 10, 8, 6, 4, 2, 1.', created_at: iso(-60 * D) }];
+  const divisions = [
+    { id: 'div-krantas', tournament_id: 't-taure', name: 'Krantas', sort: 0 },
+    { id: 'div-valtis', tournament_id: 't-taure', name: 'Valtis', sort: 1 }
+  ];
+  entries.filter((e) => e.tournament_id === 't-taure').forEach((e, i) => { e.division_id = i % 2 ? 'div-valtis' : 'div-krantas'; });
   return { profiles, tournaments, tournament_species, tournament_sponsors, entries, catches, locations, disputes: [],
-    announcements, reports, blank_trips: [], bans: [], follows: [], clubs, club_members };
+    announcements, reports, blank_trips: [], bans: [], follows: [], clubs, club_members, leagues, divisions };
 }
 
 export function createDemoBackend({ photos } = {}) {
@@ -143,6 +174,8 @@ export function createDemoBackend({ photos } = {}) {
   db.follows ||= [];
   db.clubs ||= [];
   db.club_members ||= [];
+  db.leagues ||= [];
+  db.divisions ||= [];
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* pilna atmintis */ } };
   save();
   const photoStore = photos || (typeof indexedDB !== 'undefined' ? idbStore('zvejybos-turnyrai-demo', 'photos') : memoryStore());
@@ -156,6 +189,10 @@ export function createDemoBackend({ photos } = {}) {
   const decorate = (t) => ({
     ...t,
     species_ids: db.tournament_species.filter((x) => x.tournament_id === t.id).map((x) => x.species_id),
+    species_pct: Object.fromEntries(db.tournament_species.filter((x) => x.tournament_id === t.id).map((x) => [x.species_id, x.points_pct ?? 100])),
+    divisions: db.divisions.filter((d) => d.tournament_id === t.id).sort((a, b) => a.sort - b.sort),
+    league: (({ id, name, season } = {}) => (id ? { id, name, season } : null))(db.leagues.find((l) => l.id === t.league_id)),
+    my_division_id: db.entries.find((e) => e.tournament_id === t.id && e.user_id === ME)?.division_id ?? null,
     sponsors: db.tournament_sponsors.filter((x) => x.tournament_id === t.id).sort((a, b) => a.sort - b.sort),
     last_announcement_at: db.announcements.filter((a) => a.tournament_id === t.id)
       .reduce((m, a) => (!m || a.created_at > m ? a.created_at : m), null),
@@ -164,6 +201,31 @@ export function createDemoBackend({ photos } = {}) {
     my_club_id: db.entries.find((e) => e.tournament_id === t.id && e.user_id === ME)?.club_id ?? null,
     joined_at: db.entries.find((e) => e.tournament_id === t.id && e.user_id === ME)?.joined_at ?? null
   });
+
+  // Kaip serverio trigeris: dvikovose – registracija tik iki starto, be slėpimo ir komandų.
+  const formatRules = (t) => {
+    if (t.format === 'duels') Object.assign(t, { late_join_minutes: 0, leaderboard_hidden: false, team_mode: false });
+    return t;
+  };
+  const checkLeague = (leagueId) => {
+    if (leagueId && !db.leagues.some((l) => l.id === leagueId && l.owner_id === ME)) throw new Error('Į lygą gali įtraukti tik lygos savininkas');
+  };
+  const saveDivisions = (id, list) => {
+    const names = list.map((d) => String(d.name || '').trim());
+    if (names.length > 8) throw new Error('Daugiausia 8 divizionai');
+    if (names.some((n) => n.length < 2 || n.length > 30 || !DIV_NAME.test(n))) throw new Error('Diviziono pavadinimas: 2–30 raidžių');
+    if (new Set(names.map((n) => n.toLowerCase())).size !== names.length) throw new Error('Divizionų pavadinimai turi skirtis');
+    const keep = new Set(list.filter((d) => d.id).map((d) => d.id));
+    db.divisions.filter((d) => d.tournament_id === id && !keep.has(d.id)).forEach((d) => {
+      db.entries.forEach((e) => { if (e.division_id === d.id) e.division_id = null; });
+    });
+    db.divisions = db.divisions.filter((d) => d.tournament_id !== id || keep.has(d.id));
+    list.forEach((d, i) => {
+      const old = d.id && db.divisions.find((x) => x.id === d.id);
+      if (old) Object.assign(old, { name: names[i], sort: i });
+      else db.divisions.push({ id: `div-${id}-${Date.now().toString(36)}-${i}`, tournament_id: id, name: names[i], sort: i });
+    });
+  };
 
   return {
     mode: 'demo',
@@ -196,12 +258,14 @@ export function createDemoBackend({ photos } = {}) {
     },
     async createTournament(data) {
       const id = `t-${Date.now().toString(36)}`;
-      const { species_ids, sponsors = [], ...rest } = data;
+      const { species_ids, species_pct = {}, sponsors = [], divisions = [], ...rest } = data;
       const recent = db.tournaments.filter((t) => t.organizer_id === ME && Date.now() - new Date(t.created_at) < D).length;
       if (recent >= 10) throw new Error('Per parą galima sukurti ne daugiau kaip 10 turnyrų');
-      db.tournaments.push({ id, organizer_id: ME, visibility: 'public', fee_cents: 0, leaderboard_hidden: false,
-        invite_code: code10(), created_at: new Date().toISOString(), ...rest });
-      species_ids.forEach((species_id) => db.tournament_species.push({ tournament_id: id, species_id }));
+      checkLeague(rest.league_id);
+      db.tournaments.push(formatRules({ id, organizer_id: ME, visibility: 'public', fee_cents: 0, leaderboard_hidden: false,
+        invite_code: code10(), created_at: new Date().toISOString(), ...rest }));
+      species_ids.forEach((species_id) => db.tournament_species.push({ tournament_id: id, species_id, points_pct: species_pct[species_id] ?? 100 }));
+      saveDivisions(id, divisions);
       sponsors.forEach((s, i) => db.tournament_sponsors.push({ ...s, id: `s-${id}-${i}`, tournament_id: id, sort: i }));
       db.entries.push({ tournament_id: id, user_id: ME, joined_at: new Date().toISOString() });
       save();
@@ -210,15 +274,17 @@ export function createDemoBackend({ photos } = {}) {
     async updateTournament(id, data) {
       const t = db.tournaments.find((x) => x.id === id);
       if (!isOrganizerBeforeStart(t)) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
-      const { species_ids, sponsors, ...rest } = data;
-      Object.assign(t, rest);
+      const { species_ids, species_pct = {}, sponsors, divisions, ...rest } = data;
+      checkLeague(rest.league_id);
+      formatRules(Object.assign(t, rest));
+      if (divisions) saveDivisions(id, divisions);
       if (sponsors) {
         db.tournament_sponsors = db.tournament_sponsors.filter((x) => x.tournament_id !== id)
           .concat(sponsors.map((s, i) => ({ ...s, id: `s-${id}-${i}`, tournament_id: id, sort: i })));
       }
       if (species_ids) {
         db.tournament_species = db.tournament_species.filter((x) => x.tournament_id !== id)
-          .concat(species_ids.map((species_id) => ({ tournament_id: id, species_id })));
+          .concat(species_ids.map((species_id) => ({ tournament_id: id, species_id, points_pct: species_pct[species_id] ?? 100 })));
       }
       save();
     },
@@ -229,6 +295,7 @@ export function createDemoBackend({ photos } = {}) {
       db.tournament_species = db.tournament_species.filter((x) => x.tournament_id !== id);
       db.tournament_sponsors = db.tournament_sponsors.filter((x) => x.tournament_id !== id);
       db.entries = db.entries.filter((x) => x.tournament_id !== id);
+      db.divisions = db.divisions.filter((x) => x.tournament_id !== id);
       save();
     },
     async getInvite(code) {
@@ -267,6 +334,7 @@ export function createDemoBackend({ photos } = {}) {
       const rows = computeLeaderboard({
         tournament: t,
         speciesIds: db.tournament_species.filter((x) => x.tournament_id === id).map((x) => x.species_id),
+        speciesPct: Object.fromEntries(db.tournament_species.filter((x) => x.tournament_id === id).map((x) => [x.species_id, x.points_pct ?? 100])),
         entries: db.entries.filter((e) => e.tournament_id === id && !banActive(db.bans.find((b) => b.user_id === e.user_id))),
         catches: db.catches,
         profiles: db.profiles
@@ -275,6 +343,73 @@ export function createDemoBackend({ photos } = {}) {
       // (organizatorius ir moderatoriai mato viską).
       const hidden = t.leaderboard_hidden && phase(t) !== 'done' && t.organizer_id !== ME && !db.profiles[ME]?.is_admin;
       return hidden ? rows.filter((r) => r.user_id === ME).map((r) => ({ ...r, rank: null })) : rows;
+    },
+    async divisionMap(id) {
+      return new Map(db.entries.filter((e) => e.tournament_id === id).map((e) => [e.user_id, e.division_id ?? null]));
+    },
+    async setEntryDivision(tournamentId, divisionId) {
+      const t = db.tournaments.find((x) => x.id === tournamentId);
+      const e = db.entries.find((x) => x.tournament_id === tournamentId && x.user_id === ME);
+      if (!t || !e) throw new Error('Nepavyko išsaugoti');
+      if (!(Date.now() < Date.parse(t.starts_at) || registrationOpen(t))) throw new Error('Registracija baigėsi – diviziono keisti nebegalima');
+      if (divisionId && !db.divisions.some((d) => d.id === divisionId && d.tournament_id === tournamentId)) throw new Error('Tokio diviziono nėra');
+      e.division_id = divisionId || null;
+      save();
+    },
+    async duelBracket(id) {
+      const t = db.tournaments.find((x) => x.id === id);
+      if (!t || !visible(t)) return [];
+      return duelBracket({
+        tournament: t,
+        speciesIds: db.tournament_species.filter((x) => x.tournament_id === id).map((x) => x.species_id),
+        entries: db.entries.filter((e) => e.tournament_id === id),
+        catches: db.catches,
+        profiles: db.profiles,
+        banned: (u) => banActive(db.bans.find((b) => b.user_id === u))
+      });
+    },
+
+    // Sezono lygos
+    async leagues() {
+      return db.leagues.map((l) => ({ ...l, events: db.tournaments.filter((t) => t.league_id === l.id && visible(t)).length }))
+        .sort((a, b) => b.season - a.season || a.name.localeCompare(b.name));
+    },
+    async league(id) {
+      const l = db.leagues.find((x) => x.id === id);
+      if (!l) return null;
+      const list = db.tournaments.filter((t) => t.league_id === id);
+      const counted = list.filter((t) => t.visibility === 'public' && Date.now() >= Date.parse(t.starts_at) && !(t.leaderboard_hidden && phase(t) !== 'done'));
+      const boards = await Promise.all(counted.map((t) => this.leaderboard(t.id)));
+      return { ...l, standings: leagueStandings(boards), tournaments: list.filter(visible).sort((a, b) => a.starts_at.localeCompare(b.starts_at)).map(decorate) };
+    },
+    async myLeagues() {
+      return db.leagues.filter((l) => l.owner_id === ME).map(({ id, name, season }) => ({ id, name, season }));
+    },
+    async createLeague({ name, season, description }) {
+      const n = String(name || '').trim();
+      if (!LEAGUE_NAME.test(n) || n.length < 3 || n.length > 60) throw new Error('Pavadinime gali būti raidės, skaičiai, tarpai ir . , - _ ( ) (3–60 simbolių)');
+      if (!(season >= 2024 && season <= 2100)) throw new Error('Netinkamas sezonas');
+      if (db.leagues.filter((l) => l.owner_id === ME).length >= 5) throw new Error('Galima sukurti iki 5 lygų');
+      if (db.leagues.some((l) => l.season === season && l.name.toLowerCase() === n.toLowerCase())) throw new Error('Tokia lyga šiam sezonui jau yra');
+      const id = `lyga-${Date.now().toString(36)}`;
+      db.leagues.push({ id, name: n, season, description: description || null, owner_id: ME, created_at: new Date().toISOString() });
+      save();
+      return id;
+    },
+    async updateLeague(id, patch) {
+      const l = db.leagues.find((x) => x.id === id && x.owner_id === ME);
+      if (!l) throw new Error('Nepavyko išsaugoti');
+      const n = String(patch.name ?? l.name).trim();
+      if (!LEAGUE_NAME.test(n) || n.length < 3) throw new Error('Netinkamas pavadinimas');
+      if (db.leagues.some((x) => x.id !== id && x.season === l.season && x.name.toLowerCase() === n.toLowerCase())) throw new Error('Tokia lyga šiam sezonui jau yra');
+      Object.assign(l, { name: n, description: patch.description ?? l.description });
+      save();
+    },
+    async deleteLeague(id) {
+      if (!db.leagues.some((x) => x.id === id && x.owner_id === ME)) throw new Error('Nepavyko ištrinti');
+      db.leagues = db.leagues.filter((x) => x.id !== id);
+      db.tournaments.forEach((t) => { if (t.league_id === id) t.league_id = null; });
+      save();
     },
 
     async myCatches() {

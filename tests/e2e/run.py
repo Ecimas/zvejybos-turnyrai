@@ -248,6 +248,111 @@ def social_demo_test(page, base):
     step("komandinė įskaita: klubo pasirinkimas turnyre ir klubų lentelė")
 
 
+def formats_demo_test(page, base):
+    demo = lambda js: page.evaluate(f"() => {{ const db = JSON.parse(localStorage.getItem('zt-demo-v1')); {js} }}")
+    # Lyga: sukuriama, tada į ją įtraukiamas naujas taškų turnyras su divizionais
+    page.goto(base + "#/lenteles")
+    page.get_by_role("link", name="Sezono lygos").click()
+    expect(page.get_by_role("heading", name="Sezono lygos")).to_be_visible()
+    expect(page.locator("[data-league-list] a", has_text="Kauno marių lyga")).to_contain_text("3 etapai")
+    page.locator("[data-create-league] summary").click()
+    page.get_by_label("Pavadinimas").fill("<b>x</b>")
+    page.get_by_role("button", name="Sukurti lygą").click()
+    expect(page.locator("#toast")).to_contain_text("Pavadinime gali būti")
+    page.get_by_label("Pavadinimas").fill("Mano sezono lyga")
+    page.get_by_role("button", name="Sukurti lygą").click()
+    expect(page.get_by_role("heading", name="Mano sezono lyga")).to_be_visible()
+    expect(page.get_by_text("Taškų dar niekas neturi")).to_be_visible()
+    page.get_by_role("link", name="Naujas etapas").click()
+    page.get_by_label("Pavadinimas").fill("Taškų etapas")
+    page.locator("[data-format=species_points]").click()
+    expect(page.locator("[data-format-hint]")).to_contain_text("koeficient")
+    page.locator("[data-submit]").click()
+    expect(page.locator("[data-error]")).to_contain_text("pažymėk bent vieną rūšį")
+    page.locator("[data-sp='1']").click()
+    page.locator("[data-sp='3']").click()
+    page.locator("[data-coef='3']").select_option("200")
+    page.locator("[data-add-div]").click()
+    page.locator("[data-div-name]").nth(0).fill("Jaunimas")
+    page.locator("[data-add-div]").click()
+    page.locator("[data-div-name]").nth(1).fill("jaunimas")
+    page.locator("[data-submit]").click()
+    expect(page.locator("[data-error]")).to_contain_text("turi skirtis")
+    page.locator("[data-div-name]").nth(1).fill("Moterys")
+    page.get_by_label("Sezono lyga").select_option(label=f"Mano sezono lyga · {page.evaluate('() => new Date().getFullYear()')}")
+    page.locator("[data-submit]").click()
+    expect(page.locator("#toast")).to_have_text("Turnyras sukurtas")
+    expect(page.get_by_role("heading", name="Taškų etapas")).to_be_visible()
+    rules = page.locator("dl.list")
+    expect(rules).to_contain_text("Taškai už rūšį · TOP-3")
+    expect(rules).to_contain_text("Lydeka ×1, Starkis ×2")
+    expect(rules).to_contain_text("Jaunimas, Moterys")
+    expect(page.get_by_role("link", name=re.compile("Mano sezono lyga"))).to_be_visible()
+    page.get_by_label("Mano divizionas").select_option(label="Moterys")
+    expect(page.locator("#toast")).to_have_text("Divizionas: Moterys")
+    tid = page.evaluate("() => location.hash.split('/')[2]")
+    got = demo(f"""const t = db.tournaments.find(x => x.id === '{tid}');
+      return {{ pct: db.tournament_species.filter(x => x.tournament_id === t.id).map(x => [x.species_id, x.points_pct]).sort(),
+               league: db.leagues.find(l => l.id === t.league_id).name,
+               div: db.divisions.find(d => d.id === db.entries.find(e => e.tournament_id === t.id && e.user_id === '00000000-0000-4000-8000-000000000001').division_id).name }};""")
+    assert got == {"pct": [[1, 100], [3, 200]], "league": "Mano sezono lyga", "div": "Moterys"}, got
+    # Redagavimas: koeficientai ir divizionai išlieka; pervadinus divizioną dalyvio pasirinkimas nedingsta
+    page.get_by_role("link", name="Redaguoti").click()
+    expect(page.locator("[data-coef='3']")).to_have_value("200")
+    expect(page.locator("[data-div-name]")).to_have_count(2)
+    page.locator("[data-div-name]").nth(1).fill("Moterų")
+    page.locator("[data-submit]").click()
+    expect(page.locator("#toast")).to_have_text("Pakeitimai išsaugoti")
+    expect(page.locator("dl.list")).to_contain_text("Jaunimas, Moterų")
+    expect(page.get_by_label("Mano divizionas")).to_have_value(re.compile(".+"))
+    expect(page.get_by_label("Mano divizionas").locator("option:checked")).to_have_text("Moterų")
+    step("lyga ir taškų turnyras: koeficientai, divizionai, lyga; redagavimas išsaugo pasirinkimus")
+
+    # Taškų lentelė
+    page.goto(base + "#/t/t-taskai/lentele")
+    expect(page.locator(".podium")).to_contain_text("tšk.")
+    expect(page.locator(".podium")).not_to_contain_text(" cm")
+    # Divizionų skirtukai: perskaičiuotos vietos, be prizų sumų
+    page.goto(base + "#/t/t-taure/lentele")
+    tabs = page.locator("nav.seg-tabs a")
+    expect(tabs).to_have_text(["Visi", "Krantas", "Valtis"])
+    page.get_by_role("button", name="Valtis").click()
+    expect(page.get_by_role("heading", name="Lentelė · Valtis")).to_be_visible()
+    n_valtis = demo("return db.entries.filter(e => e.tournament_id === 't-taure' && e.division_id === 'div-valtis').length;")
+    expect(page.locator(".podium-col, .board-row")).to_have_count(n_valtis)
+    expect(page.locator(".prize-amt")).to_have_count(0)
+    expect(page.locator(".podium-col.p1 .rank")).to_have_text("1")
+    step("taškų lentelė ir divizionų lentelės (vietos perskaičiuojamos, be prizų)")
+
+    # Dvikovos
+    page.goto(base + "#/t/t-dvikovos")
+    card = page.locator("[data-duel-card]")
+    expect(card).to_contain_text("Finalas")
+    card.get_by_role("link", name="Visas tinklelis").click()
+    expect(page.get_by_role("heading", name="Dvikovos", level=1)).to_be_visible()
+    for name, pairs in (("Ketvirtfinalis", 4), ("Pusfinalis", 2), ("Finalas", 1)):
+        sec = page.locator("section", has=page.get_by_role("heading", name=name, exact=True))
+        expect(sec.locator(".duel-pair")).to_have_count(pairs)
+    expect(page.locator(".duel-side.win")).to_have_count(6)
+    expect(page.locator(".card.duel-mine").first).to_be_visible()
+    # Naujos dvikovos: registracija tik iki starto, slėpimo ir komandų nėra
+    page.goto(base + "#/naujas")
+    page.get_by_label("Pavadinimas").fill("Mano dvikovos")
+    page.locator("[data-format=duels]").click()
+    expect(page.get_by_label("Registracija po starto")).to_be_hidden()
+    expect(page.get_by_text("Slėpti lentelę iki pabaigos")).to_be_hidden()
+    page.locator("[data-submit]").click()
+    expect(page.locator("#toast")).to_have_text("Turnyras sukurtas")
+    expect(page.locator("dl.list")).to_contain_text("Tik iki starto")
+    expect(page.locator("[data-duel-card]")).to_contain_text("Poros bus sudarytos startui")
+    step("dvikovos: kortelė, tinklelis su ratais, naujų dvikovų taisyklės")
+
+    page.goto(base + "#/lyga/lyga-marios")
+    expect(page.locator(".league-row").first).to_contain_text("tšk.")
+    expect(page.locator(".list-row", has_text="Marių taškų taurė")).to_be_visible()
+    step("lygos lentelė: taškai už vietas etapuose")
+
+
 def map_demo_test(page, base):
     page.goto(base + "#/profilis")
     page.get_by_role("link", name="Mano laimikių žemėlapis").click()
@@ -791,6 +896,7 @@ def main():
         extra_demo_tests(page, base, meteo_calls)
         map_demo_test(page, base)
         social_demo_test(page, base)
+        formats_demo_test(page, base)
 
         ctx.close()
 

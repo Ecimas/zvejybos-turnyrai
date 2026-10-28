@@ -1,6 +1,6 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { phase, timeLabel, describeFormat, cm, longDate, count, gapText } from '../lib/format.js';
+import { phase, timeLabel, describeFormat, cm, longDate, count, gapText, scoreText } from '../lib/format.js';
 import { phaseBadge, empty, defaultNickname, banNotice } from '../ui.js';
 import { eur } from '../lib/prizes.js';
 import { hasUnseen } from '../lib/seen.js';
@@ -65,14 +65,14 @@ async function heroFor(ctx, list) {
         <span class="stat-value accent">${mine && mine.rank !== null ? `#${mine.rank}` : '–'}</span>
         <span class="stat-label">iš ${live.participants}</span></div>
       <div class="stat-box"><span class="stat-label">Rezultatas</span>
-        <span class="stat-value">${mine ? cm(mine.score_mm) : '–'}</span>
+        <span class="stat-value">${mine ? scoreText(live, mine.score_mm) : '–'}</span>
         <span class="stat-label">${mine ? count(Number(mine.counted), 'žuvis', 'žuvys', 'žuvų') : 'dar nėra'}</span></div>
       <div class="stat-box"><span class="stat-label">Liko</span>
         <span class="stat-value">${timeLabel(live).replace('Liko ', '').split(' ').slice(0, 2).join(' ')}</span>
         <span class="stat-label">iki ${longDate(live.ends_at)}</span></div>
     </div>
     ${mine && above ? html`<div class="stack-2">
-      <div class="row-between small strong"><span>${gapText(above, mine)}</span><span class="muted">${above.nickname}</span></div>
+      <div class="row-between small strong"><span>${gapText(above, mine, live)}</span><span class="muted">${above.nickname}</span></div>
       <div class="progress"><div style="width:${Math.max(4, Math.min(100, Math.round((mine.score_mm / above.score_mm) * 100)))}%"></div></div>
     </div>` : ''}
     ${!mine ? html`<span class="small muted">Užregistruok pirmą laimikį – ir atsirasi lentelėje.</span>` : ''}
@@ -159,13 +159,14 @@ export async function standingsView(ctx) {
       <nav class="grid-2 social-links" aria-label="Bendruomenė">
         <a class="card card-link row gap-8" href="#/sekami">${icon('star', 20)}<span class="strong grow">Sekami</span>${icon('chevron', 16)}</a>
         <a class="card card-link row gap-8" href="#/klubai">${icon('users', 20)}<span class="strong grow">Klubai</span>${icon('chevron', 16)}</a>
+        <a class="card card-link row gap-8 span-2" href="#/lygos">${icon('trophy', 20)}<span class="strong grow">Sezono lygos</span>${icon('chevron', 16)}</a>
       </nav>
       ${rows.length ? html`<div class="stack">${rows.map(({ t, mine, total }) => html`
         <a class="card card-link row" href="#/t/${t.id}/lentele">
           <span class="rank-big ${mine ? 'accent' : 'muted'}">${mine && mine.rank !== null ? `#${mine.rank}` : '–'}</span>
           <span class="grow stack-1">
             <span class="strong">${t.title}</span>
-            <span class="small muted">${mine ? `${cm(mine.score_mm)} · ${mine.rank === null ? 'lentelė paslėpta iki pabaigos' : `iš ${total} lentelėje`}` : 'Dar neturi įskaitytų laimikių'}</span>
+            <span class="small muted">${mine ? `${scoreText(t, mine.score_mm)} · ${mine.rank === null ? 'lentelė paslėpta iki pabaigos' : `iš ${total} lentelėje`}` : 'Dar neturi įskaitytų laimikių'}</span>
             <span class="small">${phaseBadge(t)}</span>
           </span>
           ${icon('chevron', 20)}

@@ -181,7 +181,8 @@ def main():
                           "#/privatumas", "#/taisykles", "#/kvietimas/zzzzzz", "#/laimikis", "#/t/nera",
                           "#/l/demo-c1", "#/l/demo-c33", "#/l/nera", "#/moderavimas/pranesimai",
                           "#/moderavimas/blokuoti", f"#/zvejys/{ids['other']}", "#/moderavimas/patikros", "#/patikra/nera", "#/zemelapis",
-                          "#/klubai", "#/klubas/club-kaunas", "#/klubas/club-nemunas?kodas=<b>x", "#/klubas/nera", "#/sekami", "#/t/t-sezonas/klubai"]
+                          "#/klubai", "#/klubas/club-kaunas", "#/klubas/club-nemunas?kodas=<b>x", "#/klubas/nera", "#/sekami", "#/t/t-sezonas/klubai",
+                          "#/lygos", "#/lyga/lyga-marios", "#/lyga/nera", "#/t/t-dvikovos", "#/t/t-dvikovos/dvikovos", "#/t/t-taure/dvikovos", "#/t/t-taskai", "#/t/t-taskai/lentele", "#/t/t-taure/lentele?div=div-valtis", "#/t/t-taure/lentele?div=<x>", "#/t/t-taure"]
                 for r in routes:
                     if r == "#/moderavimas/blokuoti":  # užblokuojam kitą žvejį su „nuodinga“ priežastimi
                         page.evaluate("([id, x]) => window.__zt.backend.banUser(id, 7, x)", [ids["other"], X])

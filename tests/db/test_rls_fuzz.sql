@@ -130,6 +130,9 @@ values ('b0000000-0000-4000-8000-00000000000b', now() - interval '1 day', 'Senas
 set request.jwt.claim.sub = 'b0000000-0000-4000-8000-00000000000b';
 with c as (insert into public.clubs (name, open) values ('B fuzz klubas', false) returning id) insert into fx select 'b_club', id from c;
 insert into public.follows (follower_id, followee_id) values ('b0000000-0000-4000-8000-00000000000b', 'c0000000-0000-4000-8000-00000000000c');
+-- B lyga ir divizionas (0020)
+with l as (insert into public.leagues (name, season, owner_id) values ('B fuzz lyga', 2026, 'b0000000-0000-4000-8000-00000000000b') returning id) insert into fx select 'b_league', id from l;
+with d as (insert into public.tournament_divisions (tournament_id, name) values ((select id from fx where k = 'b_pub'), 'B divizionas') returning id) insert into fx select 'b_div', id from d;
 reset request.jwt.claim.sub;
 
 \echo 'R1. Svetimų eilučių stulpeliai (anon ir A prieš B duomenis)'
@@ -158,6 +161,8 @@ select who, format('update %I.%I set %I = %I where %s', s, t, c.column_name, c.c
                ('public', 'follows', $$true$$),
                ('public', 'clubs', $$owner_id = 'b0000000-0000-4000-8000-00000000000b'$$),
                ('public', 'club_members', $$true$$),
+               ('public', 'leagues', $$owner_id = 'b0000000-0000-4000-8000-00000000000b'$$),
+               ('public', 'tournament_divisions', $$true$$),
                ('storage', 'objects',        $$name like 'b0000000-%'$$)) as x(s, t, w)
   join information_schema.columns c on c.table_schema = x.s and c.table_name = x.t
  cross join (values ('anon'), ('A')) as who(who);
@@ -190,6 +195,15 @@ insert into pg_temp.attempts (who, sql, kind) values
   ('A', $$select public.set_entry_club((select id from fx where k = 'b_pub'), (select id from fx where k = 'b_club'))$$, 'error'),
   ('anon', $$select public.join_club((select id from fx where k = 'b_club'), null)$$, 'error'),
   ('anon', $$insert into public.follows (followee_id) values ('b0000000-0000-4000-8000-00000000000b')$$, 'error'),
+  ('A', $$insert into public.leagues (name, season, owner_id) values ('Apsimetėlių lyga', 2026, 'b0000000-0000-4000-8000-00000000000b')$$, 'error'),
+  ('A', $$insert into public.tournament_divisions (tournament_id, name) values ((select id from fx where k = 'b_pub'), 'Įsibrovėliai')$$, 'error'),
+  ('A', $$update public.tournaments set league_id = (select id from fx where k = 'b_league') where organizer_id = 'a0000000-0000-4000-8000-00000000000a'$$, 'error'),
+  ('A', $$insert into public.tournaments (title, format, starts_at, ends_at, league_id) values ('Į svetimą lygą', 'biggest', now() + interval '1 day', now() + interval '2 days', (select id from fx where k = 'b_league'))$$, 'error'),
+  ('A', $$select public.set_entry_division((select id from fx where k = 'b_priv'), null)$$, 'error'),
+  ('anon', $$select public.set_entry_division((select id from fx where k = 'b_pub'), (select id from fx where k = 'b_div'))$$, 'error'),
+  ('anon', $$insert into public.leagues (name, season) values ('Anonimų lyga', 2026)$$, 'error'),
+  ('B', $$update public.leagues set owner_id = 'a0000000-0000-4000-8000-00000000000a' where owner_id = 'b0000000-0000-4000-8000-00000000000b'$$, 'error'),
+  ('B', $$update public.tournament_species set points_pct = 1000 where tournament_id = (select id from fx where k = 'b_priv')$$, 'nochange'),
   ('B', $$insert into public.catch_spots (catch_id, user_id, lat, lng) values ((select id from fx where k = 'b_approved'), 'b0000000-0000-4000-8000-00000000000b', 1, 1)$$, 'error'),
   ('B', $$insert into public.spot_settings (user_id, keep) values ('a0000000-0000-4000-8000-00000000000a', true)$$, 'error'),
   ('B', $$insert into public.catch_checks (catch_id, user_id, instruction, due_at) values ((select id from fx where k = 'b_approved'), 'b0000000-0000-4000-8000-00000000000b', 'x x x', now())$$, 'error'),
@@ -231,9 +245,11 @@ select who, format('delete from %I.%I where %s', s, t, w), 'nochange'
                ('public', 'follows', $$follower_id <> (select auth.uid())$$),
                ('public', 'clubs', $$owner_id <> (select auth.uid())$$),
                ('public', 'club_members', $$user_id = 'b0000000-0000-4000-8000-00000000000b'$$),
+               ('public', 'leagues', $$owner_id <> (select auth.uid())$$),
+               ('public', 'tournament_divisions', $$true$$),
                ('storage', 'objects', $$true$$)) as x(s, t, w)
  cross join (values ('anon'), ('A'), ('B')) as who(who)
- where not (who = 'B' and t in ('tournaments', 'tournament_species', 'tournament_sponsors', 'entries', 'tournament_announcements', 'blank_trips')); -- B savo būsimą turnyrą trinti gali
+ where not (who = 'B' and t in ('tournaments', 'tournament_species', 'tournament_sponsors', 'entries', 'tournament_announcements', 'blank_trips', 'tournament_divisions')); -- B savo būsimą turnyrą trinti gali
 insert into pg_temp.attempts (who, sql, kind) values
   ('A', $$insert into public.entries (tournament_id, user_id) values ((select id from fx where k = 'b_priv'), 'a0000000-0000-4000-8000-00000000000a')$$, 'error'),
   ('A', $$insert into public.entries (tournament_id, user_id) values ((select id from fx where k = 'a_pub'), 'b0000000-0000-4000-8000-00000000000b')$$, 'error'),

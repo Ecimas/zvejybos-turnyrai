@@ -49,6 +49,8 @@ function seed() {
     clubs: [{ id: 'clclclcl-0000-4000-8000-000000000001', name: 'Testo klubas', region: 'Vilniaus r.', description: 'Uždaras klubas',
       owner_id: other, open: false, invite_code: 'd1d2d3d4d5', created_at: iso(-30 * 24 * H) }],
     club_members: [{ club_id: 'clclclcl-0000-4000-8000-000000000001', user_id: other, role: 'owner', joined_at: iso(-30 * 24 * H) }],
+    leagues: [],
+    tournament_divisions: [],
     entries: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', user_id: other, joined_at: iso(-20 * H) },
       { tournament_id: 'tttttttt-0000-4000-8000-000000000002', user_id: other, joined_at: iso(-20 * H) }],
     catches: [{
@@ -103,6 +105,12 @@ db.notification_settings ||= [];
 db.follows ||= [];
 db.clubs ||= [];
 db.club_members ||= [];
+db.leagues ||= [];
+db.tournament_divisions ||= [];
+const LEAGUE_NAME = /^[A-Za-z0-9ĄČĘĖĮŠŲŪŽąčęėįšųūž .,_"„“()-]+$/;
+const DIV_NAME = /^[A-Za-z0-9ĄČĘĖĮŠŲŪŽąčęėįšųūž .,_+()-]+$/;
+const regOrSoon = (t) => Date.now() < new Date(t.starts_at) || regOpen(t);
+const speciesPctOf = (tid) => Object.fromEntries(db.tournament_species.filter((x) => x.tournament_id === tid).map((x) => [x.species_id, x.points_pct ?? 100]));
 const CLUB_NAME = /^[A-Za-z0-9ĄČĘĖĮŠŲŪŽąčęėįšųūž .,_"„“-]+$/;
 const FAKE_VAPID = 'B' + 'Q'.repeat(86);
 const bannedId = (id) => db.user_bans.some((b) => b.user_id === id && (!b.until || Date.parse(b.until) > Date.now()));
@@ -134,8 +142,17 @@ function visible(table, row) {
 function embed(table, row, spec) {
   const out = {};
   for (const part of spec) {
-    if (table === 'tournaments' && part === 'tournament_species(species_id)') {
-      out.tournament_species = db.tournament_species.filter((x) => x.tournament_id === row.id).map((x) => ({ species_id: x.species_id }));
+    if (table === 'tournaments' && part.startsWith('tournament_species(')) {
+      out.tournament_species = db.tournament_species.filter((x) => x.tournament_id === row.id)
+        .map((x) => pick({ points_pct: 100, ...x }, part.slice(19, -1).split(',').map((c) => c.trim())));
+    } else if (table === 'tournaments' && part.startsWith('tournament_divisions(')) {
+      out.tournament_divisions = db.tournament_divisions.filter((x) => x.tournament_id === row.id)
+        .map((x) => pick(x, part.slice(21, -1).split(',').map((c) => c.trim())));
+    } else if (table === 'tournaments' && part.startsWith('leagues(')) {
+      const l = db.leagues.find((x) => x.id === row.league_id);
+      out.leagues = l ? pick(l, part.slice(8, -1).split(',').map((c) => c.trim())) : null;
+    } else if (table === 'leagues' && part === 'tournaments(count)') {
+      out.tournaments = [{ count: db.tournaments.filter((t) => t.league_id === row.id && visible('tournaments', t)).length }];
     } else if (table === 'tournaments' && part.startsWith('tournament_sponsors(')) {
       out.tournament_sponsors = (db.tournament_sponsors || []).filter((x) => x.tournament_id === row.id)
         .map((x) => pick(x, part.slice(20, -1).split(',').map((c) => c.trim())));
@@ -225,6 +242,8 @@ function canEditTournament(id) {
 function writable(table, row) {
   if (table === 'tournaments') return row.organizer_id === uid() && beforeStart(row);
   if (table === 'tournament_species' || table === 'tournament_sponsors') return canEditTournament(row.tournament_id);
+  if (table === 'tournament_divisions') { const t = db.tournaments.find((x) => x.id === row.tournament_id); return !!t && t.organizer_id === uid() && beforeStart(t); }
+  if (table === 'leagues') return row.owner_id === uid();
   if (table === 'entries') return row.user_id === uid() && beforeStart(db.tournaments.find((x) => x.id === row.tournament_id));
   if (table === 'catches') return row.user_id === uid();
   if (table === 'profiles') return row.id === uid();
@@ -301,7 +320,7 @@ class Query {
         this.rows = this.rows.map((r) => ({ ...r, user_id: uid() }));
       }
       if (this.table === 'club_members') return { data: null, error: err('42501', 'permission denied for table club_members') };
-      if (BAN_INSERT.concat(['follows', 'clubs']).includes(this.table) && bannedId(uid())) {
+      if (BAN_INSERT.concat(['follows', 'clubs', 'leagues']).includes(this.table) && bannedId(uid())) {
         return { data: null, error: err('42501', `new row violates row-level security policy for table "${this.table}"`) };
       }
       const inserted = [];
@@ -342,6 +361,25 @@ class Query {
             invite_code: uuid().replace(/-/g, '').slice(0, 10), created_at: new Date().toISOString() });
           db.club_members.push({ club_id: row.id, user_id: uid(), role: 'owner', joined_at: row.created_at });
         }
+        if (this.table === 'leagues') {
+          if (row.owner_id && row.owner_id !== uid()) return { data: null, error: err('42501', 'new row violates row-level security policy for table "leagues"') };
+          const name = String(row.name || '').trim();
+          if (name.length < 3 || name.length > 60 || !LEAGUE_NAME.test(row.name || '') || !(row.season >= 2024 && row.season <= 2100)) return { data: null, error: err('23514', 'new row for relation "leagues" violates check constraint "leagues_name_check"') };
+          if (db.leagues.filter((l) => l.owner_id === uid()).length >= 5) return { data: null, error: err('P0001', 'league_limit') };
+          if (db.leagues.some((l) => l.season === row.season && l.name.toLowerCase() === name.toLowerCase())) return { data: null, error: err('23505', 'duplicate key value violates unique constraint "leagues_name_uniq"') };
+          Object.assign(row, { id: uuid(), name, owner_id: uid(), description: row.description ?? null, created_at: new Date().toISOString() });
+        }
+        if (this.table === 'tournament_divisions') {
+          if (!writable('tournament_divisions', row)) return { data: null, error: err('42501', 'new row violates row-level security policy for table "tournament_divisions"') };
+          const name = String(row.name || '').trim();
+          if (db.tournament_divisions.filter((d) => d.tournament_id === row.tournament_id).length >= 8) return { data: null, error: err('P0001', 'division_limit') };
+          if (name.length < 2 || name.length > 30 || !DIV_NAME.test(row.name || '')) return { data: null, error: err('23514', 'check constraint tournament_divisions_name_check') };
+          if (db.tournament_divisions.some((d) => d.tournament_id === row.tournament_id && d.name.toLowerCase() === name.toLowerCase())) return { data: null, error: err('23505', 'duplicate key value violates unique constraint "tournament_divisions_name_uniq"') };
+          Object.assign(row, { id: uuid(), name, sort: row.sort ?? 0 });
+        }
+        if (this.table === 'tournament_species' && row.points_pct !== undefined && !(row.points_pct >= 10 && row.points_pct <= 1000)) {
+          return { data: null, error: err('23514', 'check constraint tournament_species_points_pct_check') };
+        }
         if (this.table === 'catch_locations') {
           if (!db.catches.some((c) => c.id === row.catch_id && c.user_id === uid())) return { data: null, error: err('42501', 'rls') };
           if (db.catch_locations.some((x) => x.catch_id === row.catch_id)) return { data: null, error: err('23505', 'duplicate key catch_locations_pkey') };
@@ -358,6 +396,8 @@ class Query {
           row.joined_at = new Date().toISOString();
           if (row.club_id && !db.club_members.some((m) => m.club_id === row.club_id && m.user_id === row.user_id)) row.club_id = null;
           row.club_id ??= null;
+          if (row.division_id && !db.tournament_divisions.some((d) => d.id === row.division_id && d.tournament_id === row.tournament_id)) row.division_id = null;
+          row.division_id ??= null;
         }
         if (this.table === 'tournaments') {
           if (db.tournaments.filter((x) => x.organizer_id === uid() && Date.now() - new Date(x.created_at) < 24 * H).length >= 10) {
@@ -366,6 +406,9 @@ class Query {
           if (row.sponsor_url && !/^https:\/\/[^\s<>"']{3,200}$/.test(row.sponsor_url)) return { data: null, error: err('23514', 'check constraint sponsor_url') };
           Object.assign(row, { id: uuid(), visibility: row.visibility || 'public', leaderboard_hidden: !!row.leaderboard_hidden,
             fee_cents: 0, created_at: new Date().toISOString(), invite_code: uuid().replace(/-/g, '').slice(0, 10) });
+          if (!['biggest', 'top_n_sum', 'species_points', 'duels'].includes(row.format)) return { data: null, error: err('23514', 'tournaments_format_check') };
+          if (row.league_id && !db.leagues.some((l) => l.id === row.league_id && l.owner_id === uid())) return { data: null, error: err('P0001', 'league_owner') };
+          if (row.format === 'duels') Object.assign(row, { late_join_minutes: 0, leaderboard_hidden: false, team_mode: false });
         }
         if (this.table === 'catch_reports') {
           const c = db.catches.find((x) => x.id === row.catch_id);
@@ -424,6 +467,11 @@ class Query {
       }
       if (this.table === 'disputes') return { data: null, error: err('42501', 'permission denied for table disputes') };
       if (['follows', 'club_members'].includes(this.table)) return { data: null, error: err('42501', `permission denied for table ${this.table}`) };
+      if (this.table === 'leagues' && Object.keys(this.patch).some((k) => !['name', 'description'].includes(k))) return { data: null, error: err('42501', 'permission denied for table leagues') };
+      if (this.table === 'tournaments') {
+        if (this.patch.league_id && !db.leagues.some((l) => l.id === this.patch.league_id && l.owner_id === uid())) return { data: null, error: err('P0001', 'league_owner') };
+        if (this.patch.format && !['biggest', 'top_n_sum', 'species_points', 'duels'].includes(this.patch.format)) return { data: null, error: err('23514', 'tournaments_format_check') };
+      }
       if (this.table === 'clubs') {
         if (Object.keys(this.patch).some((k) => !['name', 'region', 'description', 'open'].includes(k))) return { data: null, error: err('42501', 'permission denied for table clubs') };
         if ('name' in this.patch) {
@@ -434,7 +482,10 @@ class Query {
         }
       }
       data = t.filter((r) => this.matches(r) && writable(this.table, r));
-      data.forEach((r) => Object.assign(r, this.patch));
+      data.forEach((r) => {
+        Object.assign(r, this.patch);
+        if (this.table === 'tournaments' && r.format === 'duels') Object.assign(r, { late_join_minutes: 0, leaderboard_hidden: false, team_mode: false });
+      });
       save();
     } else if (this.op === 'delete') {
       if (this.table === 'catches' || this.table === 'disputes' || this.table === 'user_bans') return { data: null, error: err('42501', `permission denied for table ${this.table}`) };
@@ -445,6 +496,15 @@ class Query {
         db.tournament_species = db.tournament_species.filter((x) => !gone.has(x.tournament_id));
         db.tournament_sponsors = db.tournament_sponsors.filter((x) => !gone.has(x.tournament_id));
         db.entries = db.entries.filter((x) => !gone.has(x.tournament_id));
+        db.tournament_divisions = db.tournament_divisions.filter((x) => !gone.has(x.tournament_id));
+      }
+      if (this.table === 'tournament_divisions') {
+        const gone = new Set(data.map((r) => r.id));
+        db.entries.forEach((e) => { if (gone.has(e.division_id)) e.division_id = null; });
+      }
+      if (this.table === 'leagues') {
+        const gone = new Set(data.map((r) => r.id));
+        db.tournaments.forEach((x) => { if (gone.has(x.league_id)) x.league_id = null; });
       }
       if (this.table === 'clubs') {
         const gone = new Set(data.map((r) => r.id));
@@ -816,6 +876,44 @@ export function createClient(url, key) {
         rows.forEach((r, i) => { r.rank = i > 0 && rows[i - 1].score_mm === r.score_mm ? rows[i - 1].rank : i + 1; });
         return { data: rows, error: null };
       }
+      if (name === 'set_entry_division') {
+        const t = db.tournaments.find((x) => x.id === args.p_tournament);
+        const e = db.entries.find((x) => x.tournament_id === args.p_tournament && x.user_id === uid());
+        if (!t || !e) return { data: null, error: err('P0001', 'not allowed') };
+        if (!regOrSoon(t)) return { data: null, error: err('P0001', 'division_closed') };
+        if (args.p_division && !db.tournament_divisions.some((d) => d.id === args.p_division && d.tournament_id === t.id)) return { data: null, error: err('P0001', 'division_invalid') };
+        e.division_id = args.p_division || null;
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'duel_bracket') {
+        const t = db.tournaments.find((x) => x.id === args.p_tournament_id);
+        if (!t || t.format !== 'duels' || !visible('tournaments', t)) return { data: [], error: null };
+        const { duelBracket } = await import(window.__appBase + 'src/lib/duels.js');
+        const rows = await duelBracket({
+          tournament: t,
+          speciesIds: db.tournament_species.filter((x) => x.tournament_id === t.id).map((x) => x.species_id),
+          entries: db.entries.filter((e) => e.tournament_id === t.id),
+          catches: db.catches,
+          profiles: Object.fromEntries(db.profiles.map((p) => [p.id, p])),
+          banned: bannedId
+        });
+        return { data: rows, error: null };
+      }
+      if (name === 'league_standings') {
+        const { computeLeaderboard, leagueStandings } = await import(window.__appBase + 'src/lib/scoring.js');
+        const list = db.tournaments.filter((t) => t.league_id === args.p_league && t.visibility === 'public'
+          && Date.now() >= new Date(t.starts_at) && !(t.leaderboard_hidden && Date.now() < new Date(t.ends_at)));
+        const boards = list.map((t) => computeLeaderboard({
+          tournament: t,
+          speciesIds: db.tournament_species.filter((x) => x.tournament_id === t.id).map((x) => x.species_id),
+          speciesPct: speciesPctOf(t.id),
+          entries: db.entries.filter((e) => e.tournament_id === t.id && !bannedId(e.user_id)),
+          catches: db.catches,
+          profiles: Object.fromEntries(db.profiles.map((p) => [p.id, p]))
+        }));
+        return { data: leagueStandings(boards), error: null };
+      }
       if (name === 'leaderboard') {
         const { computeLeaderboard } = await import(window.__appBase + 'src/lib/scoring.js');
         const t = db.tournaments.find((x) => x.id === args.p_tournament_id);
@@ -824,6 +922,7 @@ export function createClient(url, key) {
         const rows = computeLeaderboard({
           tournament: t,
           speciesIds: db.tournament_species.filter((x) => x.tournament_id === t.id).map((x) => x.species_id),
+          speciesPct: speciesPctOf(t.id),
           entries: db.entries.filter((e) => e.tournament_id === t.id && !bannedId(e.user_id)),
           catches: db.catches,
           profiles
