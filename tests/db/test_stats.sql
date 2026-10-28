@@ -40,13 +40,16 @@ end $$;
 reset role;
 
 \echo 'S2. Savininko statistika'
+-- Demonstracinis žvejys į skaičius neįtraukiamas
+insert into auth.users (id, email) values ('7d000000-0000-4000-8000-00000000007d', 'demo-stat@demo.invalid');
+update public.profiles set is_demo = true where id = '7d000000-0000-4000-8000-00000000007d';
 update public.profiles set roles = array['owner'] where id = '76000000-0000-4000-8000-000000000076';
 update public.user_presence set last_seen_at = now() - interval '2 days' where user_id = '72000000-0000-4000-8000-000000000072';
 set role authenticated;
 set request.jwt.claim.sub = '76000000-0000-4000-8000-000000000076';
 do $$ declare s jsonb; begin
   s := public.admin_stats();
-  assert (s->>'users')::int = (select count(*) from public.profiles), 'vartotojai';
+  assert (s->>'users')::int = (select count(*) from public.profiles) - 1 and (s->>'demo_users')::int = 1, 'vartotojai be demo';
   assert (s->>'new_today')::int >= 6, format('nauji šiandien %s', s->>'new_today');
   assert (s->>'online_now')::int = 1 and (s->>'active_today')::int = 1 and (s->>'active_7d')::int = 2, format('aktyvūs %s', s);
   assert jsonb_array_length(s->'signups') = 30, 'registracijų dienos';
