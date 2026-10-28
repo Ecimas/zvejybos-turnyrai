@@ -112,3 +112,18 @@ test('rolės: teisės, senas is_admin, savininko neskiriama', async () => {
   assert.ok(!ASSIGNABLE.some((r) => r.key === 'owner'), 'savininko programėlėje skirti negalima');
   assert.equal(roleLabel('judge'), 'Ginčų teisėjas');
 });
+
+test('žemėlapis: atstumas ir vietų grupavimas (~50 m)', async () => {
+  const { distance, groupSpots, colorFor } = await import('../../src/lib/map.js');
+  assert.ok(Math.abs(distance(54.9, 23.9, 54.9, 23.9)) < 1e-6);
+  const d = distance(54.9, 23.9, 54.9009, 23.9); // ~100 m į šiaurę
+  assert.ok(d > 95 && d < 105, String(d));
+  const pts = [
+    { id: 1, lat: 54.9, lng: 23.9 }, { id: 2, lat: 54.9002, lng: 23.9002 }, // ~26 m – ta pati vieta
+    { id: 3, lat: 54.91, lng: 23.9 }, { id: 4, lat: 55.5, lng: 24.5 }
+  ];
+  const g = groupSpots(pts);
+  assert.deepEqual(g.map((x) => x.items.map((i) => i.id)), [[1, 2], [3], [4]]);
+  assert.equal(colorFor(1), colorFor(9), 'spalvos kartojasi kas 8');
+  assert.notEqual(colorFor(1), colorFor(2));
+});

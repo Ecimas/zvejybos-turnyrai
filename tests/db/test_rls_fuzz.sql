@@ -147,6 +147,8 @@ select who, format('update %I.%I set %I = %I where %s', s, t, c.column_name, c.c
                ('public', 'notification_outbox', $$true$$),
                ('public', 'tournament_ranks', $$true$$),
                ('public', 'catch_checks', $$true$$),
+               ('public', 'catch_spots', $$true$$),
+               ('public', 'spot_settings', $$true$$),
                ('storage', 'objects',        $$name like 'b0000000-%'$$)) as x(s, t, w)
   join information_schema.columns c on c.table_schema = x.s and c.table_name = x.t
  cross join (values ('anon'), ('A')) as who(who);
@@ -172,6 +174,8 @@ insert into pg_temp.attempts (who, sql, kind) values
   ('B', $$insert into public.role_changes (user_id, role, granted) values ('b0000000-0000-4000-8000-00000000000b', 'owner', true)$$, 'error'),
   ('B', $$insert into public.notification_outbox (user_id, kind, title, body, dedupe) values ('a0000000-0000-4000-8000-00000000000a', 'test', 'x', 'y', 'fuzz-b')$$, 'error'),
   ('B', $$insert into public.notification_settings (user_id, review) values ('a0000000-0000-4000-8000-00000000000a', false)$$, 'error'),
+  ('B', $$insert into public.catch_spots (catch_id, user_id, lat, lng) values ((select id from fx where k = 'b_approved'), 'b0000000-0000-4000-8000-00000000000b', 1, 1)$$, 'error'),
+  ('B', $$insert into public.spot_settings (user_id, keep) values ('a0000000-0000-4000-8000-00000000000a', true)$$, 'error'),
   ('B', $$insert into public.catch_checks (catch_id, user_id, instruction, due_at) values ((select id from fx where k = 'b_approved'), 'b0000000-0000-4000-8000-00000000000b', 'x x x', now())$$, 'error'),
   ('B', $$update public.catches set status = 'approved' where user_id = 'b0000000-0000-4000-8000-00000000000b'$$, 'nochange'),
   ('B', $$update public.catches set length_mm = 2000 where user_id = 'b0000000-0000-4000-8000-00000000000b'$$, 'nochange'),
@@ -206,6 +210,8 @@ select who, format('delete from %I.%I where %s', s, t, w), 'nochange'
                ('public', 'notification_outbox', $$true$$),
                ('public', 'tournament_ranks', $$true$$),
                ('public', 'catch_checks', $$true$$),
+               ('public', 'catch_spots', $$user_id <> (select auth.uid())$$),
+               ('public', 'spot_settings', $$true$$),
                ('storage', 'objects', $$true$$)) as x(s, t, w)
  cross join (values ('anon'), ('A'), ('B')) as who(who)
  where not (who = 'B' and t in ('tournaments', 'tournament_species', 'tournament_sponsors', 'entries', 'tournament_announcements', 'blank_trips')); -- B savo būsimą turnyrą trinti gali
@@ -262,6 +268,8 @@ select who, q, 'zero' from (values
   ($$select count(*) from public.notification_outbox$$),
   ($$select count(*) from public.tournament_ranks$$),
   ($$select count(*) from public.catch_checks where user_id is distinct from auth.uid()$$),
+  ($$select count(*) from public.catch_spots where user_id is distinct from auth.uid()$$),
+  ($$select count(*) from public.spot_settings where user_id is distinct from auth.uid()$$),
   ($$select count(*) from public.tournament_announcements a join public.tournaments t on t.id = a.tournament_id where t.visibility = 'private'$$)
 ) as q(q) cross join (values ('anon'), ('A')) as who(who);
 -- privatūs stulpeliai: kito žmogaus masalas ir pastabos (net patvirtinto laimikio)

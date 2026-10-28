@@ -12,6 +12,7 @@ import { profileView, anglerView } from './views/profile.js';
 import { createView } from './views/create.js';
 import { moderationView, disputesView, teamView, reportsView, bansView, checksView } from './views/moderation.js';
 import { checkView } from './views/check.js';
+import { mapView } from './views/map.js';
 import { loginView } from './views/login.js';
 import { inviteView, takeInvite } from './views/invite.js';
 import { privacyView, rulesView } from './views/pages.js';
@@ -37,6 +38,7 @@ const ROUTES = [
   [/^\/moderavimas\/blokuoti$/, bansView],
   [/^\/moderavimas\/patikros$/, checksView],
   [/^\/patikra\/([\w-]+)$/, checkView],
+  [/^\/zemelapis$/, mapView],
   [/^\/privatumas$/, privacyView],
   [/^\/taisykles$/, rulesView],
   [/^\/prisijungti$/, loginView]
@@ -184,7 +186,15 @@ async function main() {
     document.body.classList.toggle('no-nav', !result.nav);
     document.body.classList.toggle('dark-screen', !!result.dark);
     window.scrollTo(0, keepScroll ? y : 0);
-    if (result.mount) cleanup = result.mount(main) || null;
+    if (result.mount) {
+      const out = result.mount(main);
+      // Asinchroninis mount (pvz. žemėlapis): valymo funkcija ateina vėliau – jei jau išėjome, valom iškart.
+      if (out && typeof out.then === 'function') {
+        out.then((fn) => { if (typeof fn !== 'function') return; if (my === token) cleanup = fn; else fn(); }).catch(() => {});
+      } else {
+        cleanup = out || null;
+      }
+    }
     if (!keepScroll) main.querySelector('h1')?.focus({ preventScroll: true });
   }
 

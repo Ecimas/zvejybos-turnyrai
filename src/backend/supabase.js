@@ -368,6 +368,27 @@ export async function createSupabaseBackend(url, anonKey) {
       }
     },
 
+    // Asmeninis žemėlapis (0018): tikslios vietos (90 d.) ir, jei įjungta, išsaugotos kopijos.
+    async myMap() {
+      const me = uid();
+      const [rows, set] = await Promise.all([
+        sb.from('catches').select(`${CATCH_COLS}, catch_locations(lat, lng, accuracy_m), catch_spots(lat, lng, accuracy_m)`)
+          .eq('user_id', me).order('captured_at_device', { ascending: false }),
+        sb.from('spot_settings').select('keep').eq('user_id', me).maybeSingle()
+      ]);
+      const one = (x) => (Array.isArray(x) ? x[0] : x) || null;
+      const catches = check(rows).map(({ catch_locations: loc0, catch_spots: spot0, ...c }) => {
+        const loc = one(loc0) || one(spot0);
+        return { ...c, location: loc ? { lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy_m } : null, kept: !!one(spot0) };
+      });
+      return { catches, keep: !set.error && !!set.data?.keep };
+    },
+    async setKeepSpots(on) {
+      const n = check(await sb.rpc('set_keep_spots', { p_keep: !!on }));
+      if (!on) check(await sb.from('catch_spots').delete().eq('user_id', uid()));
+      return n;
+    },
+
     // Atsitiktiniai patikrinimai (0017).
     async myChecks() {
       if (!user) return [];
@@ -498,7 +519,7 @@ export async function createSupabaseBackend(url, anonKey) {
       const me = uid();
       const [profile, catches, entries, organized, disputes, notes, trips, reports] = await Promise.all([
         sb.from('profiles').select('*').eq('id', me).single(),
-        sb.from('catches').select(`${CATCH_COLS}, catch_locations(*)`).eq('user_id', me).order('captured_at_device'),
+        sb.from('catches').select(`${CATCH_COLS}, catch_locations(*), catch_spots(*)`).eq('user_id', me).order('captured_at_device'),
         sb.from('entries').select('*').eq('user_id', me),
         sb.from('tournaments').select('*').eq('organizer_id', me),
         sb.from('disputes').select('*').eq('user_id', me),

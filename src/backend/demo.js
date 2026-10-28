@@ -105,7 +105,15 @@ function seed() {
     { id: 'r1', catch_id: 'demo-c28', reporter_id: ids[1], reason: 'old_photo', message: 'Šią nuotrauką mačiau Facebook grupėje pernai',
       status: 'open', created_at: iso(-3 * H) }
   ];
-  return { profiles, tournaments, tournament_species, tournament_sponsors, entries, catches, locations: {}, disputes: [],
+  // Demo: mano laimikių vietos prie Kauno marių ir Nemuno (žemėlapiui).
+  // Kelios žuvys toje pačioje vietoje (iki ~20 m) – žemėlapyje sugrupuojamos.
+  const SPOTS = [[54.866, 24.06], [54.897, 23.94], [54.852, 24.12]];
+  const locations = {};
+  catches.filter((c) => c.user_id === ME).forEach((c, i) => {
+    const [lat, lng] = SPOTS[i % SPOTS.length];
+    locations[c.id] = { lat: lat + (i % 2) * 0.0001, lng: lng + (i % 2) * 0.0001, accuracy: 8 };
+  });
+  return { profiles, tournaments, tournament_species, tournament_sponsors, entries, catches, locations, disputes: [],
     announcements, reports, blank_trips: [], bans: [] };
 }
 
@@ -433,6 +441,16 @@ export function createDemoBackend({ photos } = {}) {
       }
       save();
     },
+
+    async myMap() {
+      return {
+        keep: !!db.keepSpots,
+        catches: db.catches.filter((c) => c.user_id === ME)
+          .sort((a, b) => b.captured_at_device.localeCompare(a.captured_at_device))
+          .map((c) => ({ ...c, location: db.locations[c.id] || null, kept: !!db.keepSpots && !!db.locations[c.id] }))
+      };
+    },
+    async setKeepSpots(on) { db.keepSpots = !!on; save(); return 0; },
 
     async pushPublicKey() { return null; },
     async savePushSubscription() {},

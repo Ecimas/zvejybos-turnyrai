@@ -168,6 +168,7 @@ export async function profileView(ctx) {
           ${perms.has('ban') ? html`<a class="list-row" href="#/moderavimas/blokuoti">${icon('lock', 20)}<span class="grow strong">Užblokuoti žvejai</span>${icon('chevron', 18)}</a>` : ''}
           ${perms.has('roles') ? html`<a class="list-row" href="#/moderavimas/komanda">${icon('user', 20)}<span class="grow strong">Komanda ir rolės</span>${icon('chevron', 18)}</a>` : ''}
           <a class="list-row" href="#/naujas">${icon('plus', 20)}<span class="grow strong">Sukurti turnyrą</span>${icon('chevron', 18)}</a>
+          <a class="list-row" href="#/zemelapis">${icon('pin', 20)}<span class="grow strong">Mano laimikių žemėlapis</span>${icon('chevron', 18)}</a>
           <a class="list-row" href="#/zvejys/${p.id}">${icon('user', 20)}<span class="grow strong">Kaip mane mato kiti</span>${icon('chevron', 18)}</a>
           <div class="list-row">${icon('sun', 20)}<span class="grow strong">Tema</span>
             <select data-theme aria-label="Tema">

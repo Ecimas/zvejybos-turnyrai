@@ -160,6 +160,52 @@ def community_demo_tests(page, base):
     page.goto(base + "#/profilis")
 
 
+LEAFLET_STUB = """const log = (window.__leafletLog = { maps: 0, markers: [], popups: [], fit: [], tiles: [], removed: 0 });
+function map(el) { log.maps++; el.classList.add('leaflet-container'); el.innerHTML = '<div class="fake-map">MAP</div>';
+  return { fitBounds(b) { log.fit.push(b.length); return this; }, remove() { log.removed++; } }; }
+function tileLayer(url, o) { log.tiles.push(url); log.attribution = o && o.attribution; return { addTo() { return this; } }; }
+function layerGroup() { const g = { addTo() { return g; }, clearLayers() { log.markers = []; log.popups = []; } }; return g; }
+function circleMarker(ll, o) { const m = { bindPopup(h) { log.popups.push(h); return m; },
+  addTo() { log.markers.push({ ll, color: o.fillColor, radius: o.radius }); return m; } }; return m; }
+export default { map, tileLayer, layerGroup, circleMarker };"""
+
+
+def leaflet_route(route):
+    if route.request.url.endswith(".css"):
+        route.fulfill(status=200, content_type="text/css", headers={"Access-Control-Allow-Origin": "*"}, body="")
+    else:
+        route.fulfill(status=200, content_type="text/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=LEAFLET_STUB)
+
+
+def map_demo_test(page, base):
+    page.goto(base + "#/profilis")
+    page.get_by_role("link", name="Mano laimikių žemėlapis").click()
+    expect(page.get_by_role("heading", name="Mano laimikių žemėlapis")).to_be_attached()
+    expect(page.get_by_text("Šį žemėlapį matai tik tu.")).to_be_visible()
+    page.wait_for_function("() => window.__leafletLog && window.__leafletLog.markers.length > 0")
+    log = page.evaluate("() => window.__leafletLog")
+    assert log["maps"] == 1 and log["tiles"] == ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], log
+    assert "OpenStreetMap" in log["attribution"]
+    assert all("#/l/" in p for p in log["popups"]), log["popups"]
+    assert any("laimikiai čia" in p for p in log["popups"]), "kelios žuvys toje pačioje vietoje turi būti sugrupuotos"
+    assert log["fit"], "žemėlapis turi priartėti prie taškų"
+    total = len(log["markers"])
+    expect(page.locator("[data-map-count]")).to_contain_text("Rodoma:")
+    chip = page.locator("[data-sp]").nth(1)
+    chip.click()
+    expect(chip).to_have_attribute("aria-pressed", "true")
+    after = page.evaluate("() => window.__leafletLog.markers")
+    assert 0 < len(after) <= total and len({m["color"] for m in after}) == 1, after
+    page.get_by_role("button", name="Visos").click()
+    assert len(page.evaluate("() => window.__leafletLog.markers")) == total
+    page.get_by_text("Saugoti vietas mano žemėlapiui ilgiau nei 90 d.").click()
+    expect(page.locator("#toast")).to_contain_text("Vietos bus saugomos")
+    assert page.evaluate("() => JSON.parse(localStorage.getItem('zt-demo-v1')).keepSpots") is True
+    page.goto(base + "#/")
+    page.wait_for_function("() => window.__leafletLog.removed === 1")
+    step("mano laimikių žemėlapis: taškai su grupavimu, filtras pagal rūšį, vietų saugojimas, išvalymas išeinant")
+
+
 def extra_demo_tests(page, base, meteo_calls):
     """Ginčai, moderatoriai, privatūs turnyrai, redagavimas, prizai, ekranas, ženkliukai, eksportas, ištrynimas."""
     accept_dialogs = lambda d: d.accept()
@@ -432,6 +478,7 @@ def main():
         page.route(re.compile(r"https://fonts\.(googleapis|gstatic)\.com/.*"), lambda r: r.abort())
         meteo_calls = []
         page.route(METEO, lambda r: (meteo_calls.append(r.request.url), fake_meteo(r)))
+        page.route(re.compile(r"https://cdn\.jsdelivr\.net/npm/leaflet@.*"), leaflet_route)
         expect.set_options(timeout=8000)
 
         # 1. Turnyrų sąrašas
@@ -671,6 +718,7 @@ def main():
         step("kameros klaidos paaiškinimas")
 
         extra_demo_tests(page, base, meteo_calls)
+        map_demo_test(page, base)
 
         ctx.close()
 

@@ -38,7 +38,7 @@ export async function privacyView() {
       <li><strong>El. pašto adresą</strong> – prisijungimui (per Google paskyrą arba nuorodą laiške). Kitiems dalyviams jis nerodomas. Jungiantis per Google gauname tik el. paštą ir vardą; vardo niekur nerodome – kitiems matomas tik tavo pasirinktas slapyvardis.</li>
       <li><strong>Slapyvardį ir regioną</strong> – rodomi lentelėse ir profilyje.</li>
       <li><strong>Laimikio nuotrauką, ilgį, rūšį, laiką</strong> – turnyrų rezultatams ir patikrai. Patvirtintos nuotraukos matomos kitiems dalyviams.</li>
-      <li><strong>Tikslią vietą (GPS)</strong> – tik sąžiningumo patikrai. Ją mato tik moderatoriai, ji niekada nerodoma kitiems ir automatiškai ištrinama praėjus 90 dienų po turnyro pabaigos.</li>
+      <li><strong>Tikslią vietą (GPS)</strong> – tik sąžiningumo patikrai. Ją mato tik moderatoriai, ji niekada nerodoma kitiems ir automatiškai ištrinama praėjus 90 dienų po turnyro pabaigos. Jei pats įjungi „Saugoti vietas mano žemėlapiui“, išsaugoma jų kopija, kurią matai tik tu (net ne moderatoriai); išjungus kopijos ištrinamos.</li>
       <li><strong>Orą</strong> (temperatūra, vėjas, slėgis) – užklausiame Open-Meteo pagal suapvalintą (~100 m) vietą ir išsaugome prie laimikio. Išjungti galima profilyje.</li>
       <li><strong>Masalą ir pastabas</strong> – jei įrašai; matomi tik tau.</li>
       <li><strong>Pranešimų prenumeratą</strong> – jei įjungi pranešimus: telefono naršyklės suteiktą adresą, kuriuo siunčiame žinutes apie laimikius ir turnyrus. Išjungus pranešimus adresas nebenaudojamas. Pranešimų turinys šifruojamas.</li>

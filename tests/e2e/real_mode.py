@@ -455,6 +455,27 @@ def more_real_tests(page, base):
     expect(page.locator(".list-row", has_text="Registracija")).to_contain_text("Iki pabaigos")
     step("vėlyva registracija: pasibaigus – mygtuko nėra, serveris ir kvietimas atmeta")
 
+    # Mano laimikių žemėlapis: tikslios vietos ir jų kopijos (tik sau)
+    with_loc = fake(page, "return db.catch_locations.filter(l => db.catches.find(c => c.id === l.catch_id && c.user_id === arg && c.status !== 'rejected')).length;", me)
+    assert with_loc >= 1, "testui reikia bent vieno laimikio su vieta"
+    go(page, base + "#/zemelapis")
+    page.wait_for_function("() => window.__leafletLog && window.__leafletLog.markers.length > 0")
+    expect(page.locator("[data-map-count]")).to_contain_text("Rodoma:")
+    page.get_by_text("Saugoti vietas mano žemėlapiui ilgiau nei 90 d.").click()
+    expect(page.locator("#toast")).to_contain_text("Vietos bus saugomos")
+    assert fake(page, "return db.catch_spots.filter(x => x.user_id === arg).length;", me) == with_loc
+    assert fake(page, "return db.spot_settings.find(x => x.user_id === arg).keep;", me) is True
+    # Kopija rodoma ir tada, kai tiksli vieta jau ištrinta (po 90 d.)
+    fake(page, "db.catch_locations = db.catch_locations.filter(l => db.catches.find(c => c.id === l.catch_id).user_id !== arg); window.__fakeDb.save(); return 1;", me)
+    go(page, base + "#/zemelapis")
+    page.wait_for_function("(n) => window.__leafletLog && window.__leafletLog.markers.length > 0", arg=with_loc)
+    expect(page.get_by_text("Saugoti vietas mano žemėlapiui ilgiau nei 90 d.")).to_be_visible()
+    expect(page.locator("[data-keep]")).to_be_checked()
+    page.get_by_text("Saugoti vietas mano žemėlapiui ilgiau nei 90 d.").click()
+    expect(page.locator("#toast")).to_have_text("Išsaugotos vietos ištrintos")
+    assert fake(page, "return db.catch_spots.filter(x => x.user_id === arg).length;", me) == 0
+    step("mano žemėlapis: vietos rodomos, kopijos išlieka po 90 d., išjungus ištrinamos")
+
     # Duomenų eksportas
     go(page, base + "#/profilis")
     with page.expect_download() as dl:
@@ -630,6 +651,7 @@ def main():
         )
         ctx.add_init_script(f"window.__appBase = {base!r};")
         ctx.add_init_script(PUSH_STUB)
+        ctx.route(re.compile(r"https://cdn\.jsdelivr\.net/npm/leaflet@.*"), base_mod.leaflet_route)
         ts_state = {"abort": False}
         ctx.route(re.compile(r"https://challenges\.cloudflare\.com/.*"), lambda r: r.abort() if ts_state["abort"] else r.fulfill(
             status=200, content_type="text/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=TURNSTILE_STUB))

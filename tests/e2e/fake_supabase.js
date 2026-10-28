@@ -42,6 +42,8 @@ function seed() {
     user_bans: [],
     push_subscriptions: [],
     catch_checks: [],
+    catch_spots: [],
+    spot_settings: [],
     notification_settings: [],
     entries: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', user_id: other, joined_at: iso(-20 * H) },
       { tournament_id: 'tttttttt-0000-4000-8000-000000000002', user_id: other, joined_at: iso(-20 * H) }],
@@ -91,6 +93,8 @@ const hasPerm = (perm) => myRoles().some((r) => PERMS[r]?.includes(perm));
 db.user_bans ||= [];
 db.push_subscriptions ||= [];
 db.catch_checks ||= [];
+db.catch_spots ||= [];
+db.spot_settings ||= [];
 db.notification_settings ||= [];
 const FAKE_VAPID = 'B' + 'Q'.repeat(86);
 const bannedId = (id) => db.user_bans.some((b) => b.user_id === id && (!b.until || Date.parse(b.until) > Date.now()));
@@ -107,6 +111,7 @@ function visible(table, row) {
   if (table === 'user_bans') return !!uid() && (row.user_id === uid() || hasPerm('ban'));
   if (table === 'push_subscriptions' || table === 'notification_settings') return !!uid() && row.user_id === uid();
   if (table === 'catch_checks') return !!uid() && (row.user_id === uid() || hasPerm('review'));
+  if (table === 'catch_spots' || table === 'spot_settings') return !!uid() && row.user_id === uid();
   if (table === 'blank_trips') return row.user_id === uid();
   if (table === 'tournament_announcements') {
     const t = db.tournaments.find((x) => x.id === row.tournament_id);
@@ -157,6 +162,9 @@ function embed(table, row, spec) {
     } else if (table === 'user_bans' && part.startsWith('profiles!user_bans_user_id_fkey(')) {
       const p = db.profiles.find((x) => x.id === row.user_id);
       out.profiles = p ? { nickname: p.nickname } : null;
+    } else if (table === 'catches' && part.startsWith('catch_spots(')) {
+      const sp = db.catch_spots.find((x) => x.catch_id === row.id);
+      out.catch_spots = sp && visible('catch_spots', sp) ? { lat: sp.lat, lng: sp.lng, accuracy_m: sp.accuracy_m } : null;
     } else if (table === 'catches' && part.startsWith('catch_locations(')) {
       const l = db.catch_locations.find((x) => x.catch_id === row.id);
       out.catch_locations = l && visible('catch_locations', l) ? { lat: l.lat, lng: l.lng, accuracy_m: l.accuracy_m } : null;
@@ -202,6 +210,7 @@ function writable(table, row) {
   if (table === 'blank_trips') return row.user_id === uid();
   if (table === 'tournament_announcements') return row.author_id === uid();
   if (table === 'notification_settings') return row.user_id === uid();
+  if (table === 'catch_spots') return row.user_id === uid();
   return false;
 }
 
@@ -515,6 +524,22 @@ export function createClient(url, key) {
         return { data: null, error: null };
       }
       if (name === 'push_public_key') return { data: FAKE_VAPID, error: null };
+      if (name === 'set_keep_spots') {
+        if (!uid()) return { data: null, error: err('P0001', 'not allowed') };
+        db.spot_settings = db.spot_settings.filter((x) => x.user_id !== uid()).concat([{ user_id: uid(), keep: !!args.p_keep }]);
+        let n = 0;
+        if (args.p_keep) {
+          for (const l of db.catch_locations) {
+            const c = db.catches.find((x) => x.id === l.catch_id);
+            if (c?.user_id === uid() && !db.catch_spots.some((x) => x.catch_id === l.catch_id)) {
+              db.catch_spots.push({ catch_id: l.catch_id, user_id: uid(), lat: l.lat, lng: l.lng, accuracy_m: l.accuracy_m });
+              n++;
+            }
+          }
+        }
+        save();
+        return { data: n, error: null };
+      }
       if (name === 'request_catch_check') {
         if (!hasPerm('review')) return { data: null, error: err('P0001', 'not allowed') };
         const c = db.catches.find((x) => x.id === args.p_catch);
