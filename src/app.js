@@ -6,6 +6,8 @@ import { count } from './lib/format.js';
 import { tournamentsView, standingsView } from './views/tournaments.js';
 import { tournamentView, boardView, tvView, teamBoardView, duelsView } from './views/tournament.js';
 import { leaguesView, leagueView } from './views/leagues.js';
+import { statsView } from './views/stats.js';
+import { startPresence } from './lib/presence.js';
 import { captureView } from './views/capture.js';
 import { catchView } from './views/catch.js';
 import { diaryView } from './views/diary.js';
@@ -43,6 +45,7 @@ const ROUTES = [
   [/^\/moderavimas\/komanda$/, teamView],
   [/^\/moderavimas\/blokuoti$/, bansView],
   [/^\/moderavimas\/patikros$/, checksView],
+  [/^\/moderavimas\/statistika$/, statsView],
   [/^\/patikra\/([\w-]+)$/, checkView],
   [/^\/zemelapis$/, mapView],
   [/^\/sekami$/, feedView],
@@ -117,10 +120,13 @@ async function main() {
 
   ctx.state.species = await backend.species().catch(() => []);
   await loadUser();
+  const presence = startPresence(ctx);
   backend.onAuth(async () => {
     await loadUser();
     render(true);
     ctx.flush();
+    presence.reset();
+    presence.touch();
   });
 
   async function refreshStatus() {

@@ -16,11 +16,16 @@ let tabState = null;
 function tabs(active) {
   const all = [['#/moderavimas', 'queue', 'Laimikiai', 'review'], ['#/moderavimas/pranesimai', 'reports', 'Pranešimai', 'disputes'],
     ['#/moderavimas/gincai', 'disputes', 'Ginčai', 'disputes'], ['#/moderavimas/blokuoti', 'bans', 'Blokuoti', 'ban'],
-    ['#/moderavimas/komanda', 'team', 'Komanda', 'roles']];
+    ['#/moderavimas/komanda', 'team', 'Komanda', 'roles'], ['#/moderavimas/statistika', 'stats', 'Statistika', 'roles']];
   const items = all.filter(([, , , perm]) => can(tabState, perm));
   if (items.length < 2) return '';
-  return html`<nav class="seg" aria-label="Moderavimo skiltys">${items.map(([href, key, label]) =>
+  return html`<nav class="seg seg-tabs" aria-label="Moderavimo skiltys">${items.map(([href, key, label]) =>
     html`<a href="${href}" role="button" aria-pressed="${key === active}"${key === active ? html` aria-current="page"` : ''}>${label}</a>`)}</nav>`;
+}
+
+export function moderationTabs(state, active) {
+  tabState = state;
+  return tabs(active);
 }
 
 const denied = () => ({ nav: 'profilis', html: html`<div class="screen">${backButton('#/profilis')}<h1 class="sr-only" tabindex="-1">Moderavimas</h1>${empty('Šiai skilčiai neturi teisių', 'Roles skiria programėlės savininkas.')}</div>` });

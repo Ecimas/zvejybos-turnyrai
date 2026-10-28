@@ -247,6 +247,15 @@ export async function createSupabaseBackend(url, anonKey) {
     async serverNow() {
       return check(await sb.rpc('server_now'));
     },
+    async touchPresence(d) {
+      const { error } = await sb.rpc('touch_presence', { p_model: d.model, p_platform: d.platform, p_os: d.os || null, p_browser: d.browser, p_installed: !!d.installed });
+      if (error) throw error;
+    },
+    async adminStats() {
+      const { data, error } = await sb.rpc('admin_stats');
+      if (error) throw friendly(error, [[/not allowed/, 'Statistiką mato tik savininkas']], 'Nepavyko gauti statistikos');
+      return data;
+    },
     // Kuriam divizionui priklauso dalyviai: user_id → division_id
     async divisionMap(id) {
       const rows = check(await sb.from('entries').select('user_id, division_id').eq('tournament_id', id));
@@ -697,7 +706,7 @@ export async function createSupabaseBackend(url, anonKey) {
 
     async exportData() {
       const me = uid();
-      const [profile, catches, entries, organized, disputes, notes, trips, reports, follows, clubs] = await Promise.all([
+      const [profile, catches, entries, organized, disputes, notes, trips, reports, follows, clubs, devices] = await Promise.all([
         sb.from('profiles').select('*').eq('id', me).single(),
         sb.from('catches').select(`${CATCH_COLS}, catch_locations(*), catch_spots(*)`).eq('user_id', me).order('captured_at_device'),
         sb.from('entries').select('*').eq('user_id', me),
@@ -707,7 +716,8 @@ export async function createSupabaseBackend(url, anonKey) {
         sb.from('blank_trips').select('*').eq('user_id', me),
         sb.from('catch_reports').select('*').eq('reporter_id', me),
         sb.from('follows').select('followee_id, created_at').eq('follower_id', me),
-        sb.from('club_members').select('role, joined_at, clubs(id, name)').eq('user_id', me)
+        sb.from('club_members').select('role, joined_at, clubs(id, name)').eq('user_id', me),
+        sb.from('user_devices').select('model, platform, os_version, browser, installed, first_seen, last_seen').eq('user_id', me)
       ]);
       return {
         exported_at: new Date().toISOString(),
@@ -720,7 +730,8 @@ export async function createSupabaseBackend(url, anonKey) {
         blank_trips: trips.error ? [] : trips.data,
         catch_reports: reports.error ? [] : reports.data,
         follows: follows.error ? [] : follows.data,
-        clubs: clubs.error ? [] : clubs.data
+        clubs: clubs.error ? [] : clubs.data,
+        devices: devices.error ? [] : devices.data
       };
     },
     // Paskyros ištrynimas: duomenys -> nuotraukos -> paskyra. Kartoti saugu.

@@ -502,6 +502,7 @@ def more_real_tests(page, base):
 
     social_real_test(page, base, me)
     formats_real_test(page, base, me)
+    stats_real_test(page, base, me)
 
     # Duomenų eksportas
     go(page, base + "#/profilis")
@@ -760,6 +761,33 @@ def formats_real_test(page, base, me):
     assert "Dvikov_C" in finalists, finalists
     assert calls(page, "rpc", name="duel_bracket")
     step("dvikovos (tikras režimas): tinklelis iš serverio funkcijos, nugalėtojai pereina į finalą")
+
+
+def stats_real_test(page, base, me):
+    # Programėlė praneša „esu čia“ su įrenginiu; savininkas mato suvestinę
+    assert calls(page, "rpc", name="touch_presence"), "buvimas nepranešamas"
+    dev = fake(page, "return db.user_devices.filter(d => d.user_id === arg);", me)
+    assert len(dev) == 1 and dev[0]["platform"] in ("Android", "Linux") and dev[0]["browser"] == "Chrome", dev
+    roles = fake(page, "const p = db.profiles.find(x => x.id === arg); const r = p.roles; p.roles = []; window.__fakeDb.save(); return r || null;", me)
+    page.evaluate("() => { window.__zt.state.profile.roles = []; window.__zt.state.profile.is_admin = false; }")
+    go(page, base + "#/moderavimas/statistika")
+    expect(page.get_by_text("Šiai skilčiai neturi teisių")).to_be_visible()
+    fake(page, "db.profiles.find(x => x.id === arg).roles = ['owner']; db.user_devices.push({ user_id: '00000000-0000-4000-8000-0000000000aa', model: 'SM-S918B', platform: 'Android', os_version: '14', browser: 'Samsung Internet', installed: true, first_seen: new Date().toISOString(), last_seen: new Date().toISOString() }); window.__fakeDb.save(); return 1;", me)
+    page.evaluate("() => { window.__zt.state.profile.roles = ['owner']; window.__zt.state.profile.is_admin = true; }")
+    go(page, base + "#/moderavimas/statistika")
+    expect(page.locator("[data-stat='users']")).to_be_visible()
+    total = fake(page, "return db.profiles.length;")
+    expect(page.locator("[data-stat='users'] .stat-value")).to_have_text(str(total))
+    expect(page.locator("[data-stat='online_now'] .stat-value")).to_have_text("1")
+    expect(page.locator("[data-models]")).to_contain_text("Galaxy S23 Ultra (SM-S918B)")
+    expect(page.locator("[data-installed]")).to_have_text("1")
+    expect(page.locator("svg.stats-chart rect")).to_have_count(30)
+    expect(page.locator("nav.seg-tabs a", has_text="Statistika")).to_have_attribute("aria-pressed", "true")
+    stats = page.evaluate("() => window.__zt.backend.adminStats()")
+    assert stats["signups"][-1]["count"] >= 1 and not any("user_id" in str(m) for m in stats["models"]), stats
+    fake(page, "db.profiles.find(x => x.id === arg[0]).roles = arg[1]; window.__fakeDb.save(); return 1;", [me, roles or []])
+    page.evaluate("(r) => { window.__zt.state.profile.roles = r; window.__zt.state.profile.is_admin = r.length > 0; }", roles or [])
+    step("statistika: buvimas ir telefonas pranešami, savininkas mato suvestinę, kitiems uždrausta")
 
 
 def google_login_test(page, base, auth_settings):

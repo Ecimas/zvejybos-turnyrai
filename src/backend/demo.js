@@ -345,6 +345,54 @@ export function createDemoBackend({ photos } = {}) {
       return hidden ? rows.filter((r) => r.user_id === ME).map((r) => ({ ...r, rank: null })) : rows;
     },
     async serverNow() { return new Date().toISOString(); },
+    async touchPresence(d) {
+      db.presence ||= {};
+      db.devices ||= [];
+      db.presence[ME] = new Date().toISOString();
+      const row = db.devices.find((x) => x.user_id === ME && x.model === d.model && x.platform === d.platform && x.browser === d.browser);
+      if (row) Object.assign(row, { last_seen: new Date().toISOString(), installed: row.installed || !!d.installed });
+      else db.devices.push({ user_id: ME, model: d.model, platform: d.platform, os_version: d.os || null, browser: d.browser, installed: !!d.installed, first_seen: new Date().toISOString(), last_seen: new Date().toISOString() });
+      save();
+    },
+    async adminStats() {
+      if (!rolesOf(db.profiles[ME]).includes('owner')) throw new Error('Statistiką mato tik savininkas');
+      const now = Date.now();
+      const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+      const profs = Object.values(db.profiles);
+      // Demo: kiti žvejai „buvo“ pagal savo paskutinį laimikį; įrenginiai – pavyzdiniai
+      const seen = { ...Object.fromEntries(profs.map((p) => [p.id, db.catches.filter((c) => c.user_id === p.id).map((c) => c.received_at).sort().pop() || null])), ...(db.presence || {}) };
+      const DEMO_DEV = [['SM-S918B', 'Android', 'Chrome'], ['SM-A536B', 'Android', 'Samsung Internet'], ['iPhone', 'iOS', 'Safari'], ['Pixel 8', 'Android', 'Chrome'],
+        ['SM-A546B', 'Android', 'Chrome'], ['iPhone', 'iOS', 'Safari'], ['2201117TG', 'Android', 'Chrome'], ['SM-S918B', 'Android', 'Chrome'], ['iPhone', 'iOS', 'Chrome']];
+      const devices = [...profs.filter((p) => p.id !== ME).map((p, i) => ({ user_id: p.id, model: DEMO_DEV[i % 9][0], platform: DEMO_DEV[i % 9][1], browser: DEMO_DEV[i % 9][2], installed: i % 3 === 0 })), ...(db.devices || [])];
+      const since = (t) => Object.values(seen).filter((v) => v && Date.parse(v) >= t).length;
+      const group = (key) => Object.values(devices.reduce((m, d) => {
+        const k = key(d);
+        m[k] ||= { ...(k.includes('|') ? { model: d.model, platform: d.platform } : {}), key: k, users: new Set() };
+        m[k].users.add(d.user_id);
+        return m;
+      }, {})).map((x) => ({ ...x, users: x.users.size })).sort((a, b) => b.users - a.users || a.key.localeCompare(b.key));
+      const signups = Array.from({ length: 30 }, (_, i) => {
+        const d = new Date(day0.getTime() - (29 - i) * 864e5);
+        const next = d.getTime() + 864e5;
+        return { day: d.toISOString().slice(0, 10), count: profs.filter((p) => Date.parse(p.created_at) >= d.getTime() && Date.parse(p.created_at) < next).length };
+      });
+      return {
+        users: profs.length,
+        new_today: profs.filter((p) => Date.parse(p.created_at) >= day0.getTime()).length,
+        new_7d: profs.filter((p) => Date.parse(p.created_at) >= now - 7 * D).length,
+        new_30d: profs.filter((p) => Date.parse(p.created_at) >= now - 30 * D).length,
+        online_now: since(now - 5 * 60e3), active_today: since(day0.getTime()), active_7d: since(now - 7 * D), active_30d: since(now - 30 * D),
+        catches_today: db.catches.filter((c) => Date.parse(c.received_at) >= day0.getTime()).length,
+        pending: db.catches.filter((c) => c.status === 'pending').length,
+        live_tournaments: db.tournaments.filter((t) => phase(t) === 'live').length,
+        signups,
+        models: group((d) => `${d.model}|${d.platform}`).map(({ model, platform, users }) => ({ model, platform, users })).slice(0, 20),
+        platforms: group((d) => d.platform).map((x) => ({ platform: x.key, users: x.users })),
+        browsers: group((d) => d.browser).map((x) => ({ browser: x.key, users: x.users })),
+        installed: new Set(devices.filter((d) => d.installed).map((d) => d.user_id)).size,
+        with_device: new Set(devices.map((d) => d.user_id)).size
+      };
+    },
     async divisionMap(id) {
       return new Map(db.entries.filter((e) => e.tournament_id === id).map((e) => [e.user_id, e.division_id ?? null]));
     },

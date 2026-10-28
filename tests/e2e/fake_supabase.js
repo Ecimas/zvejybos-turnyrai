@@ -107,6 +107,8 @@ db.clubs ||= [];
 db.club_members ||= [];
 db.leagues ||= [];
 db.tournament_divisions ||= [];
+db.user_presence ||= [];
+db.user_devices ||= [];
 const LEAGUE_NAME = /^[A-Za-z0-9ĄČĘĖĮŠŲŪŽąčęėįšųūž .,_"„“()-]+$/;
 const DIV_NAME = /^[A-Za-z0-9ĄČĘĖĮŠŲŪŽąčęėįšųūž .,_+()-]+$/;
 const regOrSoon = (t) => Date.now() < new Date(t.starts_at) || regOpen(t);
@@ -130,6 +132,7 @@ function visible(table, row) {
   if (table === 'catch_spots' || table === 'spot_settings') return !!uid() && row.user_id === uid();
   if (table === 'blank_trips') return row.user_id === uid();
   if (table === 'follows') return !!uid() && (row.follower_id === uid() || row.followee_id === uid());
+  if (table === 'user_devices' || table === 'user_presence') return !!uid() && row.user_id === uid();
   if (table === 'tournament_announcements') {
     const t = db.tournaments.find((x) => x.id === row.tournament_id);
     return !!t && visible('tournaments', t);
@@ -878,6 +881,54 @@ export function createClient(url, key) {
         }).sort((a, b) => b.score_mm - a.score_mm || a.name.localeCompare(b.name));
         rows.forEach((r, i) => { r.rank = i > 0 && rows[i - 1].score_mm === r.score_mm ? rows[i - 1].rank : i + 1; });
         return { data: rows, error: null };
+      }
+      if (name === 'touch_presence') {
+        if (!uid()) return { data: null, error: err('42501', 'permission denied for function touch_presence') };
+        db.user_presence ||= [];
+        db.user_devices ||= [];
+        const pr = db.user_presence.find((x) => x.user_id === uid());
+        if (pr) pr.last_seen_at = new Date().toISOString(); else db.user_presence.push({ user_id: uid(), last_seen_at: new Date().toISOString() });
+        const model = String(args.p_model || 'Nežinomas').replace(/[^A-Za-z0-9 ._()+/-]/g, '').slice(0, 60) || 'Nežinomas';
+        const platform = ['Android', 'iOS', 'Windows', 'macOS', 'Linux'].includes(args.p_platform) ? args.p_platform : 'Kita';
+        const browser = String(args.p_browser || 'Kita').replace(/[^A-Za-z0-9 ._-]/g, '').slice(0, 30) || 'Kita';
+        const row = db.user_devices.find((x) => x.user_id === uid() && x.model === model && x.platform === platform && x.browser === browser);
+        if (row) Object.assign(row, { last_seen: new Date().toISOString(), installed: row.installed || !!args.p_installed });
+        else if (db.user_devices.filter((x) => x.user_id === uid()).length < 10) {
+          db.user_devices.push({ user_id: uid(), model, platform, os_version: args.p_os || null, browser, installed: !!args.p_installed, first_seen: new Date().toISOString(), last_seen: new Date().toISOString() });
+        }
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'admin_stats') {
+        if (!hasPerm('roles')) return { data: null, error: err('P0001', 'not allowed') };
+        const now = Date.now();
+        const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+        const pres = db.user_presence || [];
+        const devs = (db.user_devices || []).filter((d) => now - Date.parse(d.last_seen) < 90 * 864e5);
+        const grp = (key, mk) => Object.values(devs.reduce((m, d) => { const k = key(d); (m[k] ||= { d, u: new Set() }).u.add(d.user_id); return m; }, {}))
+          .map(({ d, u }) => ({ ...mk(d), users: u.size })).sort((a, b) => b.users - a.users);
+        return { data: {
+          users: db.profiles.length,
+          new_today: db.profiles.filter((p) => Date.parse(p.created_at) >= day0.getTime()).length,
+          new_7d: db.profiles.filter((p) => now - Date.parse(p.created_at) < 7 * 864e5).length,
+          new_30d: db.profiles.filter((p) => now - Date.parse(p.created_at) < 30 * 864e5).length,
+          online_now: pres.filter((p) => now - Date.parse(p.last_seen_at) < 5 * 60e3).length,
+          active_today: pres.filter((p) => Date.parse(p.last_seen_at) >= day0.getTime()).length,
+          active_7d: pres.filter((p) => now - Date.parse(p.last_seen_at) < 7 * 864e5).length,
+          active_30d: pres.filter((p) => now - Date.parse(p.last_seen_at) < 30 * 864e5).length,
+          catches_today: db.catches.filter((c) => Date.parse(c.received_at) >= day0.getTime()).length,
+          pending: db.catches.filter((c) => c.status === 'pending').length,
+          live_tournaments: db.tournaments.filter((t) => now >= Date.parse(t.starts_at) && now < Date.parse(t.ends_at)).length,
+          signups: Array.from({ length: 30 }, (_, i) => {
+            const d = day0.getTime() - (29 - i) * 864e5;
+            return { day: new Date(d).toISOString().slice(0, 10), count: db.profiles.filter((p) => Date.parse(p.created_at) >= d && Date.parse(p.created_at) < d + 864e5).length };
+          }),
+          models: grp((d) => d.model + '|' + d.platform, (d) => ({ model: d.model, platform: d.platform })).slice(0, 20),
+          platforms: grp((d) => d.platform, (d) => ({ platform: d.platform })),
+          browsers: grp((d) => d.browser, (d) => ({ browser: d.browser })),
+          installed: new Set(devs.filter((d) => d.installed).map((d) => d.user_id)).size,
+          with_device: new Set(devs.map((d) => d.user_id)).size
+        }, error: null };
       }
       if (name === 'server_now') return { data: new Date(Date.now() + (window.__serverOffsetMs || 0)).toISOString(), error: null };
       if (name === 'set_entry_division') {

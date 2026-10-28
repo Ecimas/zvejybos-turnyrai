@@ -646,3 +646,13 @@ body:not(.no-nav) .screen.has-cta { padding-bottom: 130px; }
 .duel-side.mine .strong { color: var(--accent-ink); }
 .card.duel-mine { border-color: var(--accent); }
 .league-row .points { font-weight: 800; }
+
+/* --- Statistika (0024) --- */
+.stats-chart { width: 100%; height: auto; display: block; }
+.stats-chart .bar { fill: var(--accent); opacity: 0.55; }
+.stats-chart .bar.today { opacity: 1; }
+.stats-chart .axis { stroke: var(--line-2); stroke-width: 1; }
+.stats-chart .lbl { fill: var(--muted); font-size: 10px; }
+.stat-bar { display: block; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.stat-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.stat-row { align-items: center; }

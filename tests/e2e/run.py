@@ -353,6 +353,23 @@ def formats_demo_test(page, base):
     step("lygos lentelė: taškai už vietas etapuose")
 
 
+def stats_demo_test(page, base):
+    page.goto(base + "#/profilis")
+    page.reload()  # paleidžiant programėlė praneša „esu čia“ su įrenginiu
+    page.wait_for_function("() => (JSON.parse(localStorage.getItem('zt-demo-v1')).devices || []).length > 0")
+    page.get_by_role("link", name="Statistika").click()
+    expect(page.get_by_role("heading", name="Vartotojai")).to_be_visible()
+    users = page.evaluate("() => Object.keys(JSON.parse(localStorage.getItem('zt-demo-v1')).profiles).length")
+    expect(page.locator("[data-stat='users'] .stat-value")).to_have_text(str(users))
+    expect(page.locator("[data-models]")).to_contain_text("Galaxy S23 Ultra (SM-S918B)")
+    mine = page.evaluate("() => (JSON.parse(localStorage.getItem('zt-demo-v1')).devices || []).map(d => d.model)")
+    assert len(mine) >= 1, "demo vartotojo įrenginys neužfiksuotas"
+    expect(page.locator("[data-models]")).to_contain_text(mine[0])
+    expect(page.locator("[data-signups-empty]")).to_be_visible()  # demo žvejai užsiregistravę seniai
+    expect(page.locator("[data-stat='online_now'] .stat-value")).to_have_text(re.compile(r"^[1-9]"))
+    step("statistika: vartotojai, aktyvūs, registracijų grafikas, telefonų modeliai")
+
+
 def map_demo_test(page, base):
     page.goto(base + "#/profilis")
     page.get_by_role("link", name="Mano laimikių žemėlapis").click()
@@ -897,6 +914,7 @@ def main():
         map_demo_test(page, base)
         social_demo_test(page, base)
         formats_demo_test(page, base)
+        stats_demo_test(page, base)
 
         ctx.close()
 

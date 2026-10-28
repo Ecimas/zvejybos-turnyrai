@@ -171,6 +171,7 @@ export async function profileView(ctx) {
           ${perms.has('disputes') ? html`<a class="list-row" href="#/moderavimas/gincai">${icon('alert', 20)}<span class="grow strong">Ginčai</span>${disputes.length ? html`<span class="chip chip-wait">${disputes.length}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
           ${perms.has('ban') ? html`<a class="list-row" href="#/moderavimas/blokuoti">${icon('lock', 20)}<span class="grow strong">Užblokuoti žvejai</span>${icon('chevron', 18)}</a>` : ''}
           ${perms.has('roles') ? html`<a class="list-row" href="#/moderavimas/komanda">${icon('user', 20)}<span class="grow strong">Komanda ir rolės</span>${icon('chevron', 18)}</a>` : ''}
+          ${perms.has('roles') ? html`<a class="list-row" href="#/moderavimas/statistika">${icon('bars', 20)}<span class="grow strong">Statistika</span>${icon('chevron', 18)}</a>` : ''}
           <a class="list-row" href="#/naujas">${icon('plus', 20)}<span class="grow strong">Sukurti turnyrą</span>${icon('chevron', 18)}</a>
           <a class="list-row" href="#/sekami">${icon('star', 20)}<span class="grow strong">Sekamų žvejų laimikiai</span>${icon('chevron', 18)}</a>
           <a class="list-row" href="#/klubai">${icon('users', 20)}<span class="grow strong">Klubai</span>${clubs.length ? html`<span class="small muted">${clubs.map((c) => c.name).join(', ')}</span>` : ''}${icon('chevron', 18)}</a>

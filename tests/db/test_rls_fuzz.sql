@@ -133,6 +133,8 @@ insert into public.follows (follower_id, followee_id) values ('b0000000-0000-400
 -- B lyga ir divizionas (0020)
 with l as (insert into public.leagues (name, season, owner_id) values ('B fuzz lyga', 2026, 'b0000000-0000-4000-8000-00000000000b') returning id) insert into fx select 'b_league', id from l;
 with d as (insert into public.tournament_divisions (tournament_id, name) values ((select id from fx where k = 'b_pub'), 'B divizionas') returning id) insert into fx select 'b_div', id from d;
+-- B buvimas ir įrenginys (0024)
+select public.touch_presence('Pixel 8', 'Android', '15', 'Chrome', true);
 reset request.jwt.claim.sub;
 
 \echo 'R1. Svetimų eilučių stulpeliai (anon ir A prieš B duomenis)'
@@ -163,6 +165,8 @@ select who, format('update %I.%I set %I = %I where %s', s, t, c.column_name, c.c
                ('public', 'club_members', $$true$$),
                ('public', 'leagues', $$owner_id = 'b0000000-0000-4000-8000-00000000000b'$$),
                ('public', 'tournament_divisions', $$true$$),
+               ('public', 'user_presence', $$true$$),
+               ('public', 'user_devices', $$true$$),
                ('storage', 'objects',        $$name like 'b0000000-%'$$)) as x(s, t, w)
   join information_schema.columns c on c.table_schema = x.s and c.table_name = x.t
  cross join (values ('anon'), ('A')) as who(who);
@@ -247,6 +251,8 @@ select who, format('delete from %I.%I where %s', s, t, w), 'nochange'
                ('public', 'club_members', $$user_id = 'b0000000-0000-4000-8000-00000000000b'$$),
                ('public', 'leagues', $$owner_id <> (select auth.uid())$$),
                ('public', 'tournament_divisions', $$true$$),
+               ('public', 'user_presence', $$true$$),
+               ('public', 'user_devices', $$true$$),
                ('storage', 'objects', $$true$$)) as x(s, t, w)
  cross join (values ('anon'), ('A'), ('B')) as who(who)
  where not (who = 'B' and t in ('tournaments', 'tournament_species', 'tournament_sponsors', 'entries', 'tournament_announcements', 'blank_trips', 'tournament_divisions')); -- B savo būsimą turnyrą trinti gali
@@ -306,6 +312,8 @@ select who, q, 'zero' from (values
   ($$select count(*) from public.catch_spots where user_id is distinct from auth.uid()$$),
   ($$select count(*) from public.spot_settings where user_id is distinct from auth.uid()$$),
   ($$select count(*) from public.follows where follower_id is distinct from auth.uid() and followee_id is distinct from auth.uid()$$),
+  ($$select count(*) from public.user_presence where user_id is distinct from auth.uid()$$),
+  ($$select count(*) from public.user_devices where user_id is distinct from auth.uid()$$),
   ($$select count(*) from public.tournament_announcements a join public.tournaments t on t.id = a.tournament_id where t.visibility = 'private'$$)
 ) as q(q) cross join (values ('anon'), ('A')) as who(who);
 -- privatūs stulpeliai: kito žmogaus masalas ir pastabos (net patvirtinto laimikio)
@@ -327,6 +335,7 @@ insert into pg_temp.attempts (who, sql, kind) values
 insert into pg_temp.attempts (who, sql, kind)
 select who, q, 'error' from (values
   ($$select public.review_catch((select id from fx where k = 'b_pending'), true, null)$$),
+  ($$select public.admin_stats()$$),
   ($$select public.resolve_dispute((select id from fx where k = 'b_dispute'), true, null)$$),
   ($$select public.set_moderator('fa', true)$$),
   ($$select public.purge_old_locations()$$),

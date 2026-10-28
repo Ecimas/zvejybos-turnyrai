@@ -42,6 +42,7 @@ export async function privacyView() {
       <li><strong>Orą</strong> (temperatūra, vėjas, slėgis) – užklausiame Open-Meteo pagal suapvalintą (~100 m) vietą ir išsaugome prie laimikio. Išjungti galima profilyje.</li>
       <li><strong>Masalą ir pastabas</strong> – jei įrašai; matomi tik tau.</li>
       <li><strong>Sekimus ir narystę klubuose</strong> – kai seki kitus žvejus ar prisijungi prie klubo; klubų nariai ir sekėjų skaičius matomi kitiems.</li>
+      <li><strong>Apsilankymo laiką ir telefono modelį</strong> (pvz. „Galaxy S23“, Android 14, Chrome) – kol programėlė atidaryta. Naudojame tik bendrai statistikai (kiek žvejų prisijungę, kokie telefonai populiariausi), kad žinotume, kuriems telefonams pritaikyti programėlę. Kitiems žvejams tai nerodoma, o savininkas mato tik suvestinę, ne kas kokį telefoną turi.</li>
       <li><strong>Pranešimų prenumeratą</strong> – jei įjungi pranešimus: telefono naršyklės suteiktą adresą, kuriuo siunčiame žinutes apie laimikius ir turnyrus. Išjungus pranešimus adresas nebenaudojamas. Pranešimų turinys šifruojamas.</li>
     </ul>
     <p>Teisinis pagrindas – sutartis (turnyrų paslauga, kurią užsisakai prisijungdamas) ir teisėtas interesas užtikrinti sąžiningas varžybas.</p>
