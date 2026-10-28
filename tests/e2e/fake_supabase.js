@@ -339,7 +339,9 @@ class Query {
             return { data: null, error: err('P0001', 'catch_limit', { hint: 'Ne daugiau kaip 50 laimikių per parą' }) };
           }
           if (row.clock_offset_s != null && !(Number.isInteger(row.clock_offset_s) && Math.abs(row.clock_offset_s) <= 31536000)) return { data: null, error: err('23514', 'catches_clock_offset_s_check') };
-          Object.assign(row, { id: uuid(), user_id: uid(), status: 'pending', reject_reason: null, received_at: new Date().toISOString(), created_at: new Date().toISOString() });
+          const serverNow = Date.now() + (window.__serverOffsetMs || 0);
+          row.send_offset_s = row.sent_at_device ? Math.round((serverNow - Date.parse(row.sent_at_device)) / 1000) : null;
+          Object.assign(row, { id: uuid(), user_id: uid(), status: 'pending', reject_reason: null, received_at: new Date(serverNow).toISOString(), created_at: new Date(serverNow).toISOString() });
         }
         if (this.table === 'follows') {
           if (row.follower_id && row.follower_id !== uid()) return { data: null, error: err('42501', 'new row violates row-level security policy for table "follows"') };

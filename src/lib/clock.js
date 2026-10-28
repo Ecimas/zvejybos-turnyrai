@@ -39,18 +39,20 @@ export function resetClock() { anchor = null; }
 
 // Moderatoriui: ar laimikio laikas įtartinas. Grąžina įspėjimų tekstus.
 export const OFFSET_WARN_S = 120;
-export const DELAY_WARN_MIN = 60;
+export const DELAY_WARN_MIN = 30;
+const known = (v) => v !== null && v !== undefined;
 
 export function clockWarnings(c, fmt) {
   const out = [];
-  const off = c.clock_offset_s;
+  const atShot = known(c.clock_offset_s);
+  const off = atShot ? c.clock_offset_s : c.send_offset_s;
   const delayMin = Math.round((Date.parse(c.received_at) - Date.parse(c.captured_at_device)) / 60000);
-  if (off !== null && off !== undefined && Math.abs(off) >= OFFSET_WARN_S) {
+  if (known(off) && Math.abs(off) >= OFFSET_WARN_S) {
     const real = new Date(Date.parse(c.captured_at_device) + off * 1000);
     const min = Math.round(Math.abs(off) / 60);
-    out.push(`Telefono laikas ${off > 0 ? 'atsiliko' : 'skubėjo'} ${min >= 120 ? `${Math.round(min / 60)} val.` : `${min} min.`} – tikras fotografavimo laikas apie ${fmt(real)}`);
+    out.push(`Telefono laikas ${atShot ? '' : 'siunčiant '}${off > 0 ? 'atsiliko' : 'skubėjo'} ${min >= 120 ? `${Math.round(min / 60)} val.` : `${min} min.`} – tikras fotografavimo laikas apie ${fmt(real)} (lentelėje naudojamas tikras laikas)`);
   }
-  if ((off === null || off === undefined) && delayMin >= DELAY_WARN_MIN) {
+  if (!atShot && !(known(off) && Math.abs(off) >= OFFSET_WARN_S) && delayMin >= DELAY_WARN_MIN) {
     out.push(`Išsiųsta tik po ${delayMin >= 120 ? `${Math.round(delayMin / 60)} val.` : `${delayMin} min.`} ir telefono laikas nepatikrintas (be ryšio) – įsitikink, kad laikas tikras`);
   }
   return out;

@@ -3,6 +3,8 @@
 // ratų skaičius ceil(log2(n)), turnyro laikas padalinamas po lygiai; poros (1,2), (3,4)…, nelyginis – praeina be kovos;
 // rato rezultatas – top_n ilgiausių to rato laimikių suma; lygiosios – laimi pirmasis poroje (aukštesnis reitingas).
 
+import { catchTime } from './scoring.js';
+
 const ts = (d) => new Date(d).getTime();
 const SKEW = 10 * 60e3;
 const GRACE = 24 * 3600e3;
@@ -23,8 +25,8 @@ export function duelScore(t, speciesIds, catches, userId, from, to, banned = () 
   if (banned(userId)) return 0;
   const list = catches.filter((c) => c.user_id === userId && c.status === 'approved'
     && c.length_mm >= t.min_length_mm
-    && ts(c.captured_at_device) >= from && ts(c.captured_at_device) < to
-    && ts(c.captured_at_device) <= ts(c.received_at || c.captured_at_device) + SKEW
+    && catchTime(c) >= from && catchTime(c) < to
+    && catchTime(c) <= ts(c.received_at || c.captured_at_device) + SKEW
     && ts(c.received_at || c.captured_at_device) <= ts(t.ends_at) + GRACE
     && (!speciesIds.length || speciesIds.includes(c.species_id)))
     .map((c) => c.length_mm)

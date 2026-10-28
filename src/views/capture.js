@@ -202,7 +202,7 @@ export async function captureView(ctx) {
           box.innerHTML = String(html`<div class="list-row"><span class="muted small">Šiuo metu nedalyvauji jokiame vykstančiame turnyre. Laimikis bus išsaugotas dienoraštyje.</span></div>`);
           return;
         }
-        const draft = { species_id: speciesId, length_mm: len * 10, captured_at_device: capturedAt || new Date().toISOString(), received_at: null };
+        const draft = { species_id: speciesId, length_mm: len * 10, captured_at_device: capturedAt || new Date().toISOString(), received_at: null, clock_offset_s: clockOffset };
         box.innerHTML = String(html`${tournaments.map((t) => {
           const r = fitReason(t, t.species_ids, true, draft);
           return html`<div class="list-row">

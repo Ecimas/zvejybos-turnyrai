@@ -49,3 +49,21 @@ test('moderatoriaus įspėjimai apie laiką', () => {
   // vėlai išsiųsta, bet laikas patikrintas ir teisingas – įspėjimo nėra
   assert.deepEqual(clockWarnings({ captured_at_device: '2026-10-28T08:00:00Z', received_at: '2026-10-28T13:00:00Z', clock_offset_s: 5 }, fmt), []);
 });
+
+import { catchTime, fitReason } from '../../src/lib/scoring.js';
+
+test('tikras laikas: laikrodis atsuktas atgal prieš pabaigą – laimikis po pabaigos neįskaitomas', () => {
+  const t = { min_length_mm: 0, starts_at: '2026-11-12T06:00:00Z', ends_at: '2026-11-12T10:00:00Z' }; // 12:00 Vilniaus laiku
+  // 11:59 telefonas atsuktas į 10:00; žuvis pagauta 12:30 tikru laiku (telefonas rodo 10:31)
+  const c = { species_id: 1, length_mm: 600, captured_at_device: '2026-11-12T08:31:00Z', received_at: '2026-11-12T10:31:00Z', status: 'approved' };
+  assert.equal(fitReason(t, [], true, { ...c, clock_offset_s: 7140 }), 'after', 'patikrinta fotografuojant');
+  assert.equal(fitReason(t, [], true, { ...c, clock_offset_s: null, send_offset_s: 7140 }), 'after', 'patikrinta siunčiant');
+  // be jokios patikros (nuotrauka ir siuntimas be ryšio, laikrodis atstatytas) – įskaitoma, bet moderatorius mato įspėjimą
+  assert.equal(fitReason(t, [], true, { ...c, received_at: '2026-11-12T10:35:00Z' }), 'ok');
+  // smulkūs skirtumai (iki 60 s) neperkelia laiko per pabaigos ribą
+  assert.equal(fitReason(t, [], true, { ...c, captured_at_device: '2026-11-12T09:59:40Z', received_at: '2026-11-12T10:00:10Z', send_offset_s: 30 }), 'ok');
+  assert.equal(catchTime({ captured_at_device: '2026-11-12T08:00:00Z', clock_offset_s: 59 }), Date.parse('2026-11-12T08:00:00Z'));
+  assert.equal(catchTime({ captured_at_device: '2026-11-12T08:00:00Z', clock_offset_s: -600, send_offset_s: 7000 }), Date.parse('2026-11-12T07:50:00Z'));
+  // telefono laikas skuba, bet skirtumas žinomas – nebelaikoma „iš ateities“
+  assert.equal(fitReason(t, [], true, { ...c, captured_at_device: '2026-11-12T09:30:00Z', received_at: '2026-11-12T08:30:00Z', clock_offset_s: -3600 }), 'ok');
+});

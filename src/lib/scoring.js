@@ -7,6 +7,13 @@ export const GRACE_MS = 24 * 60 * 60 * 1000; // offline laimikiai priimami 24 va
 
 const ts = (d) => new Date(d).getTime();
 
+// Tikras laimikio laikas (kaip SQL public.catch_time, 0023): telefono laikas + žinomas skirtumas nuo serverio
+// (fotografuojant clock_offset_s, kitaip – siunčiant send_offset_s), jei skirtumas ne mažesnis nei 60 s.
+export function catchTime(c) {
+  const off = c.clock_offset_s ?? c.send_offset_s ?? 0;
+  return ts(c.captured_at_device) + (Math.abs(off) >= 60 ? off * 1000 : 0);
+}
+
 // Kodėl laimikis (ne)tinka turnyrui – nepriklausomai nuo moderavimo.
 // entered: false – nedalyvauja; true – dalyvauja; eilutė – dalyvauja nuo šio laiko (joined_at):
 // vėlai prisijungusiam įskaitomi tik po prisijungimo pagauti laimikiai.
@@ -15,7 +22,7 @@ export function fitReason(t, speciesIds, entered, c, now = Date.now()) {
   if (!entered) return 'not_entered';
   if (speciesIds.length > 0 && !speciesIds.includes(c.species_id)) return 'species';
   if (c.length_mm < t.min_length_mm) return 'too_short';
-  const cap = ts(c.captured_at_device);
+  const cap = catchTime(c);
   if (cap < ts(t.starts_at)) return 'before';
   if (typeof entered === 'string' && cap < ts(entered)) return 'before_join';
   if (cap >= ts(t.ends_at)) return 'after';
@@ -61,7 +68,7 @@ export function computeLeaderboard({ tournament: t, speciesIds = [], speciesPct 
   const rows = [];
   for (const [userId, list] of perUser) {
     const pts = (c) => catchPoints(t, c, speciesPct);
-    list.sort((a, b) => pts(b) - pts(a) || ts(a.captured_at_device) - ts(b.captured_at_device));
+    list.sort((a, b) => pts(b) - pts(a) || catchTime(a) - catchTime(b));
     const top = list.slice(0, limit);
     rows.push({
       user_id: userId,
@@ -69,7 +76,7 @@ export function computeLeaderboard({ tournament: t, speciesIds = [], speciesPct 
       region: profiles[userId]?.region ?? null,
       score_mm: top.reduce((s, c) => s + pts(c), 0),
       counted: top.length,
-      last_counted: new Date(Math.max(...top.map((c) => ts(c.captured_at_device)))).toISOString()
+      last_counted: new Date(Math.max(...top.map((c) => catchTime(c)))).toISOString()
     });
   }
   rows.sort((a, b) => b.score_mm - a.score_mm || ts(a.last_counted) - ts(b.last_counted) || a.nickname.localeCompare(b.nickname));

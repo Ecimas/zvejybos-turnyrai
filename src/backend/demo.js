@@ -457,6 +457,7 @@ export function createDemoBackend({ photos } = {}) {
         photo_path: path, photo_sha256: item.sha256, status: 'pending', reject_reason: null,
         weight_g: item.weightG ?? null, bait: item.bait || null, notes: item.notes || null, weather: item.weather ?? null,
         clock_offset_s: Number.isInteger(item.clockOffsetS) ? item.clockOffsetS : null,
+        send_offset_s: 0,
         created_at: new Date().toISOString()
       };
       db.catches.push(row);

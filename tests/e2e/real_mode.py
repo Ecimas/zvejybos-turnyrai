@@ -88,6 +88,11 @@ def more_real_tests(page, base):
     page.wait_for_function("(a) => window.__fakeDb.get().catches.filter(c => c.user_id === a[0]).length > a[1]", arg=[me, before])
     row2 = fake(page, "return db.catches.filter(c => c.user_id === arg).sort((a, b) => a.received_at < b.received_at ? 1 : -1)[0];", me)
     assert abs(row2["clock_offset_s"] - 10800) <= 2, row2
+    assert abs(row2["send_offset_s"] - 10800) <= 2 and abs(row["send_offset_s"]) <= 2, (row["send_offset_s"], row2["send_offset_s"])
+    assert "sent_at_device" in calls(page, "from", table="catches", op="insert")[-1]["rows"][0]
+    # Lentelėje naudojamas tikras laikas: telefono 3 val. atsilikimas pataisomas
+    real_t = page.evaluate("""async (c) => { const m = await import(window.__appBase + 'src/lib/scoring.js'); return m.catchTime(c) - Date.parse(c.captured_at_device); }""", row2)
+    assert abs(real_t - 10800e3) <= 2000, real_t
     warn = page.evaluate("""async (c) => { const m = await import(window.__appBase + 'src/lib/clock.js');
         const f = await import(window.__appBase + 'src/lib/format.js'); return m.clockWarnings(c, f.dateTime); }""", row2)
     assert len(warn) == 1 and "atsiliko 3 val." in warn[0], warn
