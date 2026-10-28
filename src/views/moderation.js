@@ -5,6 +5,7 @@ import { cm, dateTime } from '../lib/format.js';
 import { SKEW_MS } from '../lib/scoring.js';
 import { backButton, empty, thumb, hydratePhotos, openPhoto } from '../ui.js';
 import { banUntilText } from '../lib/bans.js';
+import { checksModerationView } from './check.js';
 import { can, ASSIGNABLE, rolesOf, roleLabel, ROLES } from '../lib/roles.js';
 
 const REASONS = ['Nesimato matavimo', 'Ne ta rūšis', 'Netikslus ilgis', 'Pakartota nuotrauka'];
@@ -33,15 +34,42 @@ export async function moderationView(ctx) {
     if (first) { ctx.navigate(first[1]); return { nav: 'profilis', html: html`` }; }
     return denied();
   }
-  const list = await backend.pending();
+  const [list, checks] = await Promise.all([backend.pending(), backend.moderationChecks ? backend.moderationChecks().catch(() => []) : []]);
   const c = list[0];
+  const answered = checks.filter((k) => k.status === 'answered').length;
+  const waiting = checks.filter((k) => k.status === 'open').length;
+  const strip = html`<div class="card row gap-10 check-strip">
+    <a class="grow stack-1 link-plain" href="#/moderavimas/patikros" data-checks-link>
+      <span class="strong row gap-8">${icon('camera', 18)}Patikros${answered ? html` <span class="chip chip-wait">${answered}</span>` : ''}</span>
+      <span class="small muted">${answered} laukia sprendimo · ${waiting} laukia žvejo</span>
+    </a>
+    <button class="btn btn-ghost" type="button" data-random-check>Atsitiktinė patikra</button>
+  </div>`;
+  const mountStrip = (root) => {
+    root.querySelector('[data-random-check]').addEventListener('click', async (e) => {
+      e.currentTarget.disabled = true;
+      try {
+        const id = await backend.randomCheckCandidate();
+        if (!id) {
+          ctx.toast('Šiuo metu tikrinti nėra ko – lyderiai jau patikrinti');
+          e.currentTarget.disabled = false;
+          return;
+        }
+        ctx.navigate(`#/l/${id}`);
+      } catch {
+        e.currentTarget.disabled = false;
+        ctx.toast('Nepavyko parinkti');
+      }
+    });
+  };
   if (!c) {
     return { nav: 'profilis', title: 'Moderavimas', html: html`<div class="screen">
       <header class="top-bar">${backButton('#/profilis')}<span class="muted strong">Moderavimas</span><span></span></header>
       <h1 class="sr-only" tabindex="-1">Moderavimas</h1>
       ${tabs('queue')}
+      ${strip}
       ${empty('Eilė tuščia', 'Visi laimikiai peržiūrėti.')}
-    </div>` };
+    </div>`, mount: mountStrip };
   }
   const sp = state.species.find((s) => s.id === c.species_id)?.name_lt ?? '';
   const skew = new Date(c.captured_at_device) - new Date(c.received_at);
@@ -64,6 +92,7 @@ export async function moderationView(ctx) {
       <header class="top-bar">${backButton('#/profilis')}<span class="muted strong">Liko: ${list.length}</span><span></span></header>
       <h1 class="sr-only" tabindex="-1">Moderavimas</h1>
       ${tabs('queue')}
+      ${strip}
       <button class="mod-photo" data-zoom aria-label="Rodyti nuotrauką per visą ekraną">${thumb(c.photo_path, 358)}</button>
       ${warnings.length ? html`<div class="stack-2">${warnings.map((w) => html`<p class="warn-box">${icon('alert', 18)}${w}</p>`)}</div>` : ''}
       <dl class="list">
@@ -85,6 +114,7 @@ export async function moderationView(ctx) {
     </div>`,
     mount(root) {
       hydratePhotos(root, backend);
+      mountStrip(root);
       root.querySelector('[data-zoom]').addEventListener('click', () => {
         const img = root.querySelector('.mod-photo img.loaded');
         if (img) openPhoto(img.src, 'Laimikio nuotrauka');
@@ -342,4 +372,11 @@ export async function bansView(ctx) {
       }));
     }
   };
+}
+
+// Patikros: atsakytos (palyginti ir nuspręsti) ir laukiančios žvejo.
+export async function checksView(ctx) {
+  tabState = ctx.state;
+  const view = await checksModerationView(ctx, tabs('queue'));
+  return view || denied();
 }

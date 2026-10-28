@@ -4,6 +4,7 @@ import { phase, timeLabel, describeFormat, cm, longDate, count, gapText } from '
 import { phaseBadge, empty, defaultNickname, banNotice } from '../ui.js';
 import { eur } from '../lib/prizes.js';
 import { hasUnseen } from '../lib/seen.js';
+import { checkBanners } from './check.js';
 
 const SEGMENTS = [
   ['mano', 'Mano'],
@@ -79,7 +80,10 @@ async function heroFor(ctx, list) {
 }
 
 export async function tournamentsView(ctx) {
-  const [list] = await Promise.all([ctx.backend.tournaments()]);
+  const [list, checks] = await Promise.all([
+    ctx.backend.tournaments(),
+    ctx.state.user && ctx.backend.myChecks ? ctx.backend.myChecks().catch(() => []) : []
+  ]);
   const species = ctx.state.species;
   let seg = sessionStorage.getItem('zt-seg') || (list.some((t) => t.joined && phase(t) !== 'done') ? 'mano' : 'live');
   const hero = await heroFor(ctx, list);
@@ -110,6 +114,7 @@ export async function tournamentsView(ctx) {
       </header>
       ${ctx.backend.mode === 'demo' ? html`<p class="demo-note">${icon('alert', 16)}Demonstracinis režimas: pavyzdiniai duomenys, saugomi tik šiame telefone.</p>` : ''}
       ${banNotice(ctx.state.ban)}
+      ${checkBanners(checks)}
       ${ctx.state.user && !ctx.state.ban && defaultNickname(ctx.state.profile?.nickname) ? html`<a class="card card-link row ann-banner" href="#/profilis" data-nick-banner>
         ${icon('user', 22)}<span class="grow stack-1"><span class="strong">Pasirink slapyvardį</span><span class="small muted">Jį matys kiti žvejai lentelėse</span></span>${icon('chevron', 18)}
       </a>` : ''}

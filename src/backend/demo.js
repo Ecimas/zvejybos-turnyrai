@@ -119,6 +119,7 @@ export function createDemoBackend({ photos } = {}) {
   db.blank_trips ||= [];
   db.announcements ||= [];
   db.bans ||= [];
+  db.checks ||= [];
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* pilna atmintis */ } };
   save();
   const photoStore = photos || (typeof indexedDB !== 'undefined' ? idbStore('zvejybos-turnyrai-demo', 'photos') : memoryStore());
@@ -369,6 +370,67 @@ export function createDemoBackend({ photos } = {}) {
         throw new Error('Negalima pašalinti paskutinio moderatoriaus');
       }
       p.is_admin = admin;
+      save();
+    },
+
+    // Atsitiktiniai patikrinimai (demo – telefone)
+    async myChecks() {
+      return db.checks.filter((k) => k.user_id === ME && ['open', 'answered'].includes(k.status));
+    },
+    async check(id) {
+      const k = db.checks.find((x) => x.id === id);
+      if (!k || (k.user_id !== ME && !rolesOf(db.profiles[ME]).length)) return null;
+      return { ...k, catch: db.catches.find((c) => c.id === k.catch_id) || null };
+    },
+    async catchCheck(catchId) {
+      return db.checks.find((k) => k.catch_id === catchId && ['open', 'answered'].includes(k.status)) || null;
+    },
+    async answerCheck(id) {
+      const k = db.checks.find((x) => x.id === id && x.user_id === ME);
+      if (!k || k.status !== 'open') throw new Error('Į šią patikrą jau atsakyta');
+      if (Date.parse(k.due_at) < Date.now()) throw new Error('Terminas jau baigėsi');
+      Object.assign(k, { status: 'answered', answered_at: new Date().toISOString(), photo_path: null });
+      save();
+    },
+    async requestCheck(catchId, instruction, hours) {
+      const c = db.catches.find((x) => x.id === catchId);
+      if (!c) throw new Error('Laimikis nerastas');
+      if (c.user_id === ME) throw new Error('Savo laimikio tikrinti negalima');
+      if (db.checks.some((k) => k.catch_id === catchId && ['open', 'answered'].includes(k.status))) throw new Error('Šiam laimikiui patikra jau vyksta');
+      const text = String(instruction || '').trim();
+      if (text.length < 3) throw new Error('Įrašyk, ką žvejys turi nufotografuoti');
+      const id = `chk-${Date.now().toString(36)}`;
+      db.checks.push({ id, catch_id: catchId, user_id: c.user_id, instruction: text.slice(0, 200), status: 'open',
+        due_at: new Date(Date.now() + hours * 3600e3).toISOString(), created_at: new Date().toISOString(), photo_path: null });
+      save();
+      return id;
+    },
+    async randomCheckCandidate() {
+      const live = db.tournaments.filter((t) => phase(t) === 'live');
+      const picks = [];
+      for (const t of live) {
+        const board = await this.leaderboard(t.id);
+        for (const r of board.filter((x) => x.rank !== null && x.rank <= 3 && x.user_id !== ME)) {
+          const best = db.catches.filter((c) => c.user_id === r.user_id && c.status === 'approved'
+              && c.captured_at_device >= t.starts_at && c.captured_at_device < t.ends_at)
+            .sort((a, b) => b.length_mm - a.length_mm)[0];
+          if (best && !db.checks.some((k) => k.catch_id === best.id)) picks.push(best.id);
+        }
+      }
+      return picks.length ? picks[Math.floor(Math.random() * picks.length)] : null;
+    },
+    async moderationChecks() {
+      return db.checks.filter((k) => ['open', 'answered'].includes(k.status))
+        .map((k) => ({ ...k, catch: db.catches.find((c) => c.id === k.catch_id) || null, nickname: db.profiles[k.user_id]?.nickname ?? '' }));
+    },
+    async resolveCheck(id, pass, note) {
+      const k = db.checks.find((x) => x.id === id);
+      if (!k || k.status !== 'answered') throw new Error('Patikra jau išspręsta');
+      Object.assign(k, { status: pass ? 'passed' : 'failed', resolved_at: new Date().toISOString(), note: note || null });
+      if (!pass) {
+        const c = db.catches.find((x) => x.id === k.catch_id);
+        if (c) Object.assign(c, { status: 'rejected', reject_reason: `Nepraėjo papildomos patikros${note ? `: ${note}` : ''}` });
+      }
       save();
     },
 

@@ -10,7 +10,8 @@ import { catchView } from './views/catch.js';
 import { diaryView } from './views/diary.js';
 import { profileView, anglerView } from './views/profile.js';
 import { createView } from './views/create.js';
-import { moderationView, disputesView, teamView, reportsView, bansView } from './views/moderation.js';
+import { moderationView, disputesView, teamView, reportsView, bansView, checksView } from './views/moderation.js';
+import { checkView } from './views/check.js';
 import { loginView } from './views/login.js';
 import { inviteView, takeInvite } from './views/invite.js';
 import { privacyView, rulesView } from './views/pages.js';
@@ -34,6 +35,8 @@ const ROUTES = [
   [/^\/moderavimas\/pranesimai$/, reportsView],
   [/^\/moderavimas\/komanda$/, teamView],
   [/^\/moderavimas\/blokuoti$/, bansView],
+  [/^\/moderavimas\/patikros$/, checksView],
+  [/^\/patikra\/([\w-]+)$/, checkView],
   [/^\/privatumas$/, privacyView],
   [/^\/taisykles$/, rulesView],
   [/^\/prisijungti$/, loginView]

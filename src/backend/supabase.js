@@ -368,6 +368,69 @@ export async function createSupabaseBackend(url, anonKey) {
       }
     },
 
+    // Atsitiktiniai patikrinimai (0017).
+    async myChecks() {
+      if (!user) return [];
+      const { data, error } = await sb.from('catch_checks').select('id, catch_id, instruction, due_at, status')
+        .eq('user_id', user.id).in('status', ['open', 'answered']).order('due_at');
+      return error ? [] : data;
+    },
+    async check(id) {
+      const { data, error } = await sb.from('catch_checks')
+        .select(`id, catch_id, user_id, instruction, due_at, status, photo_path, note, created_at, answered_at, catches(${CATCH_COLS})`)
+        .eq('id', id).maybeSingle();
+      if (error) throw error;
+      return data ? { ...data, catch: data.catches } : null;
+    },
+    async catchCheck(catchId) {
+      const { data, error } = await sb.from('catch_checks').select('id, instruction, due_at, status')
+        .eq('catch_id', catchId).in('status', ['open', 'answered']).maybeSingle();
+      return error ? null : data;
+    },
+    async answerCheck(id, photo, sha256) {
+      const path = `${uid()}/check-${id}.jpg`;
+      const up = await sb.storage.from(BUCKET).upload(path, photo, { contentType: 'image/jpeg', upsert: false });
+      if (up.error) {
+        const status = String(up.error.statusCode || up.error.status || '');
+        if (!(status === '409' || /exist/i.test(up.error.message || ''))) throw new Error('Nepavyko įkelti nuotraukos – patikrink ryšį');
+      }
+      const { error } = await sb.rpc('answer_catch_check', { p_id: id, p_photo_path: path, p_sha256: sha256 });
+      if (error) {
+        throw friendly(error, [
+          [/check_late/, 'Terminas jau baigėsi'],
+          [/check_closed/, 'Į šią patikrą jau atsakyta'],
+          [/check_duplicate/, 'Reikia naujos nuotraukos, ne senos'],
+          [/check_no_photo/, 'Nuotrauka neįsikėlė – bandyk dar kartą']
+        ], 'Nepavyko išsiųsti');
+      }
+    },
+    async requestCheck(catchId, instruction, hours) {
+      const { data, error } = await sb.rpc('request_catch_check', { p_catch: catchId, p_instruction: instruction, p_hours: hours });
+      if (error) {
+        throw friendly(error, [
+          [/check_exists/, 'Šiam laimikiui patikra jau vyksta'],
+          [/check_own/, 'Savo laimikio tikrinti negalima'],
+          [/check_status/, 'Atmesto laimikio tikrinti nebereikia'],
+          [/check_instruction/, 'Įrašyk, ką žvejys turi nufotografuoti'],
+          [/not allowed/, 'Neturi teisės tikrinti laimikių']
+        ], 'Nepavyko paprašyti patikros');
+      }
+      return data;
+    },
+    async randomCheckCandidate() {
+      return check(await sb.rpc('random_check_candidate'));
+    },
+    async moderationChecks() {
+      const rows = check(await sb.from('catch_checks')
+        .select('id, catch_id, user_id, instruction, due_at, status, photo_path, answered_at, catches(id, species_id, length_mm, photo_path, captured_at_device), profiles!catch_checks_user_id_fkey(nickname)')
+        .in('status', ['open', 'answered']).order('due_at'));
+      return rows.map((r) => ({ ...r, catch: r.catches, nickname: r.profiles?.nickname ?? '' }));
+    },
+    async resolveCheck(id, pass, note) {
+      const { error } = await sb.rpc('resolve_catch_check', { p_id: id, p_pass: pass, p_note: note || null });
+      if (error) throw friendly(error, [[/check_state/, 'Patikra jau išspręsta'], [/check_own/, 'Savo patikros spręsti negalima']], 'Nepavyko');
+    },
+
     // Push pranešimai (0015–0016).
     async pushPublicKey() {
       const { data, error } = await sb.rpc('push_public_key');

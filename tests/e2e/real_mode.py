@@ -179,6 +179,63 @@ def more_real_tests(page, base):
     page.evaluate("async () => { window.__zt.state.profile = await window.__zt.backend.myProfile(); }")
     step("ribota rolė: matomos tik jai priklausančios skiltys, kitos uždraustos")
 
+    # Atsitiktinė patikra: savininkas parenka lyderį ir paprašo papildomos nuotraukos
+    go(page, base + "#/moderavimas")
+    page.get_by_role("button", name="Atsitiktinė patikra").click()
+    other_catch = "cccccccc-0000-4000-8000-000000000001"
+    page.wait_for_function("(id) => location.hash === '#/l/' + id", arg=other_catch)
+    page.locator("[data-check-request] summary").click()
+    page.get_by_role("button", name="Žuvis su atviru delnu šalia").click()
+    expect(page.get_by_label("Užduotis žvejui")).to_have_value("Žuvis su atviru delnu šalia")
+    page.get_by_label("Per kiek laiko atsakyti").select_option(label="1 val.")
+    page.get_by_role("button", name="Siųsti užduotį").click()
+    expect(page.locator("#toast")).to_have_text("Užduotis išsiųsta žvejui")
+    expect(page.locator("[data-check-active]")).to_contain_text("Liko")
+    k = fake(page, "return db.catch_checks.find(k => k.catch_id === arg);", other_catch)
+    assert k["status"] == "open" and k["instruction"] == "Žuvis su atviru delnu šalia" and k["requested_by"] == me, k
+    res = page.evaluate("(id) => window.__zt.backend.requestCheck(id, 'Dar', 2).then(() => 'ok', e => e.message)", other_catch)
+    assert res == "Šiam laimikiui patikra jau vyksta", res
+    # Kai žvejys atsako (imituojam jo atsakymą) – moderatorius palygina ir nusprendžia
+    fake(page, """const k = db.catch_checks.find(k => k.id === arg); Object.assign(k, { status: 'answered', answered_at: new Date().toISOString(),
+        photo_path: k.user_id + '/check-' + k.id + '.jpg' }); window.__fakeDb.save(); return 1;""", k["id"])
+    go(page, base + "#/moderavimas")
+    expect(page.locator("[data-checks-link]")).to_contain_text("1 laukia sprendimo")
+    page.locator("[data-checks-link]").click()
+    card = page.locator("[data-check]")
+    expect(card).to_contain_text("Užduotis: Žuvis su atviru delnu šalia")
+    card.get_by_label("Pastaba žvejui").fill("Kita žuvis")
+    card.get_by_role("button", name="Nepraėjo").click()
+    expect(page.locator("#toast")).to_have_text("Laimikis atmestas")
+    c = fake(page, "return db.catches.find(c => c.id === arg);", other_catch)
+    assert c["status"] == "rejected" and c["reject_reason"] == "Nepraėjo papildomos patikros: Kita žuvis", c
+    expect(page.get_by_text("Atsakytų patikrų nėra.")).to_be_visible()
+    fake(page, "const c = db.catches.find(c => c.id === arg); c.status = 'approved'; c.reject_reason = null; window.__fakeDb.save(); return 1;", other_catch)
+
+    # Žvejo pusė: patikra savo laimikiui – kortelė, kamera, išsiuntimas
+    my_catch = fake(page, "return db.catches.find(c => c.user_id === arg && c.status === 'approved').id;", me)
+    chk = fake(page, """const id = crypto.randomUUID(); db.catch_checks.push({ id, catch_id: arg, user_id: db.catches.find(c => c.id === arg).user_id,
+        instruction: 'Žuvis su šiandienos data ant lapelio', status: 'open', due_at: new Date(Date.now() + 90 * 60e3).toISOString(),
+        created_at: new Date().toISOString(), photo_path: null, photo_sha256: null }); window.__fakeDb.save(); return id;""", my_catch)
+    go(page, base + "#/")
+    banner = page.locator("[data-check-banner]")
+    expect(banner).to_contain_text("Papildoma patikra")
+    expect(banner).to_contain_text("Žuvis su šiandienos data ant lapelio")
+    expect(banner).to_contain_text("Liko 1 val.")
+    banner.click()
+    expect(page.get_by_role("heading", name="Papildoma patikra")).to_be_visible()
+    page.get_by_role("button", name="Fotografuoti").click()
+    page.get_by_role("button", name="Siųsti moderatoriui").click()
+    expect(page.locator("#toast")).to_have_text("Patikros nuotrauka išsiųsta")
+    k2 = fake(page, "return db.catch_checks.find(k => k.id === arg);", chk)
+    assert k2["status"] == "answered" and k2["photo_path"] == f"{me}/check-{chk}.jpg" and len(k2["photo_sha256"]) == 64, k2
+    assert calls(page, "upload")[-1]["path"] == f"{me}/check-{chk}.jpg"
+    expect(page.locator("[data-check-banner]")).to_contain_text("Patikra išsiųsta – laukia moderatoriaus")
+    # Savo patikros moderatorius spręsti negali
+    res = page.evaluate("(id) => window.__zt.backend.resolveCheck(id, true).then(() => 'ok', e => e.message)", chk)
+    assert res == "Savo patikros spręsti negalima", res
+    fake(page, "db.catch_checks.find(k => k.id === arg).status = 'passed'; window.__fakeDb.save(); return 1;", chk)
+    step("atsitiktinė patikra: parinkimas, užduotis, žvejo nuotrauka kamera, palyginimas ir sprendimas")
+
     # Blokavimas: moderatorius blokuoja kitą žvejį jo profilyje
     other = fake(page, "return db.profiles.find(p => p.nickname === 'Kitas_Zvejys').id;")
     assert any(r["user_id"] == other for r in page.evaluate("(id) => window.__zt.backend.leaderboard(id)", T1))

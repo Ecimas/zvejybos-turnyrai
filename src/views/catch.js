@@ -6,6 +6,8 @@ import { cm, dateTime, phase } from '../lib/format.js';
 import { fitReason, REASON_LT } from '../lib/scoring.js';
 import { weatherLine } from '../lib/weather.js';
 import { statusChip, avatar, notFound, hydratePhotos, openPhoto } from '../ui.js';
+import { checkRequestBox, mountCheckRequest } from './check.js';
+import { can } from '../lib/roles.js';
 
 export const REPORT_REASONS = [
   ['old_photo', 'Sena ar svetima nuotrauka'],
@@ -25,10 +27,12 @@ export async function catchView(ctx, [id]) {
   const own = !!me && c.user_id === me;
   const sp = state.species.find((s) => s.id === c.species_id)?.name_lt ?? '';
   const canReport = !!me && !own && c.status === 'approved' && !state.ban;
-  const [tournaments, entered, myReport] = await Promise.all([
+  const canCheck = !own && can(state, 'review') && ['pending', 'approved'].includes(c.status);
+  const [tournaments, entered, myReport, activeCheck] = await Promise.all([
     backend.tournaments().catch(() => []),
     backend.userEntries(c.user_id).catch(() => []),
-    canReport ? backend.myReport(c.id).catch(() => null) : null
+    canReport ? backend.myReport(c.id).catch(() => null) : null,
+    canCheck && backend.catchCheck ? backend.catchCheck(c.id).catch(() => null) : null
   ]);
   const at = new Date(c.captured_at_device).getTime();
   const joinedAt = new Map(entered.map((e) => [e.tournament_id, e.joined_at]));
@@ -99,6 +103,7 @@ export async function catchView(ctx, [id]) {
         <p class="small muted">${icon('lock', 14)} Masalo, pastabų ir vietos kiti nemato. Pakeisti masalą ir pastabas gali <a class="link" href="#/dienorastis">dienoraštyje</a>.</p>
       </section>` : html`<p class="center small muted">${icon('lock', 14)} Laimikio vieta nerodoma</p>`}
 
+      ${canCheck ? checkRequestBox(activeCheck) : ''}
       ${canReport ? (myReport
         ? html`<p class="small muted center" data-reported>${icon('alert', 14)} Tu pranešei apie šį laimikį – ${myReport.status === 'open' ? 'moderatorius peržiūrės' : 'pranešimas jau išnagrinėtas'}.</p>`
         : html`<button class="btn btn-ghost" data-report-open>${icon('alert', 18)}Pranešti apie įtartiną laimikį</button>
@@ -115,6 +120,7 @@ export async function catchView(ctx, [id]) {
     </div>`,
     mount(root) {
       hydratePhotos(root, backend);
+      if (canCheck) mountCheckRequest(root, ctx, c.id);
       root.querySelector('[data-back]').addEventListener('click', () => {
         if (history.length > 1) history.back();
         else ctx.navigate('#/');

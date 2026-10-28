@@ -41,6 +41,7 @@ function seed() {
     tournament_species: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', species_id: 1 }],
     user_bans: [],
     push_subscriptions: [],
+    catch_checks: [],
     notification_settings: [],
     entries: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', user_id: other, joined_at: iso(-20 * H) },
       { tournament_id: 'tttttttt-0000-4000-8000-000000000002', user_id: other, joined_at: iso(-20 * H) }],
@@ -89,6 +90,7 @@ const hasPerm = (perm) => myRoles().some((r) => PERMS[r]?.includes(perm));
 // 0013: aktyvus blokavimas
 db.user_bans ||= [];
 db.push_subscriptions ||= [];
+db.catch_checks ||= [];
 db.notification_settings ||= [];
 const FAKE_VAPID = 'B' + 'Q'.repeat(86);
 const bannedId = (id) => db.user_bans.some((b) => b.user_id === id && (!b.until || Date.parse(b.until) > Date.now()));
@@ -104,6 +106,7 @@ function visible(table, row) {
   if (table === 'catch_reports') return row.reporter_id === uid() || hasPerm('disputes');
   if (table === 'user_bans') return !!uid() && (row.user_id === uid() || hasPerm('ban'));
   if (table === 'push_subscriptions' || table === 'notification_settings') return !!uid() && row.user_id === uid();
+  if (table === 'catch_checks') return !!uid() && (row.user_id === uid() || hasPerm('review'));
   if (table === 'blank_trips') return row.user_id === uid();
   if (table === 'tournament_announcements') {
     const t = db.tournaments.find((x) => x.id === row.tournament_id);
@@ -145,6 +148,12 @@ function embed(table, row, spec) {
     } else if (table === 'disputes' && part.startsWith('profiles!disputes_user_id_fkey(')) {
       const p = db.profiles.find((x) => x.id === row.user_id);
       out.profiles = p ? { nickname: p.nickname, trust_score: p.trust_score } : null;
+    } else if (table === 'catch_checks' && part.startsWith('catches(')) {
+      const c = db.catches.find((x) => x.id === row.catch_id);
+      out.catches = c ? pick(c, part.slice(8, -1).split(',').map((x) => x.trim())) : null;
+    } else if (table === 'catch_checks' && part.startsWith('profiles!catch_checks_user_id_fkey(')) {
+      const p = db.profiles.find((x) => x.id === row.user_id);
+      out.profiles = p ? { nickname: p.nickname } : null;
     } else if (table === 'user_bans' && part.startsWith('profiles!user_bans_user_id_fkey(')) {
       const p = db.profiles.find((x) => x.id === row.user_id);
       out.profiles = p ? { nickname: p.nickname } : null;
@@ -215,12 +224,13 @@ class Query {
   update(obj) { this.op = 'update'; this.patch = obj; return this; }
   delete() { this.op = 'delete'; return this; }
   eq(col, val) { this.filters.push([col, val]); return this; }
+  in(col, vals) { this.filters.push([col, { in: vals }]); return this; }
   order(col, o = {}) { this.sort = [col, o.ascending !== false]; return this; }
   single() { this.mode = 'single'; return this; }
   maybeSingle() { this.mode = 'maybe'; return this; }
   then(res, rej) { return Promise.resolve().then(() => this.run()).then(res, rej); }
 
-  matches(row) { return this.filters.every(([c, v]) => row[c] === v); }
+  matches(row) { return this.filters.every(([c, v]) => (v && typeof v === 'object' && Array.isArray(v.in) ? v.in.includes(row[c]) : row[c] === v)); }
 
   run() {
     log('from', { table: this.table, op: this.op, sel: this.sel, filters: this.filters, rows: this.rows, patch: this.patch });
@@ -240,7 +250,7 @@ class Query {
     let data;
     if (this.op === 'insert') {
       if (!uid()) return { data: null, error: err('42501', 'new row violates row-level security policy') };
-      if (this.table === 'user_bans' || this.table === 'push_subscriptions') return { data: null, error: err('42501', `permission denied for table ${this.table}`) };
+      if (this.table === 'user_bans' || this.table === 'push_subscriptions' || this.table === 'catch_checks') return { data: null, error: err('42501', `permission denied for table ${this.table}`) };
       if (this.table === 'notification_settings') {
         if (this.rows.some((r) => r.user_id && r.user_id !== uid())) return { data: null, error: err('42501', 'rls notification_settings') };
         if (db.notification_settings.some((x) => x.user_id === uid())) return { data: null, error: err('23505', 'duplicate key notification_settings_pkey') };
@@ -505,6 +515,55 @@ export function createClient(url, key) {
         return { data: null, error: null };
       }
       if (name === 'push_public_key') return { data: FAKE_VAPID, error: null };
+      if (name === 'request_catch_check') {
+        if (!hasPerm('review')) return { data: null, error: err('P0001', 'not allowed') };
+        const c = db.catches.find((x) => x.id === args.p_catch);
+        if (!c) return { data: null, error: err('P0001', 'catch not found') };
+        if (c.user_id === uid()) return { data: null, error: err('P0001', 'check_own') };
+        if (!['pending', 'approved'].includes(c.status)) return { data: null, error: err('P0001', 'check_status') };
+        const text = String(args.p_instruction || '').trim();
+        if (text.length < 3) return { data: null, error: err('P0001', 'check_instruction') };
+        if (!(args.p_hours >= 1 && args.p_hours <= 48)) return { data: null, error: err('P0001', 'check_hours') };
+        if (db.catch_checks.some((k) => k.catch_id === c.id && ['open', 'answered'].includes(k.status))) return { data: null, error: err('P0001', 'check_exists') };
+        const id = uuid();
+        db.catch_checks.push({ id, catch_id: c.id, user_id: c.user_id, requested_by: uid(), instruction: text.slice(0, 200), status: 'open',
+          due_at: new Date(Date.now() + args.p_hours * 3600e3).toISOString(), created_at: new Date().toISOString(), photo_path: null, photo_sha256: null, note: null });
+        save();
+        return { data: id, error: null };
+      }
+      if (name === 'answer_catch_check') {
+        const k = db.catch_checks.find((x) => x.id === args.p_id);
+        if (!k || k.user_id !== uid()) return { data: null, error: err('P0001', 'not allowed') };
+        if (k.status !== 'open') return { data: null, error: err('P0001', 'check_closed') };
+        if (Date.parse(k.due_at) < Date.now()) return { data: null, error: err('P0001', 'check_late') };
+        if (args.p_photo_path !== `${uid()}/check-${k.id}.jpg`) return { data: null, error: err('P0001', 'check_path') };
+        if (!/^[0-9a-f]{64}$/.test(args.p_sha256 || '')) return { data: null, error: err('P0001', 'check_sha') };
+        if (db.catches.some((c) => c.photo_sha256 === args.p_sha256) || db.catch_checks.some((x) => x.photo_sha256 === args.p_sha256)) return { data: null, error: err('P0001', 'check_duplicate') };
+        if (!blobs.has(args.p_photo_path)) return { data: null, error: err('P0001', 'check_no_photo') };
+        Object.assign(k, { status: 'answered', photo_path: args.p_photo_path, photo_sha256: args.p_sha256, answered_at: new Date().toISOString() });
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'resolve_catch_check') {
+        if (!hasPerm('review')) return { data: null, error: err('P0001', 'not allowed') };
+        const k = db.catch_checks.find((x) => x.id === args.p_id);
+        if (!k) return { data: null, error: err('P0001', 'check not found') };
+        if (k.user_id === uid()) return { data: null, error: err('P0001', 'check_own') };
+        if (k.status !== 'answered') return { data: null, error: err('P0001', 'check_state') };
+        Object.assign(k, { status: args.p_pass ? 'passed' : 'failed', resolved_at: new Date().toISOString(), note: args.p_note || null });
+        if (!args.p_pass) {
+          const c = db.catches.find((x) => x.id === k.catch_id);
+          if (c) Object.assign(c, { status: 'rejected', reject_reason: `Nepraėjo papildomos patikros${args.p_note ? `: ${args.p_note}` : ''}` });
+        }
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'random_check_candidate') {
+        if (!hasPerm('review')) return { data: null, error: err('P0001', 'not allowed') };
+        const c = db.catches.filter((x) => x.status === 'approved' && x.user_id !== uid() && !db.catch_checks.some((k) => k.catch_id === x.id))
+          .sort((a, b) => b.length_mm - a.length_mm)[0];
+        return { data: c ? c.id : null, error: null };
+      }
       if (name === 'save_push_subscription') {
         if (!uid()) return { data: null, error: err('42501', 'permission denied for function save_push_subscription') };
         if (!/^https:\/\//.test(args.p_endpoint || '')) return { data: null, error: err('23514', 'check constraint endpoint') };

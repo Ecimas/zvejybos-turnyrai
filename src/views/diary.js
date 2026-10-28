@@ -5,6 +5,7 @@ import { statusChip, thumb, hydratePhotos, empty, loginPrompt } from '../ui.js';
 import { weatherLine, fetchWeather } from '../lib/weather.js';
 import { recordIds } from '../lib/records.js';
 import { weatherEnabled } from './capture.js';
+import { checkBanners } from './check.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 const localDate = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -30,8 +31,9 @@ export async function diaryView(ctx) {
   if (!state.user) {
     return { nav: 'dienorastis', title: 'Dienoraštis', html: html`<div class="screen"><h1 class="display-lg" tabindex="-1">Dienoraštis</h1>${loginPrompt('Prisijunk, kad matytum savo laimikius.')}</div>` };
   }
-  const [queued, catches, disputes, trips] = await Promise.all([
-    ctx.outbox.list(), backend.myCatches(), backend.myDisputes().catch(() => []), backend.blankTrips().catch(() => [])
+  const [queued, catches, disputes, trips, checks] = await Promise.all([
+    ctx.outbox.list(), backend.myCatches(), backend.myDisputes().catch(() => []), backend.blankTrips().catch(() => []),
+    backend.myChecks ? backend.myChecks().catch(() => []) : []
   ]);
   const records = recordIds(catches);
   // Laimikiai ir išvykos be laimikio – viena laiko juosta, naujausi viršuje.
@@ -53,6 +55,7 @@ export async function diaryView(ctx) {
           <p class="muted">${count(catches.length + queued.length, 'laimikis', 'laimikiai', 'laimikių')} · ${approved} patvirtinta${trips.length ? ` · ${trips.length} be laimikio` : ''}</p>
         </div>
       </header>
+      ${checkBanners(checks)}
       <button class="btn btn-ghost blank-open" data-blank-open aria-expanded="false">${icon('minus', 18, 2.6)}Nieko nekibo – įrašyti žvejybą be laimikio</button>
 
       <form class="card stack" data-blank-form hidden>
