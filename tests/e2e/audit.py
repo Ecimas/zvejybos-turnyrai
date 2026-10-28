@@ -180,7 +180,8 @@ def main():
                           "#/naujas", "#/moderavimas", "#/moderavimas/gincai", "#/moderavimas/komanda",
                           "#/privatumas", "#/taisykles", "#/kvietimas/zzzzzz", "#/laimikis", "#/t/nera",
                           "#/l/demo-c1", "#/l/demo-c33", "#/l/nera", "#/moderavimas/pranesimai",
-                          "#/moderavimas/blokuoti", f"#/zvejys/{ids['other']}", "#/moderavimas/patikros", "#/patikra/nera", "#/zemelapis"]
+                          "#/moderavimas/blokuoti", f"#/zvejys/{ids['other']}", "#/moderavimas/patikros", "#/patikra/nera", "#/zemelapis",
+                          "#/klubai", "#/klubas/club-kaunas", "#/klubas/club-nemunas?kodas=<b>x", "#/klubas/nera", "#/sekami", "#/t/t-sezonas/klubai"]
                 for r in routes:
                     if r == "#/moderavimas/blokuoti":  # užblokuojam kitą žvejį su „nuodinga“ priežastimi
                         page.evaluate("([id, x]) => window.__zt.backend.banUser(id, 7, x)", [ids["other"], X])

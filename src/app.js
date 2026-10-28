@@ -4,7 +4,7 @@ import { html } from './lib/html.js';
 import { icon } from './icons.js';
 import { count } from './lib/format.js';
 import { tournamentsView, standingsView } from './views/tournaments.js';
-import { tournamentView, boardView, tvView } from './views/tournament.js';
+import { tournamentView, boardView, tvView, teamBoardView } from './views/tournament.js';
 import { captureView } from './views/capture.js';
 import { catchView } from './views/catch.js';
 import { diaryView } from './views/diary.js';
@@ -13,6 +13,7 @@ import { createView } from './views/create.js';
 import { moderationView, disputesView, teamView, reportsView, bansView, checksView } from './views/moderation.js';
 import { checkView } from './views/check.js';
 import { mapView } from './views/map.js';
+import { feedView, clubsView, clubView } from './views/social.js';
 import { loginView } from './views/login.js';
 import { inviteView, takeInvite } from './views/invite.js';
 import { privacyView, rulesView } from './views/pages.js';
@@ -22,6 +23,7 @@ const ROUTES = [
   [/^\/t\/([\w-]+)$/, tournamentView],
   [/^\/t\/([\w-]+)\/lentele$/, boardView],
   [/^\/t\/([\w-]+)\/tv$/, tvView],
+  [/^\/t\/([\w-]+)\/klubai$/, teamBoardView],
   [/^\/t\/([\w-]+)\/redaguoti$/, createView],
   [/^\/kvietimas\/(\w+)$/, inviteView],
   [/^\/laimikis$/, captureView],
@@ -39,6 +41,9 @@ const ROUTES = [
   [/^\/moderavimas\/patikros$/, checksView],
   [/^\/patikra\/([\w-]+)$/, checkView],
   [/^\/zemelapis$/, mapView],
+  [/^\/sekami$/, feedView],
+  [/^\/klubai$/, clubsView],
+  [/^\/klubas\/([\w-]+)$/, clubView],
   [/^\/privatumas$/, privacyView],
   [/^\/taisykles$/, rulesView],
   [/^\/prisijungti$/, loginView]

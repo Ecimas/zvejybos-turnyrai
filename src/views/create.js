@@ -93,6 +93,9 @@ export async function createView(ctx, [editId] = []) {
           <select name="late_join">${LATE_JOIN.map(([v, label]) => html`<option value="${v === null ? '' : v}" ${(t?.late_join_minutes ?? null) === v ? 'selected' : ''}>${label}</option>`)}</select>
           <span class="small muted">Kiek laiko po starto dar galima prisijungti prie turnyro.</span></label>
 
+        <label class="check-row"><input type="checkbox" name="team_mode" ${t?.team_mode ? 'checked' : ''}>
+          <span class="stack-1"><span class="strong">Komandinė įskaita (klubai)</span><span class="small muted">Dalyviai atstovauja savo klubams; klubo rezultatas – 3 geriausių narių suma.</span></span></label>
+
         <label class="check-row"><input type="checkbox" name="leaderboard_hidden" ${t?.leaderboard_hidden ? 'checked' : ''}>
           <span class="stack-1"><span class="strong">Slėpti lentelę iki pabaigos</span><span class="small muted">Dalyviai mato tik savo rezultatą – intriga iki paskutinės minutės.</span></span></label>
 
@@ -324,6 +327,7 @@ export async function createView(ctx, [editId] = []) {
           ends_at: endsAt.toISOString(),
           visibility,
           leaderboard_hidden: form.leaderboard_hidden.checked,
+          team_mode: form.team_mode.checked,
           late_join_minutes: form.late_join.value === '' ? null : Number(form.late_join.value),
           prizes: form.prizes.value.trim() || null,
           prize_fund_cents: fund,

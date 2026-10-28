@@ -45,6 +45,10 @@ function seed() {
     catch_spots: [],
     spot_settings: [],
     notification_settings: [],
+    follows: [],
+    clubs: [{ id: 'clclclcl-0000-4000-8000-000000000001', name: 'Testo klubas', region: 'Vilniaus r.', description: 'Uždaras klubas',
+      owner_id: other, open: false, invite_code: 'd1d2d3d4d5', created_at: iso(-30 * 24 * H) }],
+    club_members: [{ club_id: 'clclclcl-0000-4000-8000-000000000001', user_id: other, role: 'owner', joined_at: iso(-30 * 24 * H) }],
     entries: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', user_id: other, joined_at: iso(-20 * H) },
       { tournament_id: 'tttttttt-0000-4000-8000-000000000002', user_id: other, joined_at: iso(-20 * H) }],
     catches: [{
@@ -96,6 +100,10 @@ db.catch_checks ||= [];
 db.catch_spots ||= [];
 db.spot_settings ||= [];
 db.notification_settings ||= [];
+db.follows ||= [];
+db.clubs ||= [];
+db.club_members ||= [];
+const CLUB_NAME = /^[A-Za-z0-9ĄČĘĖĮŠŲŪŽąčęėįšųūž .,_"„“-]+$/;
 const FAKE_VAPID = 'B' + 'Q'.repeat(86);
 const bannedId = (id) => db.user_bans.some((b) => b.user_id === id && (!b.until || Date.parse(b.until) > Date.now()));
 const BAN_INSERT = ['catches', 'entries', 'tournaments', 'catch_reports', 'tournament_announcements', 'disputes'];
@@ -113,6 +121,7 @@ function visible(table, row) {
   if (table === 'catch_checks') return !!uid() && (row.user_id === uid() || hasPerm('review'));
   if (table === 'catch_spots' || table === 'spot_settings') return !!uid() && row.user_id === uid();
   if (table === 'blank_trips') return row.user_id === uid();
+  if (table === 'follows') return !!uid() && (row.follower_id === uid() || row.followee_id === uid());
   if (table === 'tournament_announcements') {
     const t = db.tournaments.find((x) => x.id === row.tournament_id);
     return !!t && visible('tournaments', t);
@@ -162,6 +171,18 @@ function embed(table, row, spec) {
     } else if (table === 'user_bans' && part.startsWith('profiles!user_bans_user_id_fkey(')) {
       const p = db.profiles.find((x) => x.id === row.user_id);
       out.profiles = p ? { nickname: p.nickname } : null;
+    } else if (table === 'clubs' && part === 'club_members(count)') {
+      out.club_members = [{ count: db.club_members.filter((m) => m.club_id === row.id).length }];
+    } else if (table === 'clubs' && part.startsWith('club_members(')) {
+      const inner = splitSelect(part.slice(13, -1));
+      out.club_members = db.club_members.filter((m) => m.club_id === row.id)
+        .map((m) => ({ ...pick(m, inner.cols), ...embed('club_members', m, inner.embeds) }));
+    } else if (table === 'club_members' && part.startsWith('profiles(')) {
+      const p = db.profiles.find((x) => x.id === row.user_id);
+      out.profiles = p ? pick(p, part.slice(9, -1).split(',').map((c) => c.trim())) : null;
+    } else if (table === 'club_members' && part.startsWith('clubs(')) {
+      const c = db.clubs.find((x) => x.id === row.club_id);
+      out.clubs = c ? pick(c, part.slice(6, -1).split(',').map((x) => x.trim())) : null;
     } else if (table === 'catches' && part.startsWith('catch_spots(')) {
       const sp = db.catch_spots.find((x) => x.catch_id === row.id);
       out.catch_spots = sp && visible('catch_spots', sp) ? { lat: sp.lat, lng: sp.lng, accuracy_m: sp.accuracy_m } : null;
@@ -211,6 +232,11 @@ function writable(table, row) {
   if (table === 'tournament_announcements') return row.author_id === uid();
   if (table === 'notification_settings') return row.user_id === uid();
   if (table === 'catch_spots') return row.user_id === uid();
+  if (table === 'follows') return row.follower_id === uid();
+  if (table === 'clubs') return row.owner_id === uid();
+  if (table === 'club_members') {
+    return row.role !== 'owner' && (row.user_id === uid() || db.clubs.some((c) => c.id === row.club_id && c.owner_id === uid()));
+  }
   return false;
 }
 
@@ -235,6 +261,7 @@ class Query {
   eq(col, val) { this.filters.push([col, val]); return this; }
   in(col, vals) { this.filters.push([col, { in: vals }]); return this; }
   order(col, o = {}) { this.sort = [col, o.ascending !== false]; return this; }
+  limit(n) { this.max = n; return this; }
   single() { this.mode = 'single'; return this; }
   maybeSingle() { this.mode = 'maybe'; return this; }
   then(res, rej) { return Promise.resolve().then(() => this.run()).then(res, rej); }
@@ -253,6 +280,14 @@ class Query {
       if (catchCols.some((c) => c === '*' || c === 'bait' || c === 'notes')) {
         return { data: null, error: err('42501', 'permission denied for table catches') };
       }
+      // 0019: clubs.invite_code skaityti negalima (tik per club_invite_code()).
+      const clubCols = [
+        ...(this.table === 'clubs' ? (cols.length ? cols : ['*']) : []),
+        ...embeds.filter((e) => e.startsWith('clubs(')).flatMap((e) => e.slice(6, -1).split(',').map((x) => x.trim()))
+      ];
+      if (clubCols.some((c) => c === '*' || c === 'invite_code')) {
+        return { data: null, error: err('42501', 'permission denied for table clubs') };
+      }
     }
     const t = db[this.table];
     if (!t) return { data: null, error: err('42P01', `relation ${this.table} does not exist`) };
@@ -265,7 +300,8 @@ class Query {
         if (db.notification_settings.some((x) => x.user_id === uid())) return { data: null, error: err('23505', 'duplicate key notification_settings_pkey') };
         this.rows = this.rows.map((r) => ({ ...r, user_id: uid() }));
       }
-      if (BAN_INSERT.includes(this.table) && bannedId(uid())) {
+      if (this.table === 'club_members') return { data: null, error: err('42501', 'permission denied for table club_members') };
+      if (BAN_INSERT.concat(['follows', 'clubs']).includes(this.table) && bannedId(uid())) {
         return { data: null, error: err('42501', `new row violates row-level security policy for table "${this.table}"`) };
       }
       const inserted = [];
@@ -285,6 +321,27 @@ class Query {
           }
           Object.assign(row, { id: uuid(), user_id: uid(), status: 'pending', reject_reason: null, received_at: new Date().toISOString(), created_at: new Date().toISOString() });
         }
+        if (this.table === 'follows') {
+          if (row.follower_id && row.follower_id !== uid()) return { data: null, error: err('42501', 'new row violates row-level security policy for table "follows"') };
+          row.follower_id = uid();
+          if (row.followee_id === uid()) return { data: null, error: err('23514', 'new row violates check constraint "follows_check"') };
+          if (!db.profiles.some((p) => p.id === row.followee_id)) return { data: null, error: err('23503', 'insert or update on table "follows" violates foreign key constraint') };
+          if (db.follows.some((f) => f.follower_id === uid() && f.followee_id === row.followee_id)) return { data: null, error: err('23505', 'duplicate key value violates unique constraint "follows_pkey"') };
+          if (db.follows.filter((f) => f.follower_id === uid()).length >= 500) return { data: null, error: err('P0001', 'follow_limit') };
+          row.created_at = new Date().toISOString();
+        }
+        if (this.table === 'clubs') {
+          if (row.owner_id && row.owner_id !== uid()) return { data: null, error: err('42501', 'new row violates row-level security policy for table "clubs"') };
+          if ('invite_code' in row) return { data: null, error: err('42501', 'permission denied for table clubs') };
+          const name = String(row.name || '').trim();
+          if (name.length < 3 || name.length > 40 || !CLUB_NAME.test(row.name || '')) return { data: null, error: err('23514', 'new row for relation "clubs" violates check constraint "clubs_name_check"') };
+          if ((row.description || '').length > 300 || (row.region || '').length > 40) return { data: null, error: err('23514', 'check constraint clubs') };
+          if (db.clubs.filter((c) => c.owner_id === uid()).length >= 3) return { data: null, error: err('P0001', 'club_limit') };
+          if (db.clubs.some((c) => c.name.toLowerCase() === name.toLowerCase())) return { data: null, error: err('23505', 'duplicate key value violates unique constraint "clubs_name_uniq"') };
+          Object.assign(row, { id: uuid(), name, owner_id: uid(), open: row.open !== false, region: row.region ?? null, description: row.description ?? null,
+            invite_code: uuid().replace(/-/g, '').slice(0, 10), created_at: new Date().toISOString() });
+          db.club_members.push({ club_id: row.id, user_id: uid(), role: 'owner', joined_at: row.created_at });
+        }
         if (this.table === 'catch_locations') {
           if (!db.catches.some((c) => c.id === row.catch_id && c.user_id === uid())) return { data: null, error: err('42501', 'rls') };
           if (db.catch_locations.some((x) => x.catch_id === row.catch_id)) return { data: null, error: err('23505', 'duplicate key catch_locations_pkey') };
@@ -299,6 +356,8 @@ class Query {
             return { data: null, error: err('42501', 'new row violates row-level security policy for table "entries"') };
           }
           row.joined_at = new Date().toISOString();
+          if (row.club_id && !db.club_members.some((m) => m.club_id === row.club_id && m.user_id === row.user_id)) row.club_id = null;
+          row.club_id ??= null;
         }
         if (this.table === 'tournaments') {
           if (db.tournaments.filter((x) => x.organizer_id === uid() && Date.now() - new Date(x.created_at) < 24 * H).length >= 10) {
@@ -364,6 +423,16 @@ class Query {
         if ((this.patch.bait || '').length > 80 || (this.patch.notes || '').length > 500) return { data: null, error: err('23514', 'check constraint') };
       }
       if (this.table === 'disputes') return { data: null, error: err('42501', 'permission denied for table disputes') };
+      if (['follows', 'club_members'].includes(this.table)) return { data: null, error: err('42501', `permission denied for table ${this.table}`) };
+      if (this.table === 'clubs') {
+        if (Object.keys(this.patch).some((k) => !['name', 'region', 'description', 'open'].includes(k))) return { data: null, error: err('42501', 'permission denied for table clubs') };
+        if ('name' in this.patch) {
+          const name = String(this.patch.name || '').trim();
+          if (name.length < 3 || name.length > 40 || !CLUB_NAME.test(this.patch.name)) return { data: null, error: err('23514', 'check constraint clubs_name_check') };
+          const target = t.filter((r) => this.matches(r)).map((r) => r.id);
+          if (db.clubs.some((c) => !target.includes(c.id) && c.name.toLowerCase() === name.toLowerCase())) return { data: null, error: err('23505', 'duplicate key value violates unique constraint "clubs_name_uniq"') };
+        }
+      }
       data = t.filter((r) => this.matches(r) && writable(this.table, r));
       data.forEach((r) => Object.assign(r, this.patch));
       save();
@@ -377,6 +446,11 @@ class Query {
         db.tournament_sponsors = db.tournament_sponsors.filter((x) => !gone.has(x.tournament_id));
         db.entries = db.entries.filter((x) => !gone.has(x.tournament_id));
       }
+      if (this.table === 'clubs') {
+        const gone = new Set(data.map((r) => r.id));
+        db.club_members = db.club_members.filter((m) => !gone.has(m.club_id));
+        db.entries.forEach((e) => { if (gone.has(e.club_id)) e.club_id = null; });
+      }
       save();
     } else {
       data = t.filter((r) => this.matches(r) && visible(this.table, r));
@@ -384,6 +458,7 @@ class Query {
         const [c, asc] = this.sort;
         data = data.slice().sort((a, b) => (a[c] > b[c] ? 1 : a[c] < b[c] ? -1 : 0) * (asc ? 1 : -1));
       }
+      if (this.max != null) data = data.slice(0, this.max);
     }
     if (this.op === 'select' && this.opts.head) return { data: null, count: data.length, error: null };
     if (this.op === 'select' || this.returning) {
@@ -672,9 +747,74 @@ export function createClient(url, key) {
           if (!prof?.deleting_at || db.catches.some((c) => c.user_id === me)) return { data: null, error: err('P0001', 'not allowed') };
           if ([...blobs.keys()].some((k) => k.startsWith(me + '/'))) return { data: null, error: err('P0001', 'fake: nuotraukos neištrintos') };
           db.profiles = db.profiles.filter((x) => x.id !== me);
+          // ON DELETE CASCADE: sekimai, narystės, savi klubai (ir jų narystės); entries.club_id → null
+          const myClubs = new Set(db.clubs.filter((c) => c.owner_id === me).map((c) => c.id));
+          db.follows = db.follows.filter((f) => f.follower_id !== me && f.followee_id !== me);
+          db.clubs = db.clubs.filter((c) => !myClubs.has(c.id));
+          db.club_members = db.club_members.filter((m) => m.user_id !== me && !myClubs.has(m.club_id));
+          db.entries.forEach((e) => { if (myClubs.has(e.club_id)) e.club_id = null; });
         }
         save();
         return { data: null, error: null };
+      }
+      if (name === 'follow_stats') {
+        return { data: [{ followers: db.follows.filter((f) => f.followee_id === args.p_user).length,
+          following: db.follows.filter((f) => f.follower_id === args.p_user).length,
+          i_follow: db.follows.some((f) => f.follower_id === uid() && f.followee_id === args.p_user) }], error: null };
+      }
+      if (name === 'join_club') {
+        if (!uid() || bannedId(uid())) return { data: null, error: err('P0001', 'not allowed') };
+        const c = db.clubs.find((x) => x.id === args.p_club);
+        if (!c) return { data: null, error: err('P0001', 'club not found') };
+        if (db.club_members.some((m) => m.club_id === c.id && m.user_id === uid())) return { data: null, error: null };
+        if (!c.open && String(args.p_code || '').trim().toLowerCase() !== c.invite_code) return { data: null, error: err('P0001', 'club_code') };
+        if (db.club_members.filter((m) => m.user_id === uid()).length >= 10) return { data: null, error: err('P0001', 'club_member_limit') };
+        db.club_members.push({ club_id: c.id, user_id: uid(), role: 'member', joined_at: new Date().toISOString() });
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'club_invite_code') {
+        const c = db.clubs.find((x) => x.id === args.p_club);
+        const member = c && db.club_members.some((m) => m.club_id === c.id && m.user_id === uid());
+        return { data: member ? c.invite_code : null, error: null };
+      }
+      if (name === 'set_entry_club') {
+        const t = db.tournaments.find((x) => x.id === args.p_tournament);
+        const e = db.entries.find((x) => x.tournament_id === args.p_tournament && x.user_id === uid());
+        if (!t || !e) return { data: null, error: err('P0001', 'not allowed') };
+        if (!t.team_mode) return { data: null, error: err('P0001', 'team_off') };
+        if (Date.now() >= new Date(t.ends_at)) return { data: null, error: err('P0001', 'team_closed') };
+        if (args.p_club && !db.club_members.some((m) => m.club_id === args.p_club && m.user_id === uid())) return { data: null, error: err('P0001', 'team_not_member') };
+        e.club_id = args.p_club || null;
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'team_leaderboard') {
+        const t = db.tournaments.find((x) => x.id === args.p_tournament_id);
+        if (!t?.team_mode || !visible('tournaments', t)) return { data: [], error: null };
+        if (t.leaderboard_hidden && Date.now() < new Date(t.ends_at) && t.organizer_id !== uid() && !isAdmin()) return { data: [], error: null };
+        const { computeLeaderboard } = await import(window.__appBase + 'src/lib/scoring.js');
+        const board = computeLeaderboard({
+          tournament: t,
+          speciesIds: db.tournament_species.filter((x) => x.tournament_id === t.id).map((x) => x.species_id),
+          entries: db.entries.filter((e) => e.tournament_id === t.id && !bannedId(e.user_id)),
+          catches: db.catches,
+          profiles: Object.fromEntries(db.profiles.map((p) => [p.id, p]))
+        });
+        const byClub = new Map();
+        for (const r of board) {
+          const clubId = db.entries.find((e) => e.tournament_id === t.id && e.user_id === r.user_id)?.club_id;
+          if (!clubId) continue;
+          if (!byClub.has(clubId)) byClub.set(clubId, []);
+          byClub.get(clubId).push(r.score_mm);
+        }
+        const rows = [...byClub].map(([club_id, scores]) => {
+          const top = scores.sort((a, b) => b - a).slice(0, 3);
+          return { club_id, name: db.clubs.find((c) => c.id === club_id)?.name ?? '', score_mm: top.reduce((a, b) => a + b, 0),
+            counted: top.length, members: db.entries.filter((e) => e.tournament_id === t.id && e.club_id === club_id).length };
+        }).sort((a, b) => b.score_mm - a.score_mm || a.name.localeCompare(b.name));
+        rows.forEach((r, i) => { r.rank = i > 0 && rows[i - 1].score_mm === r.score_mm ? rows[i - 1].rank : i + 1; });
+        return { data: rows, error: null };
       }
       if (name === 'leaderboard') {
         const { computeLeaderboard } = await import(window.__appBase + 'src/lib/scoring.js');

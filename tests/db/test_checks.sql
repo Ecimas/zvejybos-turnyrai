@@ -70,7 +70,7 @@ begin
   end loop;
   -- Kandidatai renkami iš visų vykstančių turnyrų: z1 (lyderio didžiausias) pasitaiko, z2 (ne didžiausias) – niekada.
   assert (select bool_or(x = (select id from kx where k = 'z1')) and not bool_or(x = (select id from kx where k = 'z2'))
-            from (select public.random_check_candidate() x from generate_series(1, 60)) q), 'kandidatas – lyderio didžiausias laimikis';
+            from (select public.random_check_candidate() x from generate_series(1, 400)) q), 'kandidatas – lyderio didžiausias laimikis';
   insert into kx select 'chk1', public.request_catch_check((select id from kx where k = 'z1'), '  Su atviru delnu šalia žuvies  ', 2);
   begin
     perform public.request_catch_check((select id from kx where k = 'z1'), 'Dar kartą', 2);

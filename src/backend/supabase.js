@@ -56,7 +56,8 @@ export async function createSupabaseBackend(url, anonKey) {
     last_announcement_at: (t.tournament_announcements || []).reduce((m, a) => (!m || a.created_at > m ? a.created_at : m), null),
     participants: t.entries?.[0]?.count ?? 0,
     joined: mine.has(t.id),
-    joined_at: mine.get(t.id) ?? null
+    joined_at: mine.get(t.id)?.joined_at ?? null,
+    my_club_id: mine.get(t.id)?.club_id ?? null
   });
   // Savo masalas ir pastabos. Jei funkcijos dar nėra serveryje – tiesiog be jų.
   const myNotes = async () => {
@@ -66,12 +67,14 @@ export async function createSupabaseBackend(url, anonKey) {
     return new Map((data || []).map((r) => [r.id, r]));
   };
   const withNotes = (rows, notes) => rows.map((c) => ({ ...c, bait: notes.get(c.id)?.bait ?? null, notes: notes.get(c.id)?.notes ?? null }));
-  // Mano turnyrai: tournament_id → joined_at.
+  // Mano turnyrai: tournament_id → { joined_at, club_id }.
   const myEntries = async () => {
     if (!user) return new Map();
-    const rows = check(await sb.from('entries').select('tournament_id, joined_at').eq('user_id', user.id));
-    return new Map(rows.map((r) => [r.tournament_id, r.joined_at]));
+    const { data, error } = await sb.from('entries').select('tournament_id, joined_at, club_id').eq('user_id', user.id);
+    const rows = error ? check(await sb.from('entries').select('tournament_id, joined_at').eq('user_id', user.id)) : data;
+    return new Map(rows.map((r) => [r.tournament_id, { joined_at: r.joined_at, club_id: r.club_id ?? null }]));
   };
+  const CLUB_COLS = 'id, name, region, description, owner_id, open, created_at';
 
   return {
     mode: 'supabase',
@@ -368,6 +371,101 @@ export async function createSupabaseBackend(url, anonKey) {
       }
     },
 
+    // Sekimas ir klubai (0019).
+    async followStats(userId) {
+      const { data, error } = await sb.rpc('follow_stats', { p_user: userId });
+      return error || !data?.[0] ? { followers: 0, following: 0, i_follow: false } : { ...data[0], followers: Number(data[0].followers), following: Number(data[0].following) };
+    },
+    async follow(userId) {
+      const { error } = await sb.from('follows').insert({ followee_id: userId });
+      if (error && error.code !== '23505') throw friendly(error, [[/follow_limit/, 'Galima sekti iki 500 žvejų']], 'Nepavyko');
+    },
+    async unfollow(userId) {
+      check(await sb.from('follows').delete().eq('follower_id', uid()).eq('followee_id', userId));
+    },
+    async followingFeed() {
+      const rows = check(await sb.from('follows').select('followee_id').eq('follower_id', uid()));
+      const ids = rows.map((r) => r.followee_id);
+      if (!ids.length) return { following: 0, catches: [] };
+      const catches = check(await sb.from('catches').select(`${CATCH_COLS}, profiles!catches_user_id_fkey(nickname)`)
+        .in('user_id', ids).eq('status', 'approved').order('captured_at_device', { ascending: false }).limit(60));
+      return { following: ids.length, catches: catches.map((c) => ({ ...c, nickname: c.profiles?.nickname ?? '' })) };
+    },
+    async clubs() {
+      const rows = check(await sb.from('clubs').select(`${CLUB_COLS}, club_members(count)`).order('name'));
+      return rows.map((c) => ({ ...c, members: c.club_members?.[0]?.count ?? 0 }));
+    },
+    async club(id) {
+      const { data, error } = await sb.from('clubs')
+        .select(`${CLUB_COLS}, club_members(user_id, role, joined_at, profiles(nickname, region))`).eq('id', id).maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      const members = (data.club_members || []).map((m) => ({ user_id: m.user_id, role: m.role, joined_at: m.joined_at, nickname: m.profiles?.nickname ?? '', region: m.profiles?.region ?? null }))
+        .sort((a, b) => (a.role === 'owner' ? -1 : b.role === 'owner' ? 1 : a.nickname.localeCompare(b.nickname)));
+      return { ...data, members };
+    },
+    async myClubs() {
+      if (!user) return [];
+      const { data, error } = await sb.from('club_members').select(`role, clubs(${CLUB_COLS})`).eq('user_id', user.id);
+      return error ? [] : data.filter((m) => m.clubs).map((m) => ({ ...m.clubs, my_role: m.role }));
+    },
+    async userClubs(userId) {
+      const { data, error } = await sb.from('club_members').select('role, clubs(id, name)').eq('user_id', userId);
+      return error ? [] : data.filter((m) => m.clubs).map((m) => ({ ...m.clubs, role: m.role }));
+    },
+    async createClub({ name, region, description, open }) {
+      const { data, error } = await sb.from('clubs').insert({ name, region: region || null, description: description || null, open: !!open }).select('id').single();
+      if (error) {
+        throw friendly(error, [
+          [/club_limit/, 'Galima sukurti iki 3 klubų'],
+          [/clubs_name_uniq|duplicate/, 'Toks klubo pavadinimas jau užimtas'],
+          [/check/, 'Pavadinime gali būti raidės, skaičiai, tarpai ir . , - _ (3–40 simbolių)']
+        ], 'Nepavyko sukurti klubo');
+      }
+      return data.id;
+    },
+    async updateClub(id, patch) {
+      const { error } = await sb.from('clubs').update(patch).eq('id', id);
+      if (error) throw friendly(error, [[/clubs_name_uniq|duplicate/, 'Toks klubo pavadinimas jau užimtas']], 'Nepavyko išsaugoti');
+    },
+    async deleteClub(id) {
+      check(await sb.from('clubs').delete().eq('id', id));
+    },
+    async joinClub(id, code) {
+      const { error } = await sb.rpc('join_club', { p_club: id, p_code: code || null });
+      if (error) {
+        throw friendly(error, [
+          [/club_code/, 'Neteisingas kvietimo kodas'],
+          [/club_member_limit/, 'Galima būti iki 10 klubų narys'],
+          [/not allowed/, 'Užblokuotas žvejys prie klubų jungtis negali']
+        ], 'Nepavyko prisijungti prie klubo');
+      }
+    },
+    async leaveClub(id) {
+      check(await sb.from('club_members').delete().eq('club_id', id).eq('user_id', uid()));
+    },
+    async removeClubMember(id, userId) {
+      check(await sb.from('club_members').delete().eq('club_id', id).eq('user_id', userId));
+    },
+    async clubInviteCode(id) {
+      const { data, error } = await sb.rpc('club_invite_code', { p_club: id });
+      return error ? null : data;
+    },
+    async clubCatches(memberIds) {
+      if (!memberIds.length) return [];
+      const rows = check(await sb.from('catches').select(`${CATCH_COLS}, profiles!catches_user_id_fkey(nickname)`)
+        .in('user_id', memberIds).eq('status', 'approved').order('captured_at_device', { ascending: false }).limit(30));
+      return rows.map((c) => ({ ...c, nickname: c.profiles?.nickname ?? '' }));
+    },
+    async setEntryClub(tournamentId, clubId) {
+      const { error } = await sb.rpc('set_entry_club', { p_tournament: tournamentId, p_club: clubId || null });
+      if (error) throw friendly(error, [[/team_not_member/, 'Tu ne šio klubo narys'], [/team_closed/, 'Turnyras jau baigėsi']], 'Nepavyko išsaugoti');
+    },
+    async teamLeaderboard(tournamentId) {
+      const { data, error } = await sb.rpc('team_leaderboard', { p_tournament_id: tournamentId });
+      return error ? [] : data;
+    },
+
     // Asmeninis žemėlapis (0018): tikslios vietos (90 d.) ir, jei įjungta, išsaugotos kopijos.
     async myMap() {
       const me = uid();
@@ -517,7 +615,7 @@ export async function createSupabaseBackend(url, anonKey) {
 
     async exportData() {
       const me = uid();
-      const [profile, catches, entries, organized, disputes, notes, trips, reports] = await Promise.all([
+      const [profile, catches, entries, organized, disputes, notes, trips, reports, follows, clubs] = await Promise.all([
         sb.from('profiles').select('*').eq('id', me).single(),
         sb.from('catches').select(`${CATCH_COLS}, catch_locations(*), catch_spots(*)`).eq('user_id', me).order('captured_at_device'),
         sb.from('entries').select('*').eq('user_id', me),
@@ -525,7 +623,9 @@ export async function createSupabaseBackend(url, anonKey) {
         sb.from('disputes').select('*').eq('user_id', me),
         myNotes(),
         sb.from('blank_trips').select('*').eq('user_id', me),
-        sb.from('catch_reports').select('*').eq('reporter_id', me)
+        sb.from('catch_reports').select('*').eq('reporter_id', me),
+        sb.from('follows').select('followee_id, created_at').eq('follower_id', me),
+        sb.from('club_members').select('role, joined_at, clubs(id, name)').eq('user_id', me)
       ]);
       return {
         exported_at: new Date().toISOString(),
@@ -536,7 +636,9 @@ export async function createSupabaseBackend(url, anonKey) {
         tournaments_organized: check(organized),
         disputes: check(disputes),
         blank_trips: trips.error ? [] : trips.data,
-        catch_reports: reports.error ? [] : reports.data
+        catch_reports: reports.error ? [] : reports.data,
+        follows: follows.error ? [] : follows.data,
+        clubs: clubs.error ? [] : clubs.data
       };
     },
     // Paskyros ištrynimas: duomenys -> nuotraukos -> paskyra. Kartoti saugu.

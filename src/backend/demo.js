@@ -40,7 +40,7 @@ function seed() {
       starts_at: iso(-4 * D), ends_at: iso(2 * D + 14 * H),
       description: 'Trys ilgiausios lydekos sumuojamos. Nuotrauka su matavimo liniuote, matomas visas žuvies ilgis.',
       prizes: 'Rėmėjų dovanos: spiningas, ritė, masalų rinkinys', prize_fund_cents: 50000, prize_split: [50, 30, 20] }),
-    T('t-sezonas', { title: 'Sezono iššūkis', format: 'biggest', starts_at: iso(-60 * D), ends_at: iso(39 * D),
+    T('t-sezonas', { title: 'Sezono iššūkis', format: 'biggest', starts_at: iso(-60 * D), ends_at: iso(39 * D), team_mode: true,
       description: 'Didžiausia bet kurios rūšies žuvis per sezoną.' }),
     T('t-eseriai', { title: 'Ešerių savaitgalis', format: 'biggest', min_length_mm: 200, late_join_minutes: 0,
       starts_at: iso(30 * H), ends_at: iso(30 * H + 2 * D) }),
@@ -113,8 +113,20 @@ function seed() {
     const [lat, lng] = SPOTS[i % SPOTS.length];
     locations[c.id] = { lat: lat + (i % 2) * 0.0001, lng: lng + (i % 2) * 0.0001, accuracy: 8 };
   });
+  // Klubai: atviras Kauno ir uždaras Nemuno; sezono turnyre – komandinė įskaita.
+  const clubs = [
+    { id: 'club-kaunas', name: 'Kauno lydekininkai', region: 'Kaunas', description: 'Žvejojam Kauno mariose ir Nemune. Kas savaitę – bendras išvykimas.', owner_id: ids[0], open: true, invite_code: 'a1b2c3d4e5', created_at: iso(-90 * D) },
+    { id: 'club-nemunas', name: 'Nemuno ešeriai', region: 'Alytaus r.', description: null, owner_id: ids[4], open: false, invite_code: 'f6e5d4c3b2', created_at: iso(-50 * D) }
+  ];
+  const club_members = [
+    ...[0, 1, 2, 3].map((i) => ({ club_id: 'club-kaunas', user_id: ids[i], role: i === 0 ? 'owner' : 'member', joined_at: iso(-80 * D) })),
+    ...[4, 5, 6].map((i) => ({ club_id: 'club-nemunas', user_id: ids[i], role: i === 4 ? 'owner' : 'member', joined_at: iso(-40 * D) }))
+  ];
+  entries.filter((e) => e.tournament_id === 't-sezonas').forEach((e) => {
+    e.club_id = club_members.find((m) => m.user_id === e.user_id)?.club_id ?? null;
+  });
   return { profiles, tournaments, tournament_species, tournament_sponsors, entries, catches, locations, disputes: [],
-    announcements, reports, blank_trips: [], bans: [] };
+    announcements, reports, blank_trips: [], bans: [], follows: [], clubs, club_members };
 }
 
 export function createDemoBackend({ photos } = {}) {
@@ -128,6 +140,9 @@ export function createDemoBackend({ photos } = {}) {
   db.announcements ||= [];
   db.bans ||= [];
   db.checks ||= [];
+  db.follows ||= [];
+  db.clubs ||= [];
+  db.club_members ||= [];
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* pilna atmintis */ } };
   save();
   const photoStore = photos || (typeof indexedDB !== 'undefined' ? idbStore('zvejybos-turnyrai-demo', 'photos') : memoryStore());
@@ -146,6 +161,7 @@ export function createDemoBackend({ photos } = {}) {
       .reduce((m, a) => (!m || a.created_at > m ? a.created_at : m), null),
     participants: db.entries.filter((e) => e.tournament_id === t.id).length,
     joined: db.entries.some((e) => e.tournament_id === t.id && e.user_id === ME),
+    my_club_id: db.entries.find((e) => e.tournament_id === t.id && e.user_id === ME)?.club_id ?? null,
     joined_at: db.entries.find((e) => e.tournament_id === t.id && e.user_id === ME)?.joined_at ?? null
   });
 
@@ -442,6 +458,131 @@ export function createDemoBackend({ photos } = {}) {
       save();
     },
 
+    // Sekimas ir klubai
+    async followStats(userId) {
+      return {
+        followers: db.follows.filter((f) => f.followee_id === userId).length,
+        following: db.follows.filter((f) => f.follower_id === userId).length,
+        i_follow: db.follows.some((f) => f.follower_id === ME && f.followee_id === userId)
+      };
+    },
+    async follow(userId) {
+      if (userId === ME) throw new Error('Savęs sekti negalima');
+      if (!db.follows.some((f) => f.follower_id === ME && f.followee_id === userId)) db.follows.push({ follower_id: ME, followee_id: userId, created_at: new Date().toISOString() });
+      save();
+    },
+    async unfollow(userId) {
+      db.follows = db.follows.filter((f) => !(f.follower_id === ME && f.followee_id === userId));
+      save();
+    },
+    async followingFeed() {
+      const ids = db.follows.filter((f) => f.follower_id === ME).map((f) => f.followee_id);
+      const catches = db.catches.filter((c) => ids.includes(c.user_id) && c.status === 'approved')
+        .sort((a, b) => b.captured_at_device.localeCompare(a.captured_at_device)).slice(0, 60)
+        .map((c) => ({ ...c, nickname: db.profiles[c.user_id]?.nickname ?? '' }));
+      return { following: ids.length, catches };
+    },
+    async clubs() {
+      return db.clubs.map(({ invite_code, ...c }) => ({ ...c, members: db.club_members.filter((m) => m.club_id === c.id).length }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    },
+    async club(id) {
+      const c = db.clubs.find((x) => x.id === id);
+      if (!c) return null;
+      const { invite_code, ...rest } = c;
+      const members = db.club_members.filter((m) => m.club_id === id)
+        .map((m) => ({ ...m, nickname: db.profiles[m.user_id]?.nickname ?? '', region: db.profiles[m.user_id]?.region ?? null }))
+        .sort((a, b) => (a.role === 'owner' ? -1 : b.role === 'owner' ? 1 : a.nickname.localeCompare(b.nickname)));
+      return { ...rest, members };
+    },
+    async myClubs() {
+      return db.club_members.filter((m) => m.user_id === ME).map((m) => {
+        const { invite_code, ...c } = db.clubs.find((x) => x.id === m.club_id) || {};
+        return { ...c, my_role: m.role };
+      }).filter((c) => c.id);
+    },
+    async userClubs(userId) {
+      return db.club_members.filter((m) => m.user_id === userId)
+        .map((m) => ({ id: m.club_id, name: db.clubs.find((x) => x.id === m.club_id)?.name ?? '', role: m.role }));
+    },
+    async createClub({ name, region, description, open }) {
+      const n = String(name || '').trim();
+      if (n.length < 3 || n.length > 40 || !/^[A-Za-z0-9ĄČĘĖĮŠŲŪŽąčęėįšųūž .,_"„“-]+$/.test(n)) throw new Error('Pavadinime gali būti raidės, skaičiai, tarpai ir . , - _ (3–40 simbolių)');
+      if (db.clubs.some((c) => c.name.toLowerCase() === n.toLowerCase())) throw new Error('Toks klubo pavadinimas jau užimtas');
+      if (db.clubs.filter((c) => c.owner_id === ME).length >= 3) throw new Error('Galima sukurti iki 3 klubų');
+      const id = `club-${Date.now().toString(36)}`;
+      db.clubs.push({ id, name: n, region: region || null, description: description || null, owner_id: ME, open: !!open,
+        invite_code: Math.random().toString(16).slice(2, 12).padEnd(10, '0'), created_at: new Date().toISOString() });
+      db.club_members.push({ club_id: id, user_id: ME, role: 'owner', joined_at: new Date().toISOString() });
+      save();
+      return id;
+    },
+    async updateClub(id, patch) {
+      const c = db.clubs.find((x) => x.id === id && x.owner_id === ME);
+      if (c) Object.assign(c, patch);
+      save();
+    },
+    async deleteClub(id) {
+      if (!db.clubs.some((x) => x.id === id && x.owner_id === ME)) return;
+      db.clubs = db.clubs.filter((x) => x.id !== id);
+      db.club_members = db.club_members.filter((m) => m.club_id !== id);
+      db.entries.forEach((e) => { if (e.club_id === id) e.club_id = null; });
+      save();
+    },
+    async joinClub(id, code) {
+      const c = db.clubs.find((x) => x.id === id);
+      if (!c) throw new Error('Klubas nerastas');
+      if (db.club_members.some((m) => m.club_id === id && m.user_id === ME)) return;
+      if (!c.open && String(code || '').trim().toLowerCase() !== c.invite_code) throw new Error('Neteisingas kvietimo kodas');
+      if (db.club_members.filter((m) => m.user_id === ME).length >= 10) throw new Error('Galima būti iki 10 klubų narys');
+      db.club_members.push({ club_id: id, user_id: ME, role: 'member', joined_at: new Date().toISOString() });
+      save();
+    },
+    async leaveClub(id) {
+      db.club_members = db.club_members.filter((m) => !(m.club_id === id && m.user_id === ME && m.role !== 'owner'));
+      save();
+    },
+    async removeClubMember(id, userId) {
+      if (!db.clubs.some((x) => x.id === id && x.owner_id === ME)) return;
+      db.club_members = db.club_members.filter((m) => !(m.club_id === id && m.user_id === userId && m.role !== 'owner'));
+      save();
+    },
+    async clubInviteCode(id) {
+      return db.club_members.some((m) => m.club_id === id && m.user_id === ME) ? db.clubs.find((x) => x.id === id)?.invite_code ?? null : null;
+    },
+    async clubCatches(memberIds) {
+      return db.catches.filter((c) => memberIds.includes(c.user_id) && c.status === 'approved')
+        .sort((a, b) => b.captured_at_device.localeCompare(a.captured_at_device)).slice(0, 30)
+        .map((c) => ({ ...c, nickname: db.profiles[c.user_id]?.nickname ?? '' }));
+    },
+    async setEntryClub(tournamentId, clubId) {
+      const e = db.entries.find((x) => x.tournament_id === tournamentId && x.user_id === ME);
+      if (!e) throw new Error('Nedalyvauji šiame turnyre');
+      if (clubId && !db.club_members.some((m) => m.club_id === clubId && m.user_id === ME)) throw new Error('Tu ne šio klubo narys');
+      e.club_id = clubId || null;
+      save();
+    },
+    async teamLeaderboard(tournamentId) {
+      const t = db.tournaments.find((x) => x.id === tournamentId);
+      if (!t?.team_mode) return [];
+      const board = await this.leaderboard(tournamentId);
+      if (board.some((r) => r.rank === null)) return [];
+      const byClub = new Map();
+      for (const r of board) {
+        const clubId = db.entries.find((e) => e.tournament_id === tournamentId && e.user_id === r.user_id)?.club_id;
+        if (!clubId) continue;
+        if (!byClub.has(clubId)) byClub.set(clubId, []);
+        byClub.get(clubId).push(r.score_mm);
+      }
+      const rows = [...byClub].map(([club_id, scores]) => {
+        const top = scores.sort((a, b) => b - a).slice(0, 3);
+        return { club_id, name: db.clubs.find((c) => c.id === club_id)?.name ?? '', score_mm: top.reduce((a, b) => a + b, 0),
+          counted: top.length, members: db.entries.filter((e) => e.tournament_id === tournamentId && e.club_id === club_id).length };
+      }).sort((a, b) => b.score_mm - a.score_mm);
+      rows.forEach((r, i) => { r.rank = i > 0 && rows[i - 1].score_mm === r.score_mm ? rows[i - 1].rank : i + 1; });
+      return rows;
+    },
+
     async myMap() {
       return {
         keep: !!db.keepSpots,
@@ -505,7 +646,10 @@ export function createDemoBackend({ photos } = {}) {
         tournaments_organized: db.tournaments.filter((t) => t.organizer_id === ME),
         disputes: db.disputes.filter((d) => d.user_id === ME),
         blank_trips: db.blank_trips.filter((b) => b.user_id === ME),
-        catch_reports: db.reports.filter((r) => r.reporter_id === ME)
+        catch_reports: db.reports.filter((r) => r.reporter_id === ME),
+        follows: db.follows.filter((f) => f.follower_id === ME).map((f) => ({ followee_id: f.followee_id, created_at: f.created_at })),
+        clubs: db.club_members.filter((m) => m.user_id === ME)
+          .map((m) => ({ role: m.role, joined_at: m.joined_at, clubs: (({ id, name }) => ({ id, name }))(db.clubs.find((c) => c.id === m.club_id) || {}) }))
       };
     },
     async deleteAccount(onStep = () => {}) {

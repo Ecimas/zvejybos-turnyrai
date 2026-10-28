@@ -112,10 +112,11 @@ export async function tournamentView(ctx, [id]) {
     return { nav: 'turnyrai', html: notFound('#/', 'Turnyras nerastas', 'Gal jis privatus arba ištrintas.') };
   }
   const me = state.user?.id;
-  const [board, mineAll, anns] = await Promise.all([
+  const [board, mineAll, anns, myClubs] = await Promise.all([
     backend.leaderboard(id).catch(() => []),
     me ? backend.myCatches().catch(() => []) : [],
-    backend.announcements(id).catch(() => [])
+    backend.announcements(id).catch(() => []),
+    t.team_mode && t.joined && backend.myClubs ? backend.myClubs().catch(() => []) : []
   ]);
   const seenBefore = lastSeen(id);
   const p = phase(t);
@@ -146,7 +147,8 @@ export async function tournamentView(ctx, [id]) {
     ['Registracija', registrationLabel(t)],
     ['Įrodymas', 'Nuotrauka programėlės kamera'],
     ['Lentelė', t.leaderboard_hidden ? 'Paslėpta iki pabaigos' : 'Gyva'],
-    ['Dalyvauti', t.visibility === 'private' ? 'Tik su kvietimu' : 'Visi']
+    ['Dalyvauti', t.visibility === 'private' ? 'Tik su kvietimu' : 'Visi'],
+    ...(t.team_mode ? [['Komandos', 'Klubai: 3 geriausių narių suma']] : [])
   ];
 
   let cta = '';
@@ -191,6 +193,12 @@ export async function tournamentView(ctx, [id]) {
         <span class="small muted right">${count(t.participants, 'dalyvis', 'dalyviai', 'dalyvių')}</span>
       </section>
 
+      ${t.team_mode && t.joined && p !== 'done' ? html`<section class="card stack-2" data-team-card>
+        <p class="strong row gap-8">${icon('users', 18)}Komandinė įskaita</p>
+        ${myClubs.length ? html`<label class="field"><span class="small muted strong">Atstovauju klubui</span>
+          <select data-team-club><option value="">Be klubo</option>${myClubs.map((c) => html`<option value="${c.id}" ${t.my_club_id === c.id ? 'selected' : ''}>${c.name}</option>`)}</select></label>`
+          : html`<p class="small muted">Prisijunk prie klubo arba sukurk savo – tada galėsi atstovauti jam šiame turnyre. <a class="link" href="#/klubai">Klubai</a></p>`}
+      </section>` : ''}
       ${t.joined && p !== 'soon' ? html`<section class="card hero stack">
         <div class="row-between">
           <div class="row gap-8 baseline">
@@ -255,6 +263,17 @@ export async function tournamentView(ctx, [id]) {
     ${cta ? html`<div class="cta-bar">${cta}</div>` : ''}`,
     mount(root) {
       hydratePhotos(root, backend);
+      root.querySelector('[data-team-club]')?.addEventListener('change', async (e) => {
+        const sel = e.currentTarget;
+        sel.disabled = true;
+        try {
+          await backend.setEntryClub(t.id, sel.value || null);
+          ctx.toast(sel.value ? `Atstovauji „${sel.selectedOptions[0].textContent}“` : 'Dalyvauji be klubo');
+        } catch (err) {
+          ctx.toast(err.message || 'Nepavyko');
+        }
+        sel.disabled = false;
+      });
       root.querySelector('[data-join]')?.addEventListener('click', async (e) => {
         e.currentTarget.disabled = true;
         try {
@@ -392,6 +411,7 @@ export async function boardView(ctx, [id]) {
         </div>
         ${phaseBadge(t)}
       </header>
+      ${t.team_mode ? boardTabs(t, 'people') : ''}
 
       ${board.length ? html`
         <div class="podium">${podium.map((r) => html`
@@ -418,5 +438,41 @@ export async function boardView(ctx, [id]) {
       const timer = setInterval(() => ctx.rerender(), 30000);
       return () => clearInterval(timer);
     }
+  };
+}
+
+function boardTabs(t, active) {
+  return html`<nav class="seg" aria-label="Lentelės rūšis">
+    <a href="#/t/${t.id}/lentele" role="button" aria-pressed="${active === 'people'}"${active === 'people' ? html` aria-current="page"` : ''}>Žvejai</a>
+    <a href="#/t/${t.id}/klubai" role="button" aria-pressed="${active === 'teams'}"${active === 'teams' ? html` aria-current="page"` : ''}>Klubai</a>
+  </nav>`;
+}
+
+// Komandinė lentelė: klubo rezultatas – 3 geriausių jo narių suma.
+export async function teamBoardView(ctx, [id]) {
+  const { backend, state } = ctx;
+  const t = await backend.tournament(id);
+  if (!t || !t.team_mode) return { nav: 'lenteles', html: notFound('#/lenteles', 'Komandinės lentelės nėra') };
+  const rows = await backend.teamLeaderboard(id);
+  const hidden = boardHidden(t, state);
+  return {
+    nav: 'lenteles',
+    title: `Klubai · ${t.title}`,
+    html: html`<div class="screen">
+      <header class="top-bar">${backButton(`#/t/${t.id}`, 'Atgal į turnyrą')}
+        <div class="grow stack-1 pad-x"><h1 class="display-md" tabindex="-1">Klubų lentelė</h1><span class="small muted ellipsis">${t.title}</span></div>${phaseBadge(t)}</header>
+      ${boardTabs(t, 'teams')}
+      ${hidden ? empty('Paslėpta iki pabaigos', `Vietos paaiškės ${dateTime(t.ends_at)}.`)
+        : rows.length ? html`<ol class="stack-6 plain">${rows.map((r) => html`<li>
+          <a class="list-row board-row ${r.club_id === t.my_club_id ? 'mine' : ''}" href="#/klubas/${r.club_id}">
+            <span class="rank">${r.rank}</span>
+            ${icon('users', 20)}
+            <span class="grow stack-1"><span class="strong ellipsis">${r.name}</span>
+              <span class="small muted">${count(Number(r.counted), 'įskaitytas narys', 'įskaityti nariai', 'įskaitytų narių')} iš ${Number(r.members)}</span></span>
+            <span class="num-md">${cm(r.score_mm)}</span>
+          </a></li>`)}</ol>
+          <p class="center small muted">Klubo rezultatas – 3 geriausių jo narių rezultatų suma.</p>`
+        : empty('Klubų lentelė dar tuščia', 'Dalyviai pasirenka klubą turnyro puslapyje.')}
+    </div>`
   };
 }

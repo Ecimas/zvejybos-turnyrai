@@ -177,6 +177,77 @@ def leaflet_route(route):
         route.fulfill(status=200, content_type="text/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=LEAFLET_STUB)
 
 
+def social_demo_test(page, base):
+    # Klubai: sąrašas, atviras – laisvai, uždaras – tik su kodu (kodas iš kvietimo nuorodos)
+    page.goto(base + "#/lenteles")
+    page.get_by_role("link", name="Klubai").click()
+    expect(page.get_by_role("heading", name="Žvejų klubai")).to_be_visible()
+    expect(page.locator("[data-club-list] a")).to_have_count(2)
+    page.get_by_role("link", name=re.compile("^Kauno lydekininkai")).click()
+    expect(page.get_by_role("heading", name="Kauno lydekininkai")).to_be_visible()
+    expect(page.get_by_text("4 nariai")).to_be_visible()
+    page.get_by_role("button", name="Prisijungti prie klubo").click()
+    expect(page.locator("#toast")).to_have_text("Prisijungei prie „Kauno lydekininkai“")
+    expect(page.get_by_text("Tu – klubo narys")).to_be_visible()
+    expect(page.locator("[data-invite-url]")).to_have_value(re.compile(r"#/klubas/club-kaunas\?kodas=a1b2c3d4e5$"))
+    page.goto(base + "#/klubas/club-nemunas")
+    page.get_by_label("Kvietimo kodas").fill("blogas")
+    page.get_by_role("button", name="Prisijungti prie klubo").click()
+    expect(page.locator("#toast")).to_have_text("Neteisingas kvietimo kodas")
+    page.goto(base + "#/klubas/club-nemunas?kodas=f6e5d4c3b2")
+    expect(page.get_by_label("Kvietimo kodas")).to_have_value("f6e5d4c3b2")
+    page.get_by_role("button", name="Prisijungti prie klubo").click()
+    expect(page.locator("#toast")).to_have_text("Prisijungei prie „Nemuno ešeriai“")
+    # Savo klubas: uždaras, savininkas, nustatymai
+    page.goto(base + "#/klubai")
+    page.locator("[data-create-club] summary").click()
+    page.get_by_label("Pavadinimas").fill("Mano draugai")
+    page.get_by_text("Atviras", exact=True).click()
+    page.get_by_role("button", name="Sukurti klubą").click()
+    expect(page.get_by_role("heading", name="Mano draugai")).to_be_visible()
+    expect(page.get_by_text("Tu – klubo savininkas")).to_be_visible()
+    expect(page.get_by_text("su kvietimu")).to_be_visible()
+    page.goto(base + "#/klubai")
+    page.locator("[data-create-club] summary").click()
+    page.get_by_label("Pavadinimas").fill("mano DRAUGAI")
+    page.get_by_role("button", name="Sukurti klubą").click()
+    expect(page.locator("#toast")).to_have_text("Toks klubo pavadinimas jau užimtas")
+    step("klubai: atviras, uždaras su kodu iš nuorodos, savas klubas, pasikartojantis pavadinimas atmetamas")
+
+    # Sekimas: profilis → Sekti → srautas
+    lid = page.evaluate("() => Object.values(JSON.parse(localStorage.getItem('zt-demo-v1')).profiles).find(p => p.nickname === 'Lydekininkas').id")
+    page.goto(base + f"#/zvejys/{lid}")
+    expect(page.locator("[data-follow-counts]")).to_contain_text("0 sekėjai")
+    page.get_by_role("button", name="Sekti").click()
+    expect(page.locator("#toast")).to_have_text("Seki – jo laimikius matysi skiltyje „Sekami“")
+    expect(page.locator("[data-follow-counts]")).to_contain_text("1 sekėjas")
+    expect(page.get_by_role("button", name="Seki")).to_be_visible()
+    expect(page.locator(".badge", has_text="Kauno lydekininkai")).to_be_visible()
+    page.goto(base + "#/sekami")
+    expect(page.get_by_text("Seki 1 žvejį.")).to_be_visible()
+    expect(page.locator(".card-link", has_text="Lydekininkas").first).to_be_visible()
+    page.goto(base + f"#/zvejys/{lid}")
+    page.get_by_role("button", name="Seki").click()
+    expect(page.locator("#toast")).to_have_text("Nebeseki")
+    step("sekimas: sekti, sekėjų skaičius, sekamų laimikių srautas, nebesekti")
+
+    # Komandinė įskaita: dalyvauji ir atstovauji klubui; klubų lentelė
+    page.goto(base + "#/t/t-sezonas")
+    page.get_by_role("button", name="Dalyvauti").click()
+    expect(page.locator("#toast")).to_have_text("Užsiregistravai į turnyrą")
+    page.get_by_label("Atstovauju klubui").select_option(label="Kauno lydekininkai")
+    expect(page.locator("#toast")).to_have_text("Atstovauji „Kauno lydekininkai“")
+    assert page.evaluate("() => JSON.parse(localStorage.getItem('zt-demo-v1')).entries.find(e => e.tournament_id === 't-sezonas' && e.user_id === '00000000-0000-4000-8000-000000000001').club_id") == "club-kaunas"
+    page.goto(base + "#/t/t-sezonas/lentele")
+    page.get_by_role("button", name="Klubai").click()
+    expect(page.get_by_role("heading", name="Klubų lentelė")).to_be_visible()
+    rows = page.locator(".board-row")
+    expect(rows).to_have_count(2)
+    expect(rows.nth(0)).to_contain_text("įskaityti nariai")
+    expect(page.locator(".board-row", has_text="Kauno lydekininkai")).to_have_class(re.compile("mine"))
+    step("komandinė įskaita: klubo pasirinkimas turnyre ir klubų lentelė")
+
+
 def map_demo_test(page, base):
     page.goto(base + "#/profilis")
     page.get_by_role("link", name="Mano laimikių žemėlapis").click()
@@ -719,6 +790,7 @@ def main():
 
         extra_demo_tests(page, base, meteo_calls)
         map_demo_test(page, base)
+        social_demo_test(page, base)
 
         ctx.close()
 
@@ -755,15 +827,15 @@ def main():
         reg_id = next(r["registrationId"] for r in regs if not r.get("isDeleted"))
         msgs = [{"title": "Laimikis patvirtintas", "body": "Lydeka 92,5 cm – įskaityta", "url": "#/l/abc-1", "tag": "review-1"},
                 {"title": "Kenkėjas", "body": "x", "url": "javascript:alert(1)", "tag": "bad-1"}]
-        for m in msgs:
-            cdp.send("ServiceWorker.deliverPushMessage", {"origin": origin, "registrationId": reg_id, "data": json.dumps(m)})
         notes = []
-        for _ in range(50):  # iki 5 s
-            notes = p4.evaluate("""async () => (await (await navigator.serviceWorker.ready).getNotifications())
-                .map(n => ({ title: n.title, body: n.body, tag: n.tag, url: n.data && n.data.url }))""")
-            if len(notes) >= 2:
-                break
-            p4.wait_for_timeout(100)
+        for i, m in enumerate(msgs, start=1):
+            cdp.send("ServiceWorker.deliverPushMessage", {"origin": origin, "registrationId": reg_id, "data": json.dumps(m)})
+            for _ in range(150):  # iki 15 s kiekvienam
+                notes = p4.evaluate("""async () => (await (await navigator.serviceWorker.ready).getNotifications())
+                    .map(n => ({ title: n.title, body: n.body, tag: n.tag, url: n.data && n.data.url }))""")
+                if len(notes) >= i:
+                    break
+                p4.wait_for_timeout(100)
         by_tag = {n["tag"]: n for n in notes}
         assert by_tag["review-1"] == {"title": "Laimikis patvirtintas", "body": "Lydeka 92,5 cm – įskaityta", "tag": "review-1", "url": "#/l/abc-1"}, notes
         assert by_tag["bad-1"]["url"] == "#/", "nesaugi nuoroda turi būti pakeista į #/"

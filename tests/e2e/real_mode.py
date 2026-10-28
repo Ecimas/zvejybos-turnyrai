@@ -476,6 +476,8 @@ def more_real_tests(page, base):
     assert fake(page, "return db.catch_spots.filter(x => x.user_id === arg).length;", me) == 0
     step("mano žemėlapis: vietos rodomos, kopijos išlieka po 90 d., išjungus ištrinamos")
 
+    social_real_test(page, base, me)
+
     # Duomenų eksportas
     go(page, base + "#/profilis")
     with page.expect_download() as dl:
@@ -486,6 +488,7 @@ def more_real_tests(page, base):
     assert any(e["tournament_id"] == T2 for e in data["entries"])
     assert len(data["disputes"]) == 1
     assert len(data["blank_trips"]) == 1 and len(data["catch_reports"]) == 1, (data.get("blank_trips"), data.get("catch_reports"))
+    assert data["follows"] == [] and sorted(c["clubs"]["name"] for c in data["clubs"]) == ["Antras klubas", "Ecimo lydekos", "Trečias klubas"], (data["follows"], data["clubs"])
     step("duomenų eksportas: tik savi duomenys")
 
     # Paskyros ištrynimas: kol funkcija neįdiegta – aiškus pranešimas; paskui – pilnas
@@ -500,14 +503,134 @@ def more_real_tests(page, base):
     expect(page.locator("#toast")).to_have_text("Paskyra ištrinta")
     expect(page.get_by_role("heading", name="Turnyrai", level=1)).to_be_visible()
     left = fake(page, """return { p: db.profiles.some(p => p.id === arg), c: db.catches.some(c => c.user_id === arg),
-        e: db.entries.some(e => e.user_id === arg), d: db.disputes.length, t: db.tournaments.some(t => t.organizer_id === arg) };""", me)
-    assert left == {"p": False, "c": False, "e": False, "d": 0, "t": False}, left
+        e: db.entries.some(e => e.user_id === arg), d: db.disputes.length, t: db.tournaments.some(t => t.organizer_id === arg),
+        f: db.follows.some(f => f.follower_id === arg || f.followee_id === arg), k: db.clubs.some(c => c.owner_id === arg),
+        m: db.club_members.some(m => m.user_id === arg) };""", me)
+    assert left == {"p": False, "c": False, "e": False, "d": 0, "t": False, "f": False, "k": False, "m": False}, left
     assert calls(page, "list") and calls(page, "remove"), "nuotraukos turi būti ištrintos"
     order = [c["name"] for c in calls(page, "rpc") if "account_deletion" in c.get("name", "")]
     assert order[-2:] == ["begin_account_deletion", "finish_account_deletion"], order
     go(page, base + "#/dienorastis")
     expect(page.get_by_role("link", name="Prisijungti")).to_be_visible()
     step("paskyros ištrynimas: neįdiegus – pranešimas, įdiegus – viskas ištrinta")
+
+
+CLUB = "clclclcl-0000-4000-8000-000000000001"
+OTHER = "00000000-0000-4000-8000-0000000000aa"
+
+
+def social_real_test(page, base, me):
+    # Klubai: uždaras klubas – tik su kodu; kvietimo kodas niekada neskaitomas tiesiogiai iš lentelės
+    go(page, base + "#/klubai")
+    expect(page.get_by_role("heading", name="Žvejų klubai")).to_be_visible()
+    expect(page.locator("[data-club-list] a", has_text="Testo klubas")).to_contain_text("1 narys")
+    expect(page.locator("[data-club-list] a", has_text="Testo klubas")).to_contain_text("su kvietimu")
+    go(page, base + f"#/klubas/{CLUB}")
+    page.get_by_label("Kvietimo kodas").fill("0000000000")
+    page.get_by_role("button", name="Prisijungti prie klubo").click()
+    expect(page.locator("#toast")).to_have_text("Neteisingas kvietimo kodas")
+    assert not fake(page, "return db.club_members.some(m => m.user_id === arg);", me)
+    go(page, base + f"#/klubas/{CLUB}?kodas=D1D2D3D4D5<b>")
+    expect(page.get_by_label("Kvietimo kodas")).to_have_value("D1D2D3D4D5")
+    page.get_by_role("button", name="Prisijungti prie klubo").click()
+    expect(page.locator("#toast")).to_have_text("Prisijungei prie „Testo klubas“")
+    expect(page.get_by_text("Tu – klubo narys")).to_be_visible()
+    expect(page.locator("[data-invite-url]")).to_have_value(re.compile(r"\?kodas=d1d2d3d4d5$"))
+    expect(page.locator("[data-kick]")).to_have_count(0)
+    expect(page.get_by_text("Klubo nustatymai")).to_have_count(0)
+    sels = [c["sel"] for c in calls(page, "from", table="clubs")] + [c["sel"] for c in calls(page, "from", table="club_members")]
+    assert sels and not any("invite_code" in (s or "") or (s or "*") == "*" for s in sels), sels
+    # Narys negali išmesti savininko ir keisti svetimo klubo (RLS – nieko nepakeičia)
+    page.evaluate("(a) => window.__zt.backend.removeClubMember(a[0], a[1])", [CLUB, OTHER])
+    page.evaluate("(id) => window.__zt.backend.updateClub(id, { name: 'Pagrobtas' })", CLUB)
+    assert fake(page, "return db.club_members.some(m => m.user_id === arg[1] && m.role === 'owner') && db.clubs.find(c => c.id === arg[0]).name;", [CLUB, OTHER]) == "Testo klubas"
+    res = page.evaluate("(id) => window.__zt.backend.updateClub(id, { invite_code: 'x' }).then(() => 'ok', e => e.code || e.message)", CLUB)
+    assert res != "ok", "kvietimo kodo keisti negalima"
+    step("klubai (tikras režimas): uždaras su kodu iš nuorodos, kodas slaptas, svetimo klubo keisti negalima")
+
+    # Savas klubas: pavadinimo taisyklės, unikalumas, iki 3, savininkas išmeta narį
+    go(page, base + "#/klubai")
+    page.locator("[data-create-club] summary").click()
+    page.get_by_label("Pavadinimas").fill("<script>")
+    page.get_by_role("button", name="Sukurti klubą").click()
+    expect(page.locator("#toast")).to_contain_text("Pavadinime gali būti")
+    page.get_by_label("Pavadinimas").fill("testo KLUBAS")
+    page.get_by_role("button", name="Sukurti klubą").click()
+    expect(page.locator("#toast")).to_have_text("Toks klubo pavadinimas jau užimtas")
+    page.get_by_label("Pavadinimas").fill("Ecimo „Lydekos“")
+    page.get_by_label("Regionas (nebūtina)").fill("Kauno r.")
+    page.get_by_role("button", name="Sukurti klubą").click()
+    expect(page.get_by_role("heading", name="Ecimo „Lydekos“")).to_be_visible()
+    expect(page.get_by_text("Tu – klubo savininkas")).to_be_visible()
+    mine = fake(page, "return db.clubs.find(c => c.owner_id === arg);", me)
+    assert mine["open"] is True and mine["region"] == "Kauno r." and re.fullmatch(r"[0-9a-f]{10}", mine["invite_code"]), mine
+    fake(page, "db.club_members.push({ club_id: arg, user_id: '00000000-0000-4000-8000-0000000000aa', role: 'member', joined_at: new Date().toISOString() }); window.__fakeDb.save(); return 1;", mine["id"])
+    go(page, base + f"#/klubas/{mine['id']}")
+    page.locator("[data-kick]").click()
+    expect(page.locator("#toast")).to_have_text("Kitas_Zvejys pašalintas")
+    assert not fake(page, "return db.club_members.some(m => m.club_id === arg && m.role === 'member');", mine["id"])
+    page.get_by_text("Klubo nustatymai").click()
+    page.locator("[data-edit-club] [name=name]").fill("Ecimo lydekos")
+    page.locator("[data-edit-club]").get_by_role("button", name="Išsaugoti").click()
+    expect(page.get_by_role("heading", name="Ecimo lydekos")).to_be_visible()
+    for n in ("Antras klubas", "Trečias klubas"):
+        page.evaluate("(n) => window.__zt.backend.createClub({ name: n, open: true })", n)
+    res = page.evaluate("() => window.__zt.backend.createClub({ name: 'Ketvirtas klubas', open: true }).then(() => 'ok', e => e.message)")
+    assert res == "Galima sukurti iki 3 klubų", res
+    step("savas klubas: pavadinimo taisyklės, unikalumas, iki 3 klubų, savininkas pašalina narį ir keičia nustatymus")
+
+    # Sekimas
+    go(page, base + f"#/zvejys/{OTHER}")
+    expect(page.locator("[data-follow-counts]")).to_contain_text("0 sekėjai")
+    expect(page.locator(".badge", has_text="Testo klubas")).to_be_visible()
+    page.get_by_role("button", name="Sekti").click()
+    expect(page.locator("#toast")).to_have_text("Seki – jo laimikius matysi skiltyje „Sekami“")
+    expect(page.locator("[data-follow-counts]")).to_contain_text("1 sekėjas")
+    assert fake(page, "return db.follows.filter(f => f.follower_id === arg).length;", me) == 1
+    res = page.evaluate("(id) => window.__zt.backend.follow(id).then(() => 'ok', e => e.message)", OTHER)
+    assert res == "ok", f"pakartotinis sekimas – be klaidos: {res}"
+    res = page.evaluate("(id) => window.__zt.backend.follow(id).then(() => 'ok', e => e.code || e.message)", me)
+    assert res != "ok", "savęs sekti negalima"
+    go(page, base + "#/sekami")
+    expect(page.get_by_text("Seki 1 žvejį.")).to_be_visible()
+    approved = fake(page, "return db.catches.filter(c => c.user_id === arg && c.status === 'approved').length;", OTHER)
+    assert approved >= 1
+    expect(page.locator(".card-link", has_text="Kitas_Zvejys")).to_have_count(approved)
+    expect(page.locator(".card-link")).to_have_count(approved)
+    go(page, base + f"#/zvejys/{OTHER}")
+    page.get_by_role("button", name="Seki").click()
+    expect(page.locator("#toast")).to_have_text("Nebeseki")
+    assert fake(page, "return db.follows.length;") == 0
+    go(page, base + "#/sekami")
+    expect(page.get_by_text("Dar nieko neseki")).to_be_visible()
+    step("sekimas (tikras režimas): sekti, dublis ir savęs sekimas atmetami, srautas, nebesekti")
+
+    # Komandinė įskaita
+    fake(page, "db.tournaments.find(t => t.id === arg).team_mode = true; db.entries.find(e => e.tournament_id === arg && e.user_id === '00000000-0000-4000-8000-0000000000aa').club_id = 'clclclcl-0000-4000-8000-000000000001'; window.__fakeDb.save(); return 1;", T1)
+    go(page, base + f"#/t/{T1}")
+    page.get_by_label("Atstovauju klubui").select_option(label="Testo klubas")
+    expect(page.locator("#toast")).to_have_text("Atstovauji „Testo klubas“")
+    assert fake(page, "return db.entries.find(e => e.tournament_id === arg[0] && e.user_id === arg[1]).club_id;", [T1, me]) == CLUB
+    res = page.evaluate("(a) => window.__zt.backend.setEntryClub(a[0], a[1]).then(() => 'ok', e => e.message)", [T1, mine["id"].replace(mine["id"][:8], "00000000")])
+    assert res == "Tu ne šio klubo narys", res
+    res = page.evaluate("(a) => window.__zt.backend.setEntryClub(a[0], a[1]).then(() => 'ok', e => e.message)", [T2, CLUB])
+    assert res != "ok", "turnyre be komandų klubo nurodyti negalima"
+    go(page, base + f"#/t/{T1}/lentele")
+    page.get_by_role("button", name="Klubai").click()
+    expect(page.get_by_role("heading", name="Klubų lentelė")).to_be_visible()
+    row = page.locator(".board-row", has_text="Testo klubas")
+    expect(row).to_have_class(re.compile("mine"))
+    expect(row).to_contain_text("2")
+    board = page.evaluate("(id) => window.__zt.backend.teamLeaderboard(id)", T1)
+    assert len(board) == 1 and board[0]["club_id"] == CLUB and board[0]["members"] == 2 and board[0]["rank"] == 1, board
+    # Iš klubo išeiti galima; savininkas išeiti negali
+    go(page, base + f"#/klubas/{CLUB}")
+    page.get_by_role("button", name="Išeiti iš klubo").click()
+    expect(page.locator("#toast")).to_have_text("Išėjai iš klubo")
+    assert not fake(page, "return db.club_members.some(m => m.club_id === arg[0] && m.user_id === arg[1]);", [CLUB, me])
+    page.evaluate("(a) => window.__zt.backend.leaveClub(a)", mine["id"])
+    assert fake(page, "return db.club_members.some(m => m.club_id === arg[0] && m.user_id === arg[1] && m.role === 'owner');", [mine["id"], me])
+    step("komandinė įskaita (tikras režimas): klubo pasirinkimas, svetimas klubas atmetamas, klubų lentelė, išėjimas")
 
 
 def google_login_test(page, base, auth_settings):

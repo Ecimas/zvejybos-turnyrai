@@ -126,6 +126,12 @@ end $$;
 insert into public.user_bans (user_id, until, reason, banned_by)
 values ('b0000000-0000-4000-8000-00000000000b', now() - interval '1 day', 'Senas blokavimas', 'c0000000-0000-4000-8000-00000000000c');
 
+-- B klubas (uždaras) ir B sekimas
+set request.jwt.claim.sub = 'b0000000-0000-4000-8000-00000000000b';
+with c as (insert into public.clubs (name, open) values ('B fuzz klubas', false) returning id) insert into fx select 'b_club', id from c;
+insert into public.follows (follower_id, followee_id) values ('b0000000-0000-4000-8000-00000000000b', 'c0000000-0000-4000-8000-00000000000c');
+reset request.jwt.claim.sub;
+
 \echo 'R1. Svetimų eilučių stulpeliai (anon ir A prieš B duomenis)'
 insert into pg_temp.attempts (who, sql, kind)
 select who, format('update %I.%I set %I = %I where %s', s, t, c.column_name, c.column_name, w), 'nochange'
@@ -149,6 +155,9 @@ select who, format('update %I.%I set %I = %I where %s', s, t, c.column_name, c.c
                ('public', 'catch_checks', $$true$$),
                ('public', 'catch_spots', $$true$$),
                ('public', 'spot_settings', $$true$$),
+               ('public', 'follows', $$true$$),
+               ('public', 'clubs', $$owner_id = 'b0000000-0000-4000-8000-00000000000b'$$),
+               ('public', 'club_members', $$true$$),
                ('storage', 'objects',        $$name like 'b0000000-%'$$)) as x(s, t, w)
   join information_schema.columns c on c.table_schema = x.s and c.table_name = x.t
  cross join (values ('anon'), ('A')) as who(who);
@@ -174,6 +183,13 @@ insert into pg_temp.attempts (who, sql, kind) values
   ('B', $$insert into public.role_changes (user_id, role, granted) values ('b0000000-0000-4000-8000-00000000000b', 'owner', true)$$, 'error'),
   ('B', $$insert into public.notification_outbox (user_id, kind, title, body, dedupe) values ('a0000000-0000-4000-8000-00000000000a', 'test', 'x', 'y', 'fuzz-b')$$, 'error'),
   ('B', $$insert into public.notification_settings (user_id, review) values ('a0000000-0000-4000-8000-00000000000a', false)$$, 'error'),
+  ('A', $$insert into public.club_members (club_id, user_id) values ((select id from fx where k = 'b_club'), 'a0000000-0000-4000-8000-00000000000a')$$, 'error'),
+  ('A', $$select public.join_club((select id from fx where k = 'b_club'), 'neteisingas')$$, 'error'),
+  ('A', $$insert into public.follows (follower_id, followee_id) values ('b0000000-0000-4000-8000-00000000000b', 'a0000000-0000-4000-8000-00000000000a')$$, 'error'),
+  ('A', $$insert into public.clubs (name, owner_id) values ('Apsimetėlių klubas', 'b0000000-0000-4000-8000-00000000000b')$$, 'error'),
+  ('A', $$select public.set_entry_club((select id from fx where k = 'b_pub'), (select id from fx where k = 'b_club'))$$, 'error'),
+  ('anon', $$select public.join_club((select id from fx where k = 'b_club'), null)$$, 'error'),
+  ('anon', $$insert into public.follows (followee_id) values ('b0000000-0000-4000-8000-00000000000b')$$, 'error'),
   ('B', $$insert into public.catch_spots (catch_id, user_id, lat, lng) values ((select id from fx where k = 'b_approved'), 'b0000000-0000-4000-8000-00000000000b', 1, 1)$$, 'error'),
   ('B', $$insert into public.spot_settings (user_id, keep) values ('a0000000-0000-4000-8000-00000000000a', true)$$, 'error'),
   ('B', $$insert into public.catch_checks (catch_id, user_id, instruction, due_at) values ((select id from fx where k = 'b_approved'), 'b0000000-0000-4000-8000-00000000000b', 'x x x', now())$$, 'error'),
@@ -212,6 +228,9 @@ select who, format('delete from %I.%I where %s', s, t, w), 'nochange'
                ('public', 'catch_checks', $$true$$),
                ('public', 'catch_spots', $$user_id <> (select auth.uid())$$),
                ('public', 'spot_settings', $$true$$),
+               ('public', 'follows', $$follower_id <> (select auth.uid())$$),
+               ('public', 'clubs', $$owner_id <> (select auth.uid())$$),
+               ('public', 'club_members', $$user_id = 'b0000000-0000-4000-8000-00000000000b'$$),
                ('storage', 'objects', $$true$$)) as x(s, t, w)
  cross join (values ('anon'), ('A'), ('B')) as who(who)
  where not (who = 'B' and t in ('tournaments', 'tournament_species', 'tournament_sponsors', 'entries', 'tournament_announcements', 'blank_trips')); -- B savo būsimą turnyrą trinti gali
@@ -270,6 +289,7 @@ select who, q, 'zero' from (values
   ($$select count(*) from public.catch_checks where user_id is distinct from auth.uid()$$),
   ($$select count(*) from public.catch_spots where user_id is distinct from auth.uid()$$),
   ($$select count(*) from public.spot_settings where user_id is distinct from auth.uid()$$),
+  ($$select count(*) from public.follows where follower_id is distinct from auth.uid() and followee_id is distinct from auth.uid()$$),
   ($$select count(*) from public.tournament_announcements a join public.tournaments t on t.id = a.tournament_id where t.visibility = 'private'$$)
 ) as q(q) cross join (values ('anon'), ('A')) as who(who);
 -- privatūs stulpeliai: kito žmogaus masalas ir pastabos (net patvirtinto laimikio)
@@ -277,7 +297,9 @@ insert into pg_temp.attempts (who, sql, kind)
 select who, q, 'error' from (values
   ($$select count(bait) from public.catches$$),
   ($$select count(notes) from public.catches$$),
-  ($$select count(*) from public.catches c where c::text like '%vobleris%'$$)
+  ($$select count(*) from public.catches c where c::text like '%vobleris%'$$),
+  ($$select count(invite_code) from public.clubs$$),
+  ($$select count(*) from public.clubs c where c::text like '%-%'$$)
 ) as q(q) cross join (values ('anon'), ('A')) as who(who);
 insert into pg_temp.attempts (who, sql, kind) values
   ('A', $$select count(*) from public.my_catch_notes() where id in (select id from fx where k like 'b_%')$$, 'zero');

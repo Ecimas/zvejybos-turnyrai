@@ -7,6 +7,7 @@ import { weatherEnabled } from './capture.js';
 import { BAN_DAYS, BAN_REASONS, banUntilText } from '../lib/bans.js';
 import { permsOf, rolesOf, roleLabel, isStaff, can } from '../lib/roles.js';
 import { pushSupport, currentSubscription, enablePush, disablePush, NOTIFY_KINDS } from '../lib/push.js';
+import { followBlock, mountFollow } from './social.js';
 
 function badges(catches, tcount) {
   const list = computeBadges(catches, tcount);
@@ -100,13 +101,15 @@ export async function profileView(ctx) {
   }
   const p = state.profile || (await backend.myProfile());
   const perms = permsOf(p);
-  const [catches, tcount, pendingList, disputes, reports, trips] = await Promise.all([
+  const [catches, tcount, pendingList, disputes, reports, trips, follow, clubs] = await Promise.all([
     backend.myCatches(),
     backend.userTournamentCount(state.user.id),
     perms.has('review') ? backend.pending().catch(() => []) : [],
     perms.has('disputes') ? backend.openDisputes().catch(() => []) : [],
     perms.has('disputes') ? backend.openReports().catch(() => []) : [],
-    backend.blankTrips().catch(() => [])
+    backend.blankTrips().catch(() => []),
+    backend.followStats ? backend.followStats(state.user.id).catch(() => null) : null,
+    backend.myClubs ? backend.myClubs().catch(() => []) : []
   ]);
   const reportedCatches = new Set(reports.map((r) => r.catch_id)).size;
   // Žvejybos dienos: dienos su laimikiu (bet kokios būsenos, išskyrus atmestus) ir dienos be laimikio.
@@ -128,6 +131,7 @@ export async function profileView(ctx) {
           <h1 class="display-md" tabindex="-1">${p.nickname}</h1>
           <span class="muted">${p.region || 'Regionas nenurodytas'}</span>
           ${roleBadges(p)}
+          ${follow ? followBlock(follow, true, true) : ''}
         </div>
         ${state.ban ? '' : html`<button class="icon-btn" data-edit aria-label="Redaguoti profilį">${icon('edit', 20)}</button>`}
       </header>
@@ -168,6 +172,8 @@ export async function profileView(ctx) {
           ${perms.has('ban') ? html`<a class="list-row" href="#/moderavimas/blokuoti">${icon('lock', 20)}<span class="grow strong">Užblokuoti žvejai</span>${icon('chevron', 18)}</a>` : ''}
           ${perms.has('roles') ? html`<a class="list-row" href="#/moderavimas/komanda">${icon('user', 20)}<span class="grow strong">Komanda ir rolės</span>${icon('chevron', 18)}</a>` : ''}
           <a class="list-row" href="#/naujas">${icon('plus', 20)}<span class="grow strong">Sukurti turnyrą</span>${icon('chevron', 18)}</a>
+          <a class="list-row" href="#/sekami">${icon('star', 20)}<span class="grow strong">Sekamų žvejų laimikiai</span>${icon('chevron', 18)}</a>
+          <a class="list-row" href="#/klubai">${icon('users', 20)}<span class="grow strong">Klubai</span>${clubs.length ? html`<span class="small muted">${clubs.map((c) => c.name).join(', ')}</span>` : ''}${icon('chevron', 18)}</a>
           <a class="list-row" href="#/zemelapis">${icon('pin', 20)}<span class="grow strong">Mano laimikių žemėlapis</span>${icon('chevron', 18)}</a>
           <a class="list-row" href="#/zvejys/${p.id}">${icon('user', 20)}<span class="grow strong">Kaip mane mato kiti</span>${icon('chevron', 18)}</a>
           <div class="list-row">${icon('sun', 20)}<span class="grow strong">Tema</span>
@@ -286,9 +292,11 @@ export async function anglerView(ctx, [id]) {
   const p = await backend.profile(id);
   if (!p) return { nav: 'lenteles', html: notFound('#/lenteles', 'Žvejys nerastas') };
   const moderating = can(state, 'ban') && id !== state.user?.id;
-  const [catches, tcount, ban] = await Promise.all([
+  const [catches, tcount, ban, follow, clubs] = await Promise.all([
     backend.userCatches(id), backend.userTournamentCount(id),
-    moderating ? backend.userBan(id).catch(() => null) : null
+    moderating ? backend.userBan(id).catch(() => null) : null,
+    backend.followStats ? backend.followStats(id).catch(() => null) : null,
+    backend.userClubs ? backend.userClubs(id).catch(() => []) : []
   ]);
   const s = stats(catches, state.species);
   const gallery = s.ok.slice().sort((a, b) => b.captured_at_device.localeCompare(a.captured_at_device)).slice(0, 12);
@@ -304,8 +312,10 @@ export async function anglerView(ctx, [id]) {
           <h1 class="display-md" tabindex="-1">${p.nickname}</h1>
           <span class="muted">${p.region || ''}</span>
           ${roleBadges(p)}
+          ${follow ? followBlock(follow, id === state.user?.id, !!state.user && !state.ban) : ''}
         </div>
       </header>
+      ${clubs.length ? html`<p class="row gap-8 wrap">${clubs.map((c) => html`<a class="badge badge-mine club-badge" href="#/klubas/${c.id}">${icon('users', 12, 2.6)}${c.name}</a>`)}</p>` : ''}
       ${statGrid(s, tcount)}
       ${records(s)}
       ${gallery.length ? html`<section class="stack">
@@ -321,6 +331,7 @@ export async function anglerView(ctx, [id]) {
     mount(root) {
       hydratePhotos(root, backend);
       if (moderating) mountModCard(root, ctx, p);
+      mountFollow(root, ctx, id);
       root.querySelector('[data-back]').addEventListener('click', () => {
         if (history.length > 1) history.back();
         else ctx.navigate('#/lenteles');

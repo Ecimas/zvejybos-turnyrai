@@ -156,6 +156,10 @@ export async function standingsView(ctx) {
     title: 'Lentelės',
     html: html`<div class="screen">
       <header class="page-head"><h1 class="display-lg" tabindex="-1">Lentelės</h1></header>
+      <nav class="grid-2 social-links" aria-label="Bendruomenė">
+        <a class="card card-link row gap-8" href="#/sekami">${icon('star', 20)}<span class="strong grow">Sekami</span>${icon('chevron', 16)}</a>
+        <a class="card card-link row gap-8" href="#/klubai">${icon('users', 20)}<span class="strong grow">Klubai</span>${icon('chevron', 16)}</a>
+      </nav>
       ${rows.length ? html`<div class="stack">${rows.map(({ t, mine, total }) => html`
         <a class="card card-link row" href="#/t/${t.id}/lentele">
           <span class="rank-big ${mine ? 'accent' : 'muted'}">${mine && mine.rank !== null ? `#${mine.rank}` : '–'}</span>
