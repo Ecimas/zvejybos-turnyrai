@@ -41,6 +41,7 @@ export async function privacyView() {
       <li><strong>Tikslią vietą (GPS)</strong> – tik sąžiningumo patikrai. Ją mato tik moderatoriai, ji niekada nerodoma kitiems ir automatiškai ištrinama praėjus 90 dienų po turnyro pabaigos. Jei pats įjungi „Saugoti vietas mano žemėlapiui“, išsaugoma jų kopija, kurią matai tik tu (net ne moderatoriai); išjungus kopijos ištrinamos.</li>
       <li><strong>Orą</strong> (temperatūra, vėjas, slėgis) – užklausiame Open-Meteo pagal suapvalintą (~100 m) vietą ir išsaugome prie laimikio. Išjungti galima profilyje.</li>
       <li><strong>Masalą ir pastabas</strong> – jei įrašai; matomi tik tau.</li>
+      <li><strong>Sekimus ir narystę klubuose</strong> – kai seki kitus žvejus ar prisijungi prie klubo; klubų nariai ir sekėjų skaičius matomi kitiems.</li>
       <li><strong>Pranešimų prenumeratą</strong> – jei įjungi pranešimus: telefono naršyklės suteiktą adresą, kuriuo siunčiame žinutes apie laimikius ir turnyrus. Išjungus pranešimus adresas nebenaudojamas. Pranešimų turinys šifruojamas.</li>
     </ul>
     <p>Teisinis pagrindas – sutartis (turnyrų paslauga, kurią užsisakai prisijungdamas) ir teisėtas interesas užtikrinti sąžiningas varžybas.</p>
@@ -80,6 +81,10 @@ export async function rulesView() {
     <ul>
       <li>„Didžiausia žuvis“ – skaičiuojama ilgiausia viena žuvis.</li>
       <li>„Kelių ilgių suma“ – sumuojama nurodytas skaičius ilgiausių žuvų.</li>
+      <li>„Taškai už rūšį“ – taškai = ilgis cm × rūšies koeficientas (jį nustato organizatorius); sumuojamos geriausios žuvys.</li>
+      <li>„Dvikovos“ – atkrintamosios poros. Poros sudaromos atsitiktinai iš užsiregistravusių iki starto, turnyro laikas padalinamas į ratus. Rate laimi daugiau pagavęs; lygiųjų atveju – pirmasis poroje.</li>
+      <li>Divizionai – atskiros lentelės tame pačiame turnyre (pvz. jaunimas, moterys). Divizioną renkiesi pats, kol vyksta registracija.</li>
+      <li>Sezono lyga – vietos etapuose duoda taškų: 25, 18, 15, 12, 10, 8, 6, 4, 2, 1.</li>
       <li>Vienodo rezultato atveju aukščiau tas, kuris jį pasiekė anksčiau.</li>
       <li>Organizatorius gali paslėpti lentelę iki pabaigos – tada matai tik savo rezultatą.</li>
     </ul>

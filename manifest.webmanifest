@@ -1,7 +1,7 @@
 {
   "name": "Žvejybos turnyrai",
   "short_name": "Turnyrai",
-  "description": "Nuotoliniai žvejybos turnyrai",
+  "description": "Nuotoliniai žvejybos turnyrai: žvejok kur nori, laimikį užfiksuok telefonu, lentelė atsinaujina gyvai.",
   "lang": "lt",
   "start_url": "./",
   "scope": "./",
@@ -10,8 +10,90 @@
   "background_color": "#0A1822",
   "theme_color": "#0A1822",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "id": "./",
+  "categories": [
+    "sports",
+    "lifestyle"
+  ],
+  "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "Registruoti laimikį",
+      "short_name": "Laimikis",
+      "url": "./#/laimikis",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Lentelės",
+      "short_name": "Lentelės",
+      "url": "./#/lenteles",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "store/screen-1.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Turnyrai"
+    },
+    {
+      "src": "store/screen-2.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Turnyro lentelė"
+    },
+    {
+      "src": "store/screen-3.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Laimikio registravimas"
+    },
+    {
+      "src": "store/screen-4.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Dvikovos"
+    },
+    {
+      "src": "store/screen-5.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Dienoraštis"
+    }
   ]
 }
