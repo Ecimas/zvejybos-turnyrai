@@ -9,6 +9,7 @@ import { mountRuler } from '../lib/ruler.js';
 import { loginPrompt, celebrate, banNotice } from '../ui.js';
 import { recordFor, fromQueue } from '../lib/records.js';
 import { fetchWeather, weatherLine } from '../lib/weather.js';
+import { syncClock, clockOffsetS } from '../lib/clock.js';
 
 export function weatherEnabled() {
   try { return localStorage.getItem('zt-weather') !== 'off'; } catch { return true; }
@@ -145,7 +146,12 @@ export async function captureView(ctx) {
       let photo = null;
       let photoUrl = null;
       let capturedAt = null;
+      let clockOffset = null;
       let clientId = uuid();
+      // Laikrodžio patikra: dabar ir kaskart grįžus į programėlę (telefonas galėjo užmigti ar būti pakeistas laikas).
+      syncClock(backend);
+      const onVisible = () => { if (document.visibilityState === 'visible') syncClock(backend); };
+      document.addEventListener('visibilitychange', onVisible);
       let len = Math.min(MAX_CM, Math.max(MIN_CM, last.lengthCm || 50));
       let speciesId = last.speciesId || commonIds[0] || null;
       let saving = false;
@@ -253,6 +259,7 @@ export async function captureView(ctx) {
         try {
           const now = new Date();
           capturedAt = now.toISOString();
+          clockOffset = clockOffsetS(now.getTime());
           photo = await captureFrame(video, { left: `${nickname} · ${clientId.slice(0, 6).toUpperCase()}`, right: stamp(now) });
           vibrate(15);
           stopCamera(stream);
@@ -289,7 +296,7 @@ export async function captureView(ctx) {
         try {
           const sha256 = await sha256Hex(photo);
           await ctx.outbox.add({
-            clientId, speciesId, lengthMm: len * 10, capturedAt, sha256, photo,
+            clientId, speciesId, lengthMm: len * 10, capturedAt, clockOffsetS: clockOffset, sha256, photo,
             location: fix ? { ...fix } : null,
             weightG: weightKg ? Math.round(weightKg * 1000) : null,
             bait: bait.value.trim() || null,
@@ -315,6 +322,7 @@ export async function captureView(ctx) {
             clientId = uuid();
             photo = null;
             capturedAt = null;
+            clockOffset = null;
             weather = null;
             weatherAsked = false;
             q('[data-weather]').hidden = true;
@@ -342,6 +350,7 @@ export async function captureView(ctx) {
       openCamera();
 
       return () => {
+        document.removeEventListener('visibilitychange', onVisible);
         stopCamera(stream);
         stopGps();
         ruler.destroy();

@@ -344,6 +344,7 @@ export function createDemoBackend({ photos } = {}) {
       const hidden = t.leaderboard_hidden && phase(t) !== 'done' && t.organizer_id !== ME && !db.profiles[ME]?.is_admin;
       return hidden ? rows.filter((r) => r.user_id === ME).map((r) => ({ ...r, rank: null })) : rows;
     },
+    async serverNow() { return new Date().toISOString(); },
     async divisionMap(id) {
       return new Map(db.entries.filter((e) => e.tournament_id === id).map((e) => [e.user_id, e.division_id ?? null]));
     },
@@ -455,6 +456,7 @@ export function createDemoBackend({ photos } = {}) {
         length_mm: item.lengthMm, captured_at_device: item.capturedAt, received_at: new Date().toISOString(),
         photo_path: path, photo_sha256: item.sha256, status: 'pending', reject_reason: null,
         weight_g: item.weightG ?? null, bait: item.bait || null, notes: item.notes || null, weather: item.weather ?? null,
+        clock_offset_s: Number.isInteger(item.clockOffsetS) ? item.clockOffsetS : null,
         created_at: new Date().toISOString()
       };
       db.catches.push(row);

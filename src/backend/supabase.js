@@ -9,7 +9,7 @@ const BUCKET = 'catch-photos';
 export const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
 // Viešai skaitomi laimikio stulpeliai. Masalas ir pastabos – tik savininkui per my_catch_notes() (0008).
 export const CATCH_COLS = 'id, user_id, client_id, species_id, length_mm, weight_g, weather, captured_at_device, received_at, ' +
-  'photo_path, photo_sha256, status, reject_reason, reviewed_by, reviewed_at, created_at';
+  'photo_path, photo_sha256, status, reject_reason, reviewed_by, reviewed_at, created_at, clock_offset_s';
 const TOURNAMENT_SEL = '*, tournament_species(species_id, points_pct), entries(count), tournament_sponsors(id, name, url, amount_cents, sort), ' +
   'tournament_announcements(created_at), tournament_divisions(id, name, sort), leagues(id, name, season)';
 const PERMANENT_CODES = new Set(['42501', '23514', '23503', '22P02', 'P0001', '42883']);
@@ -244,6 +244,9 @@ export async function createSupabaseBackend(url, anonKey) {
     async leaderboard(id) {
       return check(await sb.rpc('leaderboard', { p_tournament_id: id }));
     },
+    async serverNow() {
+      return check(await sb.rpc('server_now'));
+    },
     // Kuriam divizionui priklauso dalyviai: user_id → division_id
     async divisionMap(id) {
       const rows = check(await sb.from('entries').select('user_id, division_id').eq('tournament_id', id));
@@ -358,7 +361,8 @@ export async function createSupabaseBackend(url, anonKey) {
         weight_g: item.weightG ?? null,
         bait: item.bait || null,
         notes: item.notes || null,
-        weather: item.weather ?? null
+        weather: item.weather ?? null,
+        clock_offset_s: Number.isInteger(item.clockOffsetS) ? item.clockOffsetS : null
       }).select(CATCH_COLS).single();
       if (ins.error) {
         const msg = `${ins.error.message} ${ins.error.details || ''}`;

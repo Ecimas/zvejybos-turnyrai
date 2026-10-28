@@ -3,6 +3,7 @@ import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { cm, dateTime } from '../lib/format.js';
 import { SKEW_MS } from '../lib/scoring.js';
+import { clockWarnings } from '../lib/clock.js';
 import { backButton, empty, thumb, hydratePhotos, openPhoto } from '../ui.js';
 import { banUntilText } from '../lib/bans.js';
 import { checksModerationView } from './check.js';
@@ -82,6 +83,7 @@ export async function moderationView(ctx) {
   ];
   const warnings = [];
   if (skew > SKEW_MS) warnings.push('Telefono laikas skuba – nuotrauka „iš ateities“');
+  warnings.push(...clockWarnings(c, dateTime));
   if (!c.location) warnings.push('Be GPS vietos');
   else if (c.location.accuracy > 100) warnings.push(`Netiksli vieta (±${Math.round(c.location.accuracy)} m)`);
 

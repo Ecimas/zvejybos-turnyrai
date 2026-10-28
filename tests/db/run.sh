@@ -33,7 +33,7 @@ PSQL=(psql -h "$WORK" -p "$PORT" -U postgres -d postgres -X -q -v ON_ERROR_STOP=
 "${PSQL[@]}" -f "$ROOT/supabase/migrations/0003_location_retention.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/migrations/0004_rls_performance.sql"
 "${PSQL[@]}" -f "$ROOT/supabase/migrations/0005_limits_and_trust.sql"
-for f in 0006a_catch_and_tournament_fields 0006b_disputes_and_moderators 0006c_account_deletion 0007_photo_path_strict 0008_private_catch_notes 0009_prize_fund 0010_reports_trips_announcements 0011_late_registration 0012_count_after_join 0013_user_bans 0014_roles 0015_push 0016_push_keys 0017_catch_checks 0018_my_map 0019_social 0020_formats 0021_entry_indexes; do "${PSQL[@]}" -f "$ROOT/supabase/migrations/$f.sql"; done
+for f in 0006a_catch_and_tournament_fields 0006b_disputes_and_moderators 0006c_account_deletion 0007_photo_path_strict 0008_private_catch_notes 0009_prize_fund 0010_reports_trips_announcements 0011_late_registration 0012_count_after_join 0013_user_bans 0014_roles 0015_push 0016_push_keys 0017_catch_checks 0018_my_map 0019_social 0020_formats 0021_entry_indexes 0022_clock_check; do "${PSQL[@]}" -f "$ROOT/supabase/migrations/$f.sql"; done
 "${PSQL[@]}" -f "$ROOT/supabase/seed.sql"
 "${PSQL[@]}" -f "$ROOT/tests/db/test_schema.sql"
 "${PSQL[@]}" -f "$ROOT/tests/db/test_features.sql"
@@ -47,4 +47,5 @@ for f in 0006a_catch_and_tournament_fields 0006b_disputes_and_moderators 0006c_a
 "${PSQL[@]}" -f "$ROOT/tests/db/test_map.sql"
 "${PSQL[@]}" -f "$ROOT/tests/db/test_social.sql"
 "${PSQL[@]}" -f "$ROOT/tests/db/test_formats.sql"
+"${PSQL[@]}" -f "$ROOT/tests/db/test_clock.sql"
 "${PSQL[@]}" -f "$ROOT/tests/db/test_rls_fuzz.sql"

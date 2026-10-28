@@ -75,6 +75,25 @@ def more_real_tests(page, base):
     assert set(ins) >= {"weight_g", "bait", "notes", "weather"} and "status" not in ins and "user_id" not in ins, ins
     step("laimikio svoris, masalas ir oras išsaugomi serveryje (be status/user_id iš kliento)")
 
+    # Telefono laikrodžio patikra: tikslus laikas – skirtumas ~0; laikrodis atsuktas 3 val. atgal – užfiksuojama
+    assert row["clock_offset_s"] is not None and abs(row["clock_offset_s"]) <= 2, row.get("clock_offset_s")
+    assert calls(page, "rpc", name="server_now"), "laikrodis turi būti patikrintas prieš fotografuojant"
+    page.evaluate("() => { window.__serverOffsetMs = 3 * 3600e3; }")
+    go(page, base + "#/dienorastis")
+    go(page, base + "#/laimikis")
+    page.wait_for_function("() => window.__sbCalls.filter(c => c.kind === 'rpc' && c.name === 'server_now').length >= 2")
+    before = fake(page, "return db.catches.filter(c => c.user_id === arg).length;", me)
+    page.get_by_role("button", name="Fotografuoti").click()
+    page.get_by_role("button", name="Išsaugoti").click()
+    page.wait_for_function("(a) => window.__fakeDb.get().catches.filter(c => c.user_id === a[0]).length > a[1]", arg=[me, before])
+    row2 = fake(page, "return db.catches.filter(c => c.user_id === arg).sort((a, b) => a.received_at < b.received_at ? 1 : -1)[0];", me)
+    assert abs(row2["clock_offset_s"] - 10800) <= 2, row2
+    warn = page.evaluate("""async (c) => { const m = await import(window.__appBase + 'src/lib/clock.js');
+        const f = await import(window.__appBase + 'src/lib/format.js'); return m.clockWarnings(c, f.dateTime); }""", row2)
+    assert len(warn) == 1 and "atsiliko 3 val." in warn[0], warn
+    page.evaluate("() => { window.__serverOffsetMs = 0; }")
+    step("telefono laikrodžio patikra: pakeistas laikas užfiksuojamas ir parodomas moderatoriui")
+
     # Masalo redagavimas: siunčiami tik leistini stulpeliai
     go(page, base + "#/dienorastis")
     card = page.locator("[data-catch]").first

@@ -338,6 +338,7 @@ class Query {
           if (db.catches.filter((c) => c.user_id === uid() && Date.now() - new Date(c.received_at) < 24 * H).length >= 50) {
             return { data: null, error: err('P0001', 'catch_limit', { hint: 'Ne daugiau kaip 50 laimikių per parą' }) };
           }
+          if (row.clock_offset_s != null && !(Number.isInteger(row.clock_offset_s) && Math.abs(row.clock_offset_s) <= 31536000)) return { data: null, error: err('23514', 'catches_clock_offset_s_check') };
           Object.assign(row, { id: uuid(), user_id: uid(), status: 'pending', reject_reason: null, received_at: new Date().toISOString(), created_at: new Date().toISOString() });
         }
         if (this.table === 'follows') {
@@ -876,6 +877,7 @@ export function createClient(url, key) {
         rows.forEach((r, i) => { r.rank = i > 0 && rows[i - 1].score_mm === r.score_mm ? rows[i - 1].rank : i + 1; });
         return { data: rows, error: null };
       }
+      if (name === 'server_now') return { data: new Date(Date.now() + (window.__serverOffsetMs || 0)).toISOString(), error: null };
       if (name === 'set_entry_division') {
         const t = db.tournaments.find((x) => x.id === args.p_tournament);
         const e = db.entries.find((x) => x.tournament_id === args.p_tournament && x.user_id === uid());
