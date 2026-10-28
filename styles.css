@@ -656,3 +656,9 @@ body:not(.no-nav) .screen.has-cta { padding-bottom: 130px; }
 .stat-bar { display: block; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
 .stat-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
 .stat-row { align-items: center; }
+
+/* Administratoriaus redagavimas (0026): užrakintos taisyklės */
+fieldset[disabled], input:disabled, select:disabled { opacity: .55; }
+fieldset[disabled] button { cursor: not-allowed; }
+.admin-note { border-left: 4px solid var(--wait); }
+.log-change { align-items: flex-start; text-align: left; }

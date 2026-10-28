@@ -1,11 +1,11 @@
 // Rolės ir teisės (0014). Tikrina serveris – čia tik tam, kad rodytume tinkamus meniu.
 // Teisės: review – laimikių eilė ir GPS vietos; disputes – ginčai ir pranešimai;
-//         ban – blokavimas ir slapyvardžiai; roles – rolių skyrimas.
+//         ban – blokavimas ir slapyvardžiai; roles – rolių skyrimas; tournaments – bet kurio turnyro taisymas ir pašalinimas (0026).
 export const ROLES = [
-  { key: 'owner', label: 'Savininkas', perms: ['review', 'disputes', 'ban', 'roles'],
+  { key: 'owner', label: 'Savininkas', perms: ['review', 'disputes', 'ban', 'roles', 'tournaments'],
     desc: 'Viskas, taip pat rolių skyrimas. Programėlėje nekeičiama.' },
-  { key: 'admin', label: 'Administratorius', perms: ['review', 'disputes', 'ban'],
-    desc: 'Tikrina laimikius, sprendžia ginčus ir pranešimus, blokuoja žvejus.' },
+  { key: 'admin', label: 'Administratorius', perms: ['review', 'disputes', 'ban', 'tournaments'],
+    desc: 'Tikrina laimikius, sprendžia ginčus ir pranešimus, blokuoja žvejus, taiso ir šalina bet kurį turnyrą.' },
   { key: 'moderator', label: 'Laimikių tikrintojas', perms: ['review'],
     desc: 'Tvirtina ir atmeta laimikius, mato jų tikslias vietas.' },
   { key: 'judge', label: 'Ginčų teisėjas', perms: ['disputes'],

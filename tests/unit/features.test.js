@@ -97,8 +97,8 @@ test('blokavimas: galiojimas ir tekstai', async () => {
 test('rolės: teisės, senas is_admin, savininko neskiriama', async () => {
   const { permsOf, rolesOf, isStaff, can, ASSIGNABLE, roleLabel } = await import('../../src/lib/roles.js');
   const sorted = (s) => [...s].sort();
-  assert.deepEqual(sorted(permsOf({ roles: ['owner'] })), ['ban', 'disputes', 'review', 'roles']);
-  assert.deepEqual(sorted(permsOf({ roles: ['admin'] })), ['ban', 'disputes', 'review']);
+  assert.deepEqual(sorted(permsOf({ roles: ['owner'] })), ['ban', 'disputes', 'review', 'roles', 'tournaments']);
+  assert.deepEqual(sorted(permsOf({ roles: ['admin'] })), ['ban', 'disputes', 'review', 'tournaments']);
   assert.deepEqual(sorted(permsOf({ roles: ['moderator'] })), ['review']);
   assert.deepEqual(sorted(permsOf({ roles: ['judge'] })), ['disputes']);
   assert.deepEqual(sorted(permsOf({ roles: ['guard'] })), ['ban']);

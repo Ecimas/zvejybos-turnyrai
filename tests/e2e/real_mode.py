@@ -404,6 +404,9 @@ def more_real_tests(page, base):
     sp = fake(page, "return db.tournament_sponsors.filter(x => x.tournament_id === arg).sort((a, b) => a.sort - b.sort);", tid)
     assert [(x["name"], x["url"], x["amount_cents"], x["sort"]) for x in sp] == [
         ("Žvejų klubas", None, 10000, 0), ("Ežero parduotuvė", "https://example.com", None, 1)], sp
+    # Paprastas žvejys (be rolių): svetimo prasidėjusio turnyro keisti negalima
+    fake(page, "const p = db.profiles.find(p => p.id === arg); p.is_admin = false; p.roles = []; window.__fakeDb.save();", me)
+    page.evaluate("async () => { window.__zt.state.profile = await window.__zt.backend.myProfile(); }")
     res = page.evaluate("(id) => window.__zt.backend.updateTournament(id, { sponsors: [{ name: 'X', url: 'javascript:1' }] }).then(() => 'ok', e => e.code)", T1)
     assert res != "ok", "svetimo prasidėjusio turnyro rėmėjų keisti negalima"
     assert sorted(x["species_id"] for x in fake(page, "return db.tournament_species.filter(x => x.tournament_id === arg);", tid)) == [1, 2]
@@ -414,6 +417,24 @@ def more_real_tests(page, base):
     res = page.evaluate("(id) => window.__zt.backend.deleteTournament(id).then(() => 'ok', e => e.message)", T1)
     assert res == "Prasidėjusio turnyro ištrinti negalima", res
     assert fake(page, "return db.tournaments.find(t => t.id === arg).title;", T1) == "Testo lydekų taurė"
+    # Administratorius (0026): taiso tai, kas nekeičia rezultatų; taisyklės užrakintos; šalinti – tik su priežastimi
+    fake(page, "const p = db.profiles.find(p => p.id === arg); p.is_admin = true; p.roles = ['admin']; window.__fakeDb.save();", me)
+    page.evaluate("async () => { window.__zt.state.profile = await window.__zt.backend.myProfile(); }")
+    go(page, base + f"#/t/{T1}")
+    expect(page.get_by_role("link", name="Tvarkyti (administratorius)")).to_be_visible()
+    res = page.evaluate("(id) => window.__zt.backend.updateTournament(id, { title: 'Testo lydekų taurė (pataisyta)' }).then(() => 'ok', e => e.message)", T1)
+    assert res == "ok", res
+    res = page.evaluate("(id) => window.__zt.backend.updateTournament(id, { format: 'biggest' }).then(() => 'ok', e => e.message)", T1)
+    assert res == "Prasidėjusio turnyro taisyklių keisti negalima", res
+    res = page.evaluate("(id) => window.__zt.backend.adminDeleteTournament(id, 'abc').then(() => 'ok', e => e.message)", T1)
+    assert res == "Nurodyk priežastį (bent 5 simboliai)", res
+    log = page.evaluate("() => window.__zt.backend.tournamentAdminLog()")
+    assert len(log) == 1 and log[0]["action"] == "update" and "title" in log[0]["changes"], log
+    go(page, base + "#/moderavimas/turnyrai")
+    expect(page.locator("[data-log-row=update]")).to_contain_text("Testo lydekų taurė (pataisyta)")
+    page.evaluate("(id) => window.__zt.backend.updateTournament(id, { title: 'Testo lydekų taurė' })", T1)
+    fake(page, "const p = db.profiles.find(p => p.id === arg); p.is_admin = false; p.roles = []; window.__fakeDb.save();", me)
+    page.evaluate("async () => { window.__zt.state.profile = await window.__zt.backend.myProfile(); }")
     go(page, base + f"#/t/{tid}/redaguoti")
     page.get_by_role("button", name="Ištrinti turnyrą").click()
     expect(page.locator("#toast")).to_have_text("Turnyras ištrintas")

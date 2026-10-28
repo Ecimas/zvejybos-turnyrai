@@ -16,6 +16,7 @@ let tabState = null;
 function tabs(active) {
   const all = [['#/moderavimas', 'queue', 'Laimikiai', 'review'], ['#/moderavimas/pranesimai', 'reports', 'Pranešimai', 'disputes'],
     ['#/moderavimas/gincai', 'disputes', 'Ginčai', 'disputes'], ['#/moderavimas/blokuoti', 'bans', 'Blokuoti', 'ban'],
+    ['#/moderavimas/turnyrai', 'tlog', 'Turnyrai', 'tournaments'],
     ['#/moderavimas/komanda', 'team', 'Komanda', 'roles'], ['#/moderavimas/statistika', 'stats', 'Statistika', 'roles']];
   const items = all.filter(([, , , perm]) => can(tabState, perm));
   if (items.length < 2) return '';
@@ -35,7 +36,7 @@ export async function moderationView(ctx) {
   tabState = state;
   if (!can(state, 'review')) {
     // Kitos rolės – į savo skiltį
-    const first = [['disputes', '#/moderavimas/pranesimai'], ['ban', '#/moderavimas/blokuoti'], ['roles', '#/moderavimas/komanda']]
+    const first = [['disputes', '#/moderavimas/pranesimai'], ['ban', '#/moderavimas/blokuoti'], ['tournaments', '#/moderavimas/turnyrai'], ['roles', '#/moderavimas/komanda']]
       .find(([perm]) => can(state, perm));
     if (first) { ctx.navigate(first[1]); return { nav: 'profilis', html: html`` }; }
     return denied();

@@ -7,6 +7,7 @@ import { tournamentsView, standingsView } from './views/tournaments.js';
 import { tournamentView, boardView, tvView, teamBoardView, duelsView } from './views/tournament.js';
 import { leaguesView, leagueView } from './views/leagues.js';
 import { statsView } from './views/stats.js';
+import { adminLogView } from './views/adminlog.js';
 import { startPresence } from './lib/presence.js';
 import { captureView } from './views/capture.js';
 import { catchView } from './views/catch.js';
@@ -46,6 +47,7 @@ const ROUTES = [
   [/^\/moderavimas\/blokuoti$/, bansView],
   [/^\/moderavimas\/patikros$/, checksView],
   [/^\/moderavimas\/statistika$/, statsView],
+  [/^\/moderavimas\/turnyrai$/, adminLogView],
   [/^\/patikra\/([\w-]+)$/, checkView],
   [/^\/zemelapis$/, mapView],
   [/^\/sekami$/, feedView],

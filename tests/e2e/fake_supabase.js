@@ -51,6 +51,7 @@ function seed() {
     club_members: [{ club_id: 'clclclcl-0000-4000-8000-000000000001', user_id: other, role: 'owner', joined_at: iso(-30 * 24 * H) }],
     leagues: [],
     tournament_divisions: [],
+    tournament_admin_log: [],
     entries: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', user_id: other, joined_at: iso(-20 * H) },
       { tournament_id: 'tttttttt-0000-4000-8000-000000000002', user_id: other, joined_at: iso(-20 * H) }],
     catches: [{
@@ -93,7 +94,7 @@ const myRoles = () => {
   return p ? (Array.isArray(p.roles) ? p.roles : (p.is_admin ? ['owner'] : [])) : [];
 };
 const isAdmin = () => myRoles().length > 0;
-const PERMS = { owner: ['review', 'disputes', 'ban', 'roles'], admin: ['review', 'disputes', 'ban'], moderator: ['review'], judge: ['disputes'], guard: ['ban'] };
+const PERMS = { owner: ['review', 'disputes', 'ban', 'roles', 'tournaments'], admin: ['review', 'disputes', 'ban', 'tournaments'], moderator: ['review'], judge: ['disputes'], guard: ['ban'] };
 const hasPerm = (perm) => myRoles().some((r) => PERMS[r]?.includes(perm));
 // 0013: aktyvus blokavimas
 db.user_bans ||= [];
@@ -122,8 +123,9 @@ const BAN_INSERT = ['catches', 'entries', 'tournaments', 'catch_reports', 'tourn
 function visible(table, row) {
   if (table === 'tournaments') {
     return row.visibility === 'public' || row.organizer_id === uid()
-      || db.entries.some((e) => e.tournament_id === row.id && e.user_id === uid());
+      || db.entries.some((e) => e.tournament_id === row.id && e.user_id === uid()) || hasPerm('tournaments');
   }
+  if (table === 'tournament_admin_log') return hasPerm('tournaments');
   if (table === 'disputes') return row.user_id === uid() || hasPerm('disputes');
   if (table === 'catch_reports') return row.reporter_id === uid() || hasPerm('disputes');
   if (table === 'user_bans') return !!uid() && (row.user_id === uid() || hasPerm('ban'));
@@ -173,6 +175,9 @@ function embed(table, row, spec) {
     } else if (table === 'entries' && part.startsWith('profiles(')) {
       const p = db.profiles.find((x) => x.id === row.user_id);
       out.profiles = p ? { id: p.id, nickname: p.nickname, region: p.region } : null;
+    } else if (table === 'tournament_admin_log' && part.startsWith('actor:profiles!tournament_admin_log_actor_id_fkey(')) {
+      const p = db.profiles.find((x) => x.id === row.actor_id);
+      out.actor = p ? { nickname: p.nickname } : null;
     } else if (table === 'catches' && part.startsWith('profiles!catches_user_id_fkey(')) {
       const p = db.profiles.find((x) => x.id === row.user_id);
       out.profiles = p ? { nickname: p.nickname, trust_score: p.trust_score, region: p.region } : null;
@@ -243,9 +248,10 @@ function canEditTournament(id) {
 }
 // RLS atitikmuo rašymui: eilutės, kurių taisyklė neleidžia, tiesiog nepaliečiamos (kaip PostgREST).
 function writable(table, row) {
-  if (table === 'tournaments') return row.organizer_id === uid() && beforeStart(row);
-  if (table === 'tournament_species' || table === 'tournament_sponsors') return canEditTournament(row.tournament_id);
-  if (table === 'tournament_divisions') { const t = db.tournaments.find((x) => x.id === row.tournament_id); return !!t && t.organizer_id === uid() && beforeStart(t); }
+  if (table === 'tournaments') return (row.organizer_id === uid() && beforeStart(row)) || hasPerm('tournaments');
+  if (table === 'tournament_sponsors') return canEditTournament(row.tournament_id) || hasPerm('tournaments');
+  if (table === 'tournament_species') return canEditTournament(row.tournament_id) || (hasPerm('tournaments') && beforeStart(db.tournaments.find((x) => x.id === row.tournament_id)));
+  if (table === 'tournament_divisions') { const t = db.tournaments.find((x) => x.id === row.tournament_id); return !!t && beforeStart(t) && (t.organizer_id === uid() || hasPerm('tournaments')); }
   if (table === 'leagues') return row.owner_id === uid();
   if (table === 'entries') return row.user_id === uid() && beforeStart(db.tournaments.find((x) => x.id === row.tournament_id));
   if (table === 'catches') return row.user_id === uid();
@@ -488,6 +494,20 @@ class Query {
         }
       }
       data = t.filter((r) => this.matches(r) && writable(this.table, r));
+      if (this.table === 'tournaments') {
+        const RULES = ['format', 'top_n', 'min_length_mm', 'starts_at', 'team_mode', 'league_id', 'prize_fund_cents', 'prize_split'];
+        const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+        for (const r of data) {
+          if (r.organizer_id === uid() && beforeStart(r)) continue;
+          if (!beforeStart(r)) {
+            if (RULES.some((k) => k in this.patch && !same(this.patch[k], r[k]))) return { data: null, error: err('P0001', 'started_rules_locked') };
+            if (this.patch.ends_at && Date.parse(this.patch.ends_at) < Date.now() - 60e3) return { data: null, error: err('P0001', 'ends_in_past') };
+          }
+          const changes = Object.fromEntries(Object.keys(this.patch).filter((k) => k !== 'organizer_id' && !same(this.patch[k], r[k])).map((k) => [k, [r[k] ?? null, this.patch[k] ?? null]]));
+          if (Object.keys(changes).length) (db.tournament_admin_log ||= []).push({ id: Date.now() + Math.random(), tournament_id: r.id, title: this.patch.title || r.title, organizer_id: r.organizer_id, actor_id: uid(), action: 'update', changes, reason: null, created_at: new Date().toISOString() });
+        }
+        delete this.patch.organizer_id;
+      }
       data.forEach((r) => {
         Object.assign(r, this.patch);
         if (this.table === 'tournaments' && r.format === 'duels') Object.assign(r, { late_join_minutes: 0, leaderboard_hidden: false, team_mode: false });
@@ -896,6 +916,19 @@ export function createClient(url, key) {
         else if (db.user_devices.filter((x) => x.user_id === uid()).length < 10) {
           db.user_devices.push({ user_id: uid(), model, platform, os_version: args.p_os || null, browser, installed: !!args.p_installed, first_seen: new Date().toISOString(), last_seen: new Date().toISOString() });
         }
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'admin_delete_tournament') {
+        if (!hasPerm('tournaments')) return { data: null, error: err('P0001', 'not allowed') };
+        const why = String(args.p_reason || '').trim();
+        if (why.length < 5) return { data: null, error: err('P0001', 'reason_required') };
+        const t = db.tournaments.find((x) => x.id === args.p_id);
+        if (!t) return { data: null, error: err('P0001', 'not_found') };
+        (db.tournament_admin_log ||= []).push({ id: Date.now() + Math.random(), tournament_id: t.id, title: t.title, organizer_id: t.organizer_id, actor_id: uid(), action: 'delete',
+          changes: { entries: db.entries.filter((e) => e.tournament_id === t.id).length }, reason: why.slice(0, 300), created_at: new Date().toISOString() });
+        db.tournaments = db.tournaments.filter((x) => x.id !== t.id);
+        for (const k of ['tournament_species', 'tournament_sponsors', 'entries', 'tournament_divisions', 'tournament_announcements']) db[k] = (db[k] || []).filter((x) => x.tournament_id !== t.id);
         save();
         return { data: null, error: null };
       }

@@ -6,7 +6,7 @@ import { duelBracket } from '../lib/duels.js';
 import { PermanentError, RetryLaterError, idbStore, memoryStore } from '../lib/outbox.js';
 import { phase, registrationOpen } from '../lib/format.js';
 import { banActive } from '../lib/bans.js';
-import { rolesOf, ASSIGNABLE } from '../lib/roles.js';
+import { rolesOf, ASSIGNABLE, permsOf } from '../lib/roles.js';
 
 const KEY = 'zt-demo-v1';
 const ME = '00000000-0000-4000-8000-000000000001';
@@ -176,6 +176,7 @@ export function createDemoBackend({ photos } = {}) {
   db.club_members ||= [];
   db.leagues ||= [];
   db.divisions ||= [];
+  db.admin_log ||= [];
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* pilna atmintis */ } };
   save();
   const photoStore = photos || (typeof indexedDB !== 'undefined' ? idbStore('zvejybos-turnyrai-demo', 'photos') : memoryStore());
@@ -186,6 +187,9 @@ export function createDemoBackend({ photos } = {}) {
   const visible = (t) => t.visibility === 'public' || t.organizer_id === ME
     || db.entries.some((e) => e.tournament_id === t.id && e.user_id === ME);
   const isOrganizerBeforeStart = (t) => t && t.organizer_id === ME && Date.now() < new Date(t.starts_at).getTime();
+  const isTournamentAdmin = () => permsOf(db.profiles[ME]).has('tournaments');
+  const RULE_KEYS = ['format', 'top_n', 'min_length_mm', 'starts_at', 'team_mode', 'league_id', 'prize_fund_cents', 'prize_split'];
+  const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
   const decorate = (t) => ({
     ...t,
     species_ids: db.tournament_species.filter((x) => x.tournament_id === t.id).map((x) => x.species_id),
@@ -254,7 +258,7 @@ export function createDemoBackend({ photos } = {}) {
     async tournaments() { return db.tournaments.filter(visible).map(decorate); },
     async tournament(id) {
       const t = db.tournaments.find((x) => x.id === id);
-      return t && visible(t) ? decorate(t) : null;
+      return t && (visible(t) || isTournamentAdmin()) ? decorate(t) : null;
     },
     async createTournament(data) {
       const id = `t-${Date.now().toString(36)}`;
@@ -273,9 +277,22 @@ export function createDemoBackend({ photos } = {}) {
     },
     async updateTournament(id, data) {
       const t = db.tournaments.find((x) => x.id === id);
-      if (!isOrganizerBeforeStart(t)) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
+      const asOrganizer = isOrganizerBeforeStart(t);
+      if (!t || (!asOrganizer && !isTournamentAdmin())) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
       const { species_ids, species_pct = {}, sponsors, divisions, ...rest } = data;
-      checkLeague(rest.league_id);
+      const started = Date.now() >= new Date(t.starts_at).getTime();
+      if (!asOrganizer && started) {
+        if (RULE_KEYS.some((k) => k in rest && !same(rest[k], t[k])) || species_ids || divisions) throw new Error('Prasidėjusio turnyro taisyklių keisti negalima');
+        if ('ends_at' in rest && new Date(rest.ends_at) < Date.now() - 60e3) throw new Error('Pabaiga negali būti praeityje');
+      }
+      if (rest.league_id && rest.league_id !== t.league_id) checkLeague(rest.league_id);
+      if (!asOrganizer) {
+        const changes = Object.fromEntries(Object.keys(rest).filter((k) => !same(rest[k], t[k])).map((k) => [k, [t[k] ?? null, rest[k] ?? null]]));
+        if (Object.keys(changes).length) {
+          db.admin_log.unshift({ id: Date.now(), tournament_id: id, title: rest.title || t.title, organizer_id: t.organizer_id, action: 'update',
+            changes, reason: null, created_at: new Date().toISOString(), actor_nick: db.profiles[ME].nickname });
+        }
+      }
       formatRules(Object.assign(t, rest));
       if (divisions) saveDivisions(id, divisions);
       if (sponsors) {
@@ -297,6 +314,23 @@ export function createDemoBackend({ photos } = {}) {
       db.entries = db.entries.filter((x) => x.tournament_id !== id);
       db.divisions = db.divisions.filter((x) => x.tournament_id !== id);
       save();
+    },
+    async adminDeleteTournament(id, reason) {
+      if (!isTournamentAdmin()) throw new Error('Neturi teisės šalinti turnyrų');
+      const why = String(reason || '').trim().slice(0, 300);
+      if (why.length < 5) throw new Error('Nurodyk priežastį (bent 5 simboliai)');
+      const t = db.tournaments.find((x) => x.id === id);
+      if (!t) throw new Error('Turnyras jau pašalintas');
+      db.admin_log.unshift({ id: Date.now(), tournament_id: id, title: t.title, organizer_id: t.organizer_id, action: 'delete',
+        changes: { entries: db.entries.filter((e) => e.tournament_id === id).length }, reason: why,
+        created_at: new Date().toISOString(), actor_nick: db.profiles[ME].nickname });
+      db.tournaments = db.tournaments.filter((x) => x.id !== id);
+      for (const k of ['tournament_species', 'tournament_sponsors', 'entries', 'divisions', 'announcements']) db[k] = db[k].filter((x) => x.tournament_id !== id);
+      save();
+    },
+    async tournamentAdminLog() {
+      if (!isTournamentAdmin()) throw new Error('Neturi teisės');
+      return db.admin_log.slice(0, 100);
     },
     async getInvite(code) {
       const t = db.tournaments.find((x) => x.invite_code === String(code).trim().toLowerCase() && registrationOpen(x));

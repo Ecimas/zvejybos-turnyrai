@@ -6,7 +6,7 @@ import { roundName } from '../lib/duels.js';
 import { phaseBadge, statusChip, backButton, thumb, hydratePhotos, empty, avatar, loginPrompt, notFound } from '../ui.js';
 import { eur, placeAmounts, payouts } from '../lib/prizes.js';
 import { lastSeen, markSeen } from '../lib/seen.js';
-import { isStaff } from '../lib/roles.js';
+import { isStaff, can } from '../lib/roles.js';
 
 // Organizatoriaus pranešimai dalyviams: rašo organizatorius, mato visi, kas mato turnyrą.
 function announcementsBlock(t, list, organizer, seenBefore) {
@@ -141,6 +141,7 @@ export async function tournamentView(ctx, [id]) {
     .slice(0, 8);
   const cd = countdown(t);
 
+  const tAdmin = can(state, 'tournaments');
   const spName = (sid) => state.species.find((s) => s.id === sid)?.name_lt ?? '';
   const divisions = t.divisions || [];
   const myDivision = divisions.find((d) => d.id === t.my_division_id);
@@ -188,9 +189,10 @@ export async function tournamentView(ctx, [id]) {
 
       ${p === 'done' && !hidden ? winners(t, board, me) : ''}
 
-      ${organizer || (t.visibility === 'private' && t.joined) ? html`<section class="row gap-10 wrap">
-        ${t.invite_code && p !== 'done' ? html`<button class="btn" data-invite>${icon('users', 18)}Kviesti draugus</button>` : ''}
-        ${organizer && p === 'soon' ? html`<a class="btn" href="#/t/${t.id}/redaguoti">${icon('edit', 18)}Redaguoti</a>` : ''}
+      ${organizer || (t.visibility === 'private' && t.joined) || tAdmin ? html`<section class="row gap-10 wrap">
+        ${t.invite_code && p !== 'done' && (organizer || (t.visibility === 'private' && t.joined)) ? html`<button class="btn" data-invite>${icon('users', 18)}Kviesti draugus</button>` : ''}
+        ${organizer && p === 'soon' ? html`<a class="btn" href="#/t/${t.id}/redaguoti">${icon('edit', 18)}Redaguoti</a>`
+          : tAdmin ? html`<a class="btn" href="#/t/${t.id}/redaguoti" data-admin-edit>${icon('shield', 18)}Tvarkyti (administratorius)</a>` : ''}
       </section>` : ''}
 
       ${announcementsBlock(t, anns, organizer, seenBefore)}

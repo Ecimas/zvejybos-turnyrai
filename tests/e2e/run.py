@@ -370,6 +370,46 @@ def stats_demo_test(page, base):
     step("statistika: vartotojai, aktyvūs, registracijų grafikas, telefonų modeliai")
 
 
+def admin_demo_test(page, base):
+    # Demo žvejys – savininkas, todėl turi teisę tvarkyti bet kurį turnyrą (0026)
+    page.goto(base + "#/t/t-sezonas")
+    page.get_by_role("link", name="Tvarkyti (administratorius)").click()
+    expect(page.locator("[data-admin-note]")).to_contain_text("Turnyras jau prasidėjo")
+    expect(page.get_by_role("button", name="Dvikovos")).to_be_disabled()
+    expect(page.get_by_role("button", name="Pridėti divizioną")).to_be_disabled()
+    expect(page.locator("input[name=starts_at]")).to_be_disabled()
+    expect(page.locator("input[name=min_cm]")).to_be_disabled()
+    expect(page.locator("input[name=title]")).to_be_enabled()
+    page.locator("input[name=title]").fill("Sezono iššūkis 2026")
+    page.locator("textarea[name=description]").fill("Taisyklės patikslintos administratoriaus.")
+    shot(page, "admin-redagavimas")
+    page.get_by_role("button", name="Išsaugoti pakeitimus").click()
+    expect(page.locator("#toast")).to_have_text("Pakeitimai išsaugoti")
+    expect(page.get_by_role("heading", name="Sezono iššūkis 2026")).to_be_visible()
+    t = page.evaluate("() => JSON.parse(localStorage.getItem('zt-demo-v1')).tournaments.find(t => t.id === 't-sezonas')")
+    assert t["format"] == "biggest" and t["team_mode"] is True, f"užrakintos taisyklės pasikeitė: {t}"
+    step("administratorius taiso vykstantį turnyrą – taisyklės užrakintos")
+
+    page.goto(base + "#/t/t-plesrunai")
+    page.get_by_role("link", name="Tvarkyti (administratorius)").click()
+    page.get_by_role("button", name="Pašalinti turnyrą").click()
+    page.locator("[data-del-reason]").fill("abc")
+    page.get_by_role("button", name="Pašalinti galutinai").click()
+    expect(page.locator("[data-error]")).to_contain_text("bent 5 simboliai")
+    page.locator("[data-del-reason]").fill("Bandomasis turnyras, dalyvių skundai")
+    page.get_by_role("button", name="Pašalinti galutinai").click()
+    expect(page.locator("#toast")).to_have_text("Turnyras pašalintas")
+    expect(page.get_by_text("Rugsėjo plėšrūnai")).to_have_count(0)
+    page.goto(base + "#/moderavimas/turnyrai")
+    expect(page.locator("[data-log-row=delete]")).to_contain_text("Rugsėjo plėšrūnai")
+    expect(page.locator("[data-log-row=delete]")).to_contain_text("Bandomasis turnyras, dalyvių skundai")
+    expect(page.locator("[data-log-row=update]")).to_contain_text("Sezono iššūkis 2026")
+    expect(page.locator("[data-log-row=update]")).to_contain_text("Pavadinimas")
+    expect(page.locator("[data-log-row=update]")).not_to_contain_text("Pabaiga")  # nepakeistas laikas – ne pakeitimas
+    shot(page, "admin-zurnalas")
+    step("administratorius pašalina turnyrą su priežastimi, žurnalas")
+
+
 def map_demo_test(page, base):
     page.goto(base + "#/profilis")
     page.get_by_role("link", name="Mano laimikių žemėlapis").click()
@@ -552,8 +592,9 @@ def extra_demo_tests(page, base, meteo_calls):
     page.get_by_role("button", name="Ištrinti turnyrą").click()
     expect(page.locator("#toast")).to_have_text("Turnyras ištrintas")
     assert page.evaluate("(id) => JSON.parse(localStorage.getItem('zt-demo-v1')).tournaments.some(t => t.id === id)", tid) is False
+    # Demo žvejys – savininkas: svetimą vykstantį turnyrą gali tvarkyti tik kaip administratorius (taisyklės užrakintos)
     page.goto(base + "#/t/t-taure/redaguoti")
-    expect(page.get_by_text("Redaguoti negalima")).to_be_visible()
+    expect(page.locator("[data-admin-note]")).to_contain_text("Redaguoji kaip administratorius")
     step("turnyro redagavimas ir ištrynimas iki starto, prasidėjusio – ne")
 
     # Kvietimai
@@ -915,6 +956,7 @@ def main():
         social_demo_test(page, base)
         formats_demo_test(page, base)
         stats_demo_test(page, base)
+        admin_demo_test(page, base)
 
         ctx.close()
 

@@ -172,7 +172,9 @@ export async function createSupabaseBackend(url, anonKey) {
         sb.from('tournaments').select(TOURNAMENT_SEL).order('starts_at'),
         myEntries()
       ]);
-      return check(rows).map((t) => decorate(t, mine));
+      // Administratorius per RLS mato ir privačius turnyrus (0026) – sąraše rodom tik savo privačius.
+      return check(rows).map((t) => decorate(t, mine))
+        .filter((t) => t.visibility !== 'private' || t.joined || t.organizer_id === user?.id);
     },
     async tournament(id) {
       const [row, mine] = await Promise.all([
@@ -201,7 +203,8 @@ export async function createSupabaseBackend(url, anonKey) {
       const { species_ids, species_pct = {}, sponsors, divisions, ...rest } = data;
       const before = divisions ? check(await sb.from('tournament_divisions').select('id, name, sort').eq('tournament_id', id)) : [];
       const { data: rows, error } = await sb.from('tournaments').update(rest).eq('id', id).select('id');
-      if (error) throw friendly(error, [[/league_owner/, 'Į lygą gali įtraukti tik lygos savininkas']]);
+      if (error) throw friendly(error, [[/league_owner/, 'Į lygą gali įtraukti tik lygos savininkas'],
+        [/started_rules_locked/, 'Prasidėjusio turnyro taisyklių keisti negalima'], [/ends_in_past/, 'Pabaiga negali būti praeityje']]);
       if (!rows?.length) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
       if (species_ids) {
         check(await sb.from('tournament_species').delete().eq('tournament_id', id));
@@ -220,6 +223,18 @@ export async function createSupabaseBackend(url, anonKey) {
     async deleteTournament(id) {
       const rows = check(await sb.from('tournaments').delete().eq('id', id).select('id'));
       if (!rows?.length) throw new Error('Prasidėjusio turnyro ištrinti negalima');
+    },
+    // Administratorius (0026): pašalina bet kurį turnyrą, priežastį gauna dalyviai.
+    async adminDeleteTournament(id, reason) {
+      const { error } = await sb.rpc('admin_delete_tournament', { p_id: id, p_reason: reason });
+      if (error) throw friendly(error, [[/reason_required/, 'Nurodyk priežastį (bent 5 simboliai)'], [/not allowed/, 'Neturi teisės šalinti turnyrų'],
+        [/not_found/, 'Turnyras jau pašalintas']], 'Nepavyko pašalinti turnyro');
+    },
+    async tournamentAdminLog() {
+      const rows = check(await sb.from('tournament_admin_log')
+        .select('id, tournament_id, title, organizer_id, action, changes, reason, created_at, actor:profiles!tournament_admin_log_actor_id_fkey(nickname)')
+        .order('created_at', { ascending: false }).limit(100));
+      return rows.map(({ actor, ...r }) => ({ ...r, actor_nick: actor?.nickname ?? '' }));
     },
     async getInvite(code) {
       const rows = check(await sb.rpc('get_invite', { p_code: code }));
