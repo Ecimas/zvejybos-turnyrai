@@ -6,6 +6,7 @@ import { computeBadges } from '../lib/badges.js';
 import { weatherEnabled } from './capture.js';
 import { BAN_DAYS, BAN_REASONS, banUntilText } from '../lib/bans.js';
 import { permsOf, rolesOf, roleLabel, isStaff, can } from '../lib/roles.js';
+import { pushSupport, currentSubscription, enablePush, disablePush, NOTIFY_KINDS } from '../lib/push.js';
 
 function badges(catches, tcount) {
   const list = computeBadges(catches, tcount);
@@ -153,6 +154,11 @@ export async function profileView(ctx) {
       ${records(s)}
       ${badges(catches, tcount)}
 
+      <section class="card stack push-card" data-push aria-labelledby="push-h">
+        <h2 class="h2 row gap-8" id="push-h">${icon('bell', 20)}Pranešimai į telefoną</h2>
+        <p class="small muted" data-push-body>Tikrinama…</p>
+      </section>
+
       <section class="stack">
         <h2 class="h2">Daugiau</h2>
         <div class="list">
@@ -191,6 +197,7 @@ export async function profileView(ctx) {
     </div>`,
     mount(root) {
       hydratePhotos(root, backend);
+      mountPush(root.querySelector('[data-push]'), ctx);
       const form = root.querySelector('[data-form]');
       root.querySelector('[data-edit]')?.addEventListener('click', () => { form.hidden = !form.hidden; if (!form.hidden) form.nickname.focus(); });
       root.querySelector('[data-pick-nick]')?.addEventListener('click', () => {
@@ -394,4 +401,67 @@ function roleBadges(p) {
   const roles = rolesOf(p);
   if (!roles.length) return '';
   return html`<span class="row gap-8 wrap" data-roles>${roles.map((r) => html`<span class="badge badge-role">${icon('shield', 12, 2.6)}${roleLabel(r)}</span>`)}</span>`;
+}
+
+// Push pranešimų kortelė: būsena šiame telefone, įjungimas, rūšys, bandomasis pranešimas.
+async function mountPush(card, ctx) {
+  if (!card) return;
+  const { backend } = ctx;
+  const head = html`<h2 class="h2 row gap-8" id="push-h">${icon('bell', 20)}Pranešimai į telefoną</h2>`;
+  const support = pushSupport();
+  const say = (text) => { card.innerHTML = String(html`${head}<p class="small muted" data-push-body>${text}</p>`); };
+  if (support === 'unsupported') return say('Ši naršyklė pranešimų nepalaiko. Atidaryk programėlę per Chrome (Android) arba įdiegtą į pradžios ekraną (iPhone).');
+  if (support === 'ios-install') return say('iPhone telefone pranešimai veikia tik įdiegtoje programėlėje: Safari → Bendrinti → „Pridėti į pradžios ekraną“, tada atidaryk ją iš pradžios ekrano.');
+  if (support === 'denied') return say('Pranešimai užblokuoti telefono nustatymuose. Leisk juos šios svetainės nustatymuose ir grįžk čia.');
+  const [sub, settings] = await Promise.all([currentSubscription(), backend.notificationSettings().catch(() => null)]);
+  if (!card.isConnected) return;
+  const on = !!sub;
+  const s = settings || { review: true, overtaken: true, start: true, announcements: true };
+  const inner = on
+    ? html`<p class="small ok strong" data-push-state>Įjungta šiame telefone</p>
+      <div class="stack-1">${NOTIFY_KINDS.map(([k, label]) => html`<label class="check-row"><input type="checkbox" data-kind="${k}" ${s[k] ? 'checked' : ''}><span>${label}</span></label>`)}</div>
+      <div class="row gap-8 wrap">
+        <button class="btn btn-ghost" type="button" data-push-test>Siųsti bandomąjį</button>
+        <button class="btn-text" type="button" data-push-off>Išjungti šiame telefone</button>
+      </div>`
+    : html`<p class="small muted" data-push-state>Sužinok iškart, kai laimikis patvirtinamas, kai kas nors tave aplenkia ar rytoj startuoja turnyras.</p>
+      <button class="btn btn-primary" type="button" data-push-on>${icon('bell', 18)}Įjungti pranešimus</button>`;
+  card.innerHTML = String(html`${head}${inner}`);
+  card.querySelector('[data-push-on]')?.addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      await enablePush(backend);
+      ctx.toast('Pranešimai įjungti');
+    } catch (err) {
+      ctx.toast(err.message || 'Nepavyko įjungti pranešimų');
+    }
+    mountPush(card, ctx);
+  });
+  card.querySelector('[data-push-off]')?.addEventListener('click', async () => {
+    await disablePush(backend);
+    ctx.toast('Pranešimai šiame telefone išjungti');
+    mountPush(card, ctx);
+  });
+  card.querySelector('[data-push-test]')?.addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      const queued = await backend.sendTestPush();
+      ctx.toast(queued ? 'Išsiųsta – pranešimas ateis per kelias sekundes' : 'Šis telefonas neužregistruotas – išjunk ir vėl įjunk');
+    } catch {
+      ctx.toast('Nepavyko išsiųsti');
+    }
+    setTimeout(() => { if (e.target.isConnected) e.target.disabled = false; }, 30000);
+  });
+  card.querySelectorAll('[data-kind]').forEach((cb) => cb.addEventListener('change', async () => {
+    const next = { ...s };
+    card.querySelectorAll('[data-kind]').forEach((x) => { next[x.dataset.kind] = x.checked; });
+    try {
+      await backend.saveNotificationSettings(next);
+      Object.assign(s, next);
+      ctx.toast('Išsaugota');
+    } catch {
+      cb.checked = !cb.checked;
+      ctx.toast('Nepavyko išsaugoti');
+    }
+  }));
 }

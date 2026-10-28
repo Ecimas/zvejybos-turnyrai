@@ -142,6 +142,10 @@ select who, format('update %I.%I set %I = %I where %s', s, t, c.column_name, c.c
                ('public', 'tournament_announcements', $$true$$),
                ('public', 'user_bans',       $$true$$),
                ('public', 'role_changes',    $$true$$),
+               ('public', 'push_subscriptions', $$true$$),
+               ('public', 'notification_settings', $$user_id = 'b0000000-0000-4000-8000-00000000000b'$$),
+               ('public', 'notification_outbox', $$true$$),
+               ('public', 'tournament_ranks', $$true$$),
                ('storage', 'objects',        $$name like 'b0000000-%'$$)) as x(s, t, w)
   join information_schema.columns c on c.table_schema = x.s and c.table_name = x.t
  cross join (values ('anon'), ('A')) as who(who);
@@ -165,6 +169,8 @@ insert into pg_temp.attempts (who, sql, kind) values
   ('B', $$update public.profiles set trust_score = 100 where id = 'b0000000-0000-4000-8000-00000000000b'$$, 'nochange'),
   ('B', $$update public.profiles set roles = array['owner'] where id = 'b0000000-0000-4000-8000-00000000000b'$$, 'nochange'),
   ('B', $$insert into public.role_changes (user_id, role, granted) values ('b0000000-0000-4000-8000-00000000000b', 'owner', true)$$, 'error'),
+  ('B', $$insert into public.notification_outbox (user_id, kind, title, body, dedupe) values ('a0000000-0000-4000-8000-00000000000a', 'test', 'x', 'y', 'fuzz-b')$$, 'error'),
+  ('B', $$insert into public.notification_settings (user_id, review) values ('a0000000-0000-4000-8000-00000000000a', false)$$, 'error'),
   ('B', $$update public.catches set status = 'approved' where user_id = 'b0000000-0000-4000-8000-00000000000b'$$, 'nochange'),
   ('B', $$update public.catches set length_mm = 2000 where user_id = 'b0000000-0000-4000-8000-00000000000b'$$, 'nochange'),
   ('B', $$update public.catches set captured_at_device = now() where user_id = 'b0000000-0000-4000-8000-00000000000b'$$, 'nochange'),
@@ -193,6 +199,10 @@ select who, format('delete from %I.%I where %s', s, t, w), 'nochange'
                ('public', 'species', $$true$$),
                ('public', 'user_bans', $$true$$),
                ('public', 'role_changes', $$true$$),
+               ('public', 'push_subscriptions', $$true$$),
+               ('public', 'notification_settings', $$true$$),
+               ('public', 'notification_outbox', $$true$$),
+               ('public', 'tournament_ranks', $$true$$),
                ('storage', 'objects', $$true$$)) as x(s, t, w)
  cross join (values ('anon'), ('A'), ('B')) as who(who)
  where not (who = 'B' and t in ('tournaments', 'tournament_species', 'tournament_sponsors', 'entries', 'tournament_announcements', 'blank_trips')); -- B savo būsimą turnyrą trinti gali
@@ -244,6 +254,10 @@ select who, q, 'zero' from (values
   ($$select count(*) from public.blank_trips$$),
   ($$select count(*) from public.user_bans where user_id is distinct from auth.uid()$$),
   ($$select count(*) from public.role_changes$$),
+  ($$select count(*) from public.push_subscriptions where user_id is distinct from auth.uid()$$),
+  ($$select count(*) from public.notification_settings where user_id is distinct from auth.uid()$$),
+  ($$select count(*) from public.notification_outbox$$),
+  ($$select count(*) from public.tournament_ranks$$),
   ($$select count(*) from public.tournament_announcements a join public.tournaments t on t.id = a.tournament_id where t.visibility = 'private'$$)
 ) as q(q) cross join (values ('anon'), ('A')) as who(who);
 -- privatūs stulpeliai: kito žmogaus masalas ir pastabos (net patvirtinto laimikio)
@@ -272,7 +286,14 @@ select who, q, 'error' from (values
   ($$select public.unban_user('b0000000-0000-4000-8000-00000000000b')$$),
   ($$select public.reset_nickname('b0000000-0000-4000-8000-00000000000b')$$),
   ($$select public.set_role('fa', 'admin', true)$$),
-  ($$select public.set_role('fb', 'moderator', true)$$)
+  ($$select public.set_role('fb', 'moderator', true)$$),
+  ($$select public.push_claim(10)$$),
+  ($$select public.push_config()$$),
+  ($$select public.push_done('[]'::jsonb, array['https://push.example.com/b'])$$),
+  ($$select public.notify_user('b0000000-0000-4000-8000-00000000000b', 'test', 'x', 'y', '#/', 'fuzz')$$),
+  ($$select public.notify_upcoming_starts()$$),
+  ($$select public.refresh_ranks((select id from fx where k = 'b_pub'), null, null)$$),
+  ($$select count(*) from public.leaderboard_all((select id from fx where k = 'b_priv'))$$)
 ) as q(q) cross join (values ('anon'), ('A')) as who(who);
 insert into pg_temp.attempts (who, sql, kind) values
   ('anon', $$select public.join_with_invite((select invite_code from public.tournaments limit 1))$$, 'error'),

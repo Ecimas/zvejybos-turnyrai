@@ -372,6 +372,13 @@ export function createDemoBackend({ photos } = {}) {
       save();
     },
 
+    async pushPublicKey() { return null; },
+    async savePushSubscription() {},
+    async removePushSubscription() {},
+    async notificationSettings() { return { review: true, overtaken: true, start: true, announcements: true, ...(db.notify || {}) }; },
+    async saveNotificationSettings(s) { db.notify = { ...s }; save(); },
+    async sendTestPush() { return false; },
+
     async myBan() {
       const b = db.bans.find((x) => x.user_id === ME);
       return banActive(b) ? b : null;

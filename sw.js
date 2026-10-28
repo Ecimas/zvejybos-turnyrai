@@ -1,6 +1,6 @@
 // Service worker: programėlės apvalkalas veikia ir be ryšio.
 // API užklausų (Supabase) nesaugo – jos visada eina į tinklą.
-const VERSION = 'zt-v14';
+const VERSION = 'zt-v15';
 const SHELL = [
   './',
   'index.html',
@@ -25,6 +25,7 @@ const SHELL = [
   'src/lib/seen.js',
   'src/lib/bans.js',
   'src/lib/roles.js',
+  'src/lib/push.js',
   'src/backend/index.js',
   'src/backend/demo.js',
   'src/backend/supabase.js',
@@ -53,6 +54,39 @@ self.addEventListener('activate', (e) => {
       .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+// Push pranešimas: { title, body, url, tag } (siunčia Supabase funkcija send-push).
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { title: 'Žvejybos turnyrai', body: e.data ? e.data.text() : '' }; }
+  const url = typeof d.url === 'string' && /^#\/[\w\-/]*$/.test(d.url) ? d.url : '#/';
+  e.waitUntil(self.registration.showNotification(d.title || 'Žvejybos turnyrai', {
+    body: d.body || '',
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    tag: d.tag || undefined,
+    data: { url },
+    lang: 'lt'
+  }));
+});
+
+// Paspaudus pranešimą – atidaroma (arba parodoma jau atidaryta) programėlė reikiamame puslapyje.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const target = new URL(self.registration.scope);
+  target.hash = (e.notification.data && e.notification.data.url) || '#/';
+  e.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const w of wins) {
+      if (new URL(w.url).origin === target.origin) {
+        await w.focus();
+        if ('navigate' in w) return w.navigate(target.href);
+        return undefined;
+      }
+    }
+    return self.clients.openWindow(target.href);
+  })());
 });
 
 self.addEventListener('fetch', (e) => {

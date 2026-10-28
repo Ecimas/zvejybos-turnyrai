@@ -461,6 +461,63 @@ def google_login_test(page, base, auth_settings):
     step("prisijungimas su Google: mygtukas tik įjungus, grįžimas, slapyvardžio pasirinkimas")
 
 
+# Telefono pranešimų sistemos imitacija (Playwright neturi tikros push tarnybos).
+PUSH_STUB = """(() => {
+  try { sessionStorage.length; } catch { return; }  // about:blank – be saugyklos
+  const sub = { endpoint: 'https://push.example.com/e2e-1', options: {},
+    toJSON() { return { endpoint: this.endpoint, keys: { p256dh: 'B' + 'x'.repeat(86), auth: 'a'.repeat(22) } }; },
+    unsubscribe: async () => { window.__pushSub = null; sessionStorage.removeItem('__pushSub'); return true; } };
+  window.__pushSub = sessionStorage.getItem('__pushSub') ? sub : null;
+  const reg = { pushManager: {
+    getSubscription: async () => window.__pushSub,
+    subscribe: async (o) => { sub.options = { applicationServerKey: o.applicationServerKey.buffer }; window.__pushKey = Array.from(o.applicationServerKey); window.__pushSub = sub; sessionStorage.setItem('__pushSub', '1'); return sub; } } };
+  window.PushManager = window.PushManager || function () {};
+  window.Notification = { permission: 'default', requestPermission: async () => (window.Notification.permission = window.__denyPush ? 'denied' : 'granted') };
+  Object.defineProperty(navigator, 'serviceWorker', { configurable: true,
+    value: { ready: Promise.resolve(reg), register: async () => reg, addEventListener() {}, controller: null } });
+})();"""
+
+
+def push_test(page, base):
+    me = fake(page, "return db.profiles.find(p => p.nickname === 'Google_Zvejys').id;")
+    go(page, base + "#/profilis")
+    card = page.locator("[data-push]")
+    expect(card.get_by_role("heading", name="Pranešimai į telefoną")).to_be_visible()
+    card.get_by_role("button", name="Įjungti pranešimus").click()
+    expect(page.locator("#toast")).to_have_text("Pranešimai įjungti")
+    expect(card.locator("[data-push-state]")).to_have_text("Įjungta šiame telefone")
+    subs = fake(page, "return db.push_subscriptions.filter(s => !s.gone_at);")
+    assert len(subs) == 1 and subs[0]["user_id"] == me and subs[0]["endpoint"] == "https://push.example.com/e2e-1", subs
+    key = page.evaluate("() => window.__pushKey")
+    assert len(key) == 65, "applicationServerKey turi būti 65 baitai"
+    # Rūšies išjungimas išsaugomas serveryje
+    card.get_by_label("Tave aplenkė lentelėje").uncheck()
+    expect(page.locator("#toast")).to_have_text("Išsaugota")
+    st = fake(page, "return db.notification_settings.find(s => s.user_id === arg);", me)
+    assert st["overtaken"] is False and st["review"] is True, st
+    card.get_by_label("Laimikis patvirtintas arba atmestas").uncheck()
+    expect(page.locator("#toast")).to_have_text("Išsaugota")
+    assert fake(page, "return db.notification_settings.filter(s => s.user_id === arg).length;", me) == 1, "turi būti viena eilutė"
+    # Po perkrovimo nustatymai išlieka
+    page.reload()
+    card = page.locator("[data-push]")
+    expect(card.get_by_label("Tave aplenkė lentelėje")).not_to_be_checked()
+    expect(card.get_by_label("Rytoj startas turnyro, kuriame dalyvauji")).to_be_checked()
+    card.get_by_role("button", name="Siųsti bandomąjį").click()
+    expect(page.locator("#toast")).to_have_text("Išsiųsta – pranešimas ateis per kelias sekundes")
+    card.get_by_role("button", name="Išjungti šiame telefone").click()
+    expect(page.locator("#toast")).to_have_text("Pranešimai šiame telefone išjungti")
+    expect(card.get_by_role("button", name="Įjungti pranešimus")).to_be_visible()
+    assert fake(page, "return db.push_subscriptions.filter(s => !s.gone_at).length;") == 0
+    # Atsisakius leidimo – aiškus pranešimas, niekas neišsaugoma
+    page.evaluate("() => { window.__denyPush = true; }")
+    card.get_by_role("button", name="Įjungti pranešimus").click()
+    expect(page.locator("#toast")).to_have_text("Pranešimai užblokuoti telefono nustatymuose")
+    expect(card).to_contain_text("Pranešimai užblokuoti telefono nustatymuose. Leisk juos")
+    assert fake(page, "return db.push_subscriptions.filter(s => !s.gone_at).length;") == 0
+    step("pranešimai: įjungimas, rūšys išsaugomos, bandomasis, išjungimas, atsisakytas leidimas")
+
+
 def main():
     httpd, base = base_mod.serve()
     errors = []
@@ -473,6 +530,7 @@ def main():
             locale="lt-LT", timezone_id="Europe/Vilnius",
         )
         ctx.add_init_script(f"window.__appBase = {base!r};")
+        ctx.add_init_script(PUSH_STUB)
         ctx.route(re.compile(r"https://fonts\.(googleapis|gstatic)\.com/.*"), lambda r: r.abort())
         ctx.route(CDN, lambda r: r.fulfill(status=200, content_type="text/javascript",
                                            headers={"Access-Control-Allow-Origin": "*"}, body=FAKE))
@@ -641,6 +699,7 @@ def main():
 
         more_real_tests(page, base)
         google_login_test(page, base, auth_settings)
+        push_test(page, base)
 
         browser.close()
     httpd.shutdown()

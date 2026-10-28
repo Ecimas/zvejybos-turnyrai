@@ -689,6 +689,40 @@ def main():
         ctx3.close()
         step("veikia be interneto (service worker)")
 
+        # 12. Push pranešimas per tikrą service worker (Chrome DevTools: deliverPushMessage)
+        # (pilnas Chromium – „headless shell“ pranešimų nepalaiko)
+        origin = re.match(r"https?://[^/]+", base).group(0)
+        full = p.chromium.launch(channel="chromium")
+        ctx4 = full.new_context(viewport={"width": 390, "height": 844})
+        ctx4.grant_permissions(["notifications"], origin=origin)
+        p4 = ctx4.new_page()
+        p4.route(re.compile(r"https://fonts\..*"), lambda r: r.abort())
+        p4.goto(base)
+        p4.evaluate("() => navigator.serviceWorker.ready")
+        cdp = ctx4.new_cdp_session(p4)
+        regs = []
+        cdp.on("ServiceWorker.workerRegistrationUpdated", lambda ev: regs.extend(ev["registrations"]))
+        cdp.send("ServiceWorker.enable")
+        p4.wait_for_timeout(500)
+        reg_id = next(r["registrationId"] for r in regs if not r.get("isDeleted"))
+        msgs = [{"title": "Laimikis patvirtintas", "body": "Lydeka 92,5 cm – įskaityta", "url": "#/l/abc-1", "tag": "review-1"},
+                {"title": "Kenkėjas", "body": "x", "url": "javascript:alert(1)", "tag": "bad-1"}]
+        for m in msgs:
+            cdp.send("ServiceWorker.deliverPushMessage", {"origin": origin, "registrationId": reg_id, "data": json.dumps(m)})
+        notes = []
+        for _ in range(50):  # iki 5 s
+            notes = p4.evaluate("""async () => (await (await navigator.serviceWorker.ready).getNotifications())
+                .map(n => ({ title: n.title, body: n.body, tag: n.tag, url: n.data && n.data.url }))""")
+            if len(notes) >= 2:
+                break
+            p4.wait_for_timeout(100)
+        by_tag = {n["tag"]: n for n in notes}
+        assert by_tag["review-1"] == {"title": "Laimikis patvirtintas", "body": "Lydeka 92,5 cm – įskaityta", "tag": "review-1", "url": "#/l/abc-1"}, notes
+        assert by_tag["bad-1"]["url"] == "#/", "nesaugi nuoroda turi būti pakeista į #/"
+        ctx4.close()
+        full.close()
+        step("push pranešimas parodomas per tikrą service worker, nuorodos saugios")
+
         browser.close()
     httpd.shutdown()
 

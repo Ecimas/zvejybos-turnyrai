@@ -30,7 +30,7 @@ function page(title, body) {
 
 export async function privacyView() {
   return page('Privatumo politika', html`
-    <p class="muted small">Atnaujinta 2026 m. spalio 27 d.</p>
+    <p class="muted small">Atnaujinta 2026 m. spalio 28 d.</p>
     <h2 class="h2">Kas tvarko duomenis</h2>
     <p>Programėlę „Žvejybos turnyrai“ valdo jos kūrėjas (toliau – „mes“). Klausimai ir prašymai: ${contact()}.</p>
     <h2 class="h2">Kokius duomenis renkame ir kodėl</h2>
@@ -41,6 +41,7 @@ export async function privacyView() {
       <li><strong>Tikslią vietą (GPS)</strong> – tik sąžiningumo patikrai. Ją mato tik moderatoriai, ji niekada nerodoma kitiems ir automatiškai ištrinama praėjus 90 dienų po turnyro pabaigos.</li>
       <li><strong>Orą</strong> (temperatūra, vėjas, slėgis) – užklausiame Open-Meteo pagal suapvalintą (~100 m) vietą ir išsaugome prie laimikio. Išjungti galima profilyje.</li>
       <li><strong>Masalą ir pastabas</strong> – jei įrašai; matomi tik tau.</li>
+      <li><strong>Pranešimų prenumeratą</strong> – jei įjungi pranešimus: telefono naršyklės suteiktą adresą, kuriuo siunčiame žinutes apie laimikius ir turnyrus. Išjungus pranešimus adresas nebenaudojamas. Pranešimų turinys šifruojamas.</li>
     </ul>
     <p>Teisinis pagrindas – sutartis (turnyrų paslauga, kurią užsisakai prisijungdamas) ir teisėtas interesas užtikrinti sąžiningas varžybas.</p>
     <h2 class="h2">Kur saugoma</h2>

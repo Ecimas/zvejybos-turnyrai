@@ -368,6 +368,32 @@ export async function createSupabaseBackend(url, anonKey) {
       }
     },
 
+    // Push pranešimai (0015–0016).
+    async pushPublicKey() {
+      const { data, error } = await sb.rpc('push_public_key');
+      return error ? null : data;
+    },
+    async savePushSubscription({ endpoint, p256dh, auth }) {
+      check(await sb.rpc('save_push_subscription', { p_endpoint: endpoint, p_p256dh: p256dh, p_auth: auth }));
+    },
+    async removePushSubscription(endpoint) {
+      check(await sb.rpc('remove_push_subscription', { p_endpoint: endpoint }));
+    },
+    async notificationSettings() {
+      const def = { review: true, overtaken: true, start: true, announcements: true };
+      if (!user) return def;
+      const { data, error } = await sb.from('notification_settings').select('review, overtaken, start, announcements').eq('user_id', user.id).maybeSingle();
+      return error || !data ? def : data;
+    },
+    async saveNotificationSettings(s) {
+      const row = { review: !!s.review, overtaken: !!s.overtaken, start: !!s.start, announcements: !!s.announcements, updated_at: new Date().toISOString() };
+      const rows = check(await sb.from('notification_settings').update(row).eq('user_id', user.id).select('user_id'));
+      if (!rows?.length) check(await sb.from('notification_settings').insert(row));
+    },
+    async sendTestPush() {
+      return check(await sb.rpc('send_test_push'));
+    },
+
     // Blokavimai (0013). Jei lentelės serveryje dar nėra – blokavimų tiesiog nėra.
     async myBan() {
       if (!user) return null;

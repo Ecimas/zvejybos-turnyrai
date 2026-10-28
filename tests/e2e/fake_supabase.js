@@ -40,6 +40,8 @@ function seed() {
     }],
     tournament_species: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', species_id: 1 }],
     user_bans: [],
+    push_subscriptions: [],
+    notification_settings: [],
     entries: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', user_id: other, joined_at: iso(-20 * H) },
       { tournament_id: 'tttttttt-0000-4000-8000-000000000002', user_id: other, joined_at: iso(-20 * H) }],
     catches: [{
@@ -86,6 +88,9 @@ const PERMS = { owner: ['review', 'disputes', 'ban', 'roles'], admin: ['review',
 const hasPerm = (perm) => myRoles().some((r) => PERMS[r]?.includes(perm));
 // 0013: aktyvus blokavimas
 db.user_bans ||= [];
+db.push_subscriptions ||= [];
+db.notification_settings ||= [];
+const FAKE_VAPID = 'B' + 'Q'.repeat(86);
 const bannedId = (id) => db.user_bans.some((b) => b.user_id === id && (!b.until || Date.parse(b.until) > Date.now()));
 const BAN_INSERT = ['catches', 'entries', 'tournaments', 'catch_reports', 'tournament_announcements', 'disputes'];
 
@@ -98,6 +103,7 @@ function visible(table, row) {
   if (table === 'disputes') return row.user_id === uid() || hasPerm('disputes');
   if (table === 'catch_reports') return row.reporter_id === uid() || hasPerm('disputes');
   if (table === 'user_bans') return !!uid() && (row.user_id === uid() || hasPerm('ban'));
+  if (table === 'push_subscriptions' || table === 'notification_settings') return !!uid() && row.user_id === uid();
   if (table === 'blank_trips') return row.user_id === uid();
   if (table === 'tournament_announcements') {
     const t = db.tournaments.find((x) => x.id === row.tournament_id);
@@ -186,6 +192,7 @@ function writable(table, row) {
   if (table === 'profiles') return row.id === uid();
   if (table === 'blank_trips') return row.user_id === uid();
   if (table === 'tournament_announcements') return row.author_id === uid();
+  if (table === 'notification_settings') return row.user_id === uid();
   return false;
 }
 
@@ -233,7 +240,12 @@ class Query {
     let data;
     if (this.op === 'insert') {
       if (!uid()) return { data: null, error: err('42501', 'new row violates row-level security policy') };
-      if (this.table === 'user_bans') return { data: null, error: err('42501', 'permission denied for table user_bans') };
+      if (this.table === 'user_bans' || this.table === 'push_subscriptions') return { data: null, error: err('42501', `permission denied for table ${this.table}`) };
+      if (this.table === 'notification_settings') {
+        if (this.rows.some((r) => r.user_id && r.user_id !== uid())) return { data: null, error: err('42501', 'rls notification_settings') };
+        if (db.notification_settings.some((x) => x.user_id === uid())) return { data: null, error: err('23505', 'duplicate key notification_settings_pkey') };
+        this.rows = this.rows.map((r) => ({ ...r, user_id: uid() }));
+      }
       if (BAN_INSERT.includes(this.table) && bannedId(uid())) {
         return { data: null, error: err('42501', `new row violates row-level security policy for table "${this.table}"`) };
       }
@@ -490,6 +502,27 @@ export function createClient(url, key) {
           .forEach((x) => Object.assign(x, { status: args.p_uphold ? 'upheld' : 'dismissed', resolved_by: uid() }));
         save();
         return { data: null, error: null };
+      }
+      if (name === 'push_public_key') return { data: FAKE_VAPID, error: null };
+      if (name === 'save_push_subscription') {
+        if (!uid()) return { data: null, error: err('42501', 'permission denied for function save_push_subscription') };
+        if (!/^https:\/\//.test(args.p_endpoint || '')) return { data: null, error: err('23514', 'check constraint endpoint') };
+        db.push_subscriptions = db.push_subscriptions.filter((s) => s.endpoint !== args.p_endpoint);
+        db.push_subscriptions.push({ id: uuid(), user_id: uid(), endpoint: args.p_endpoint, p256dh: args.p_p256dh, auth: args.p_auth, gone_at: null, created_at: new Date().toISOString() });
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'remove_push_subscription') {
+        db.push_subscriptions.filter((s) => s.endpoint === args.p_endpoint && s.user_id === uid()).forEach((s) => { s.gone_at = new Date().toISOString(); });
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'send_test_push') {
+        if (!uid()) return { data: null, error: err('P0001', 'not allowed') };
+        const has = db.push_subscriptions.some((s) => s.user_id === uid() && !s.gone_at);
+        if (has) (db.notification_outbox ||= []).push({ user_id: uid(), kind: 'test', title: 'Pranešimai veikia!' });
+        save();
+        return { data: has, error: null };
       }
       if (name === 'ban_user') {
         if (!hasPerm('ban')) return { data: null, error: err('P0001', 'not allowed') };
