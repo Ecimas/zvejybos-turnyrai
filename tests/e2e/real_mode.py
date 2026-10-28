@@ -518,6 +518,48 @@ def push_test(page, base):
     step("pranešimai: įjungimas, rūšys išsaugomos, bandomasis, išjungimas, atsisakytas leidimas")
 
 
+TURNSTILE_STUB = """window.turnstile = { n: 0, o: null,
+  render(el, o) { el.innerHTML = '<div class="ts-fake">Turnstile</div>'; this.o = o; setTimeout(() => o.callback('tok-' + (++this.n)), 50); return 'w1'; },
+  reset() { setTimeout(() => this.o.callback('tok-' + (++this.n)), 50); } };"""
+
+
+def captcha_test(page, base, ts_state):
+    # Be rakto apsaugos nėra: ankstesni prisijungimai be žetono
+    assert all(c["captchaToken"] is None for c in calls(page, "signInWithOtp")), "be rakto žetonas neturi būti siunčiamas"
+    go(page, base + "#/profilis")
+    page.get_by_role("button", name="Atsijungti").click()
+    # Įjungus raktą, bet nepavykus įkelti Cloudflare – aiškus pranešimas
+    ts_state["abort"] = True
+    page.goto("about:blank")
+    page.goto(base + "#/prisijungti")
+    expect(page.get_by_role("heading", name="Prisijungti")).to_be_visible()
+    page.evaluate("() => { window.__turnstileKey = '1x00000000000000000000AA'; window.__requireCaptcha = true; }")
+    go(page, base + "#/prisijungti")
+    page.get_by_label("El. paštas").fill("botas@pastas.lt")
+    page.get_by_role("button", name="Siųsti nuorodą").click()
+    expect(page.locator("#toast")).to_have_text("Nepavyko įkelti apsaugos nuo botų – patikrink ryšį")
+    assert not calls(page, "signInWithOtp", email="botas@pastas.lt"), "be žetono laiškas neturi būti siunčiamas"
+    # Veikiantis Turnstile: kiekvienam laiškui – naujas žetonas
+    ts_state["abort"] = False
+    page.goto("about:blank")
+    page.goto(base + "#/prisijungti")
+    expect(page.get_by_role("heading", name="Prisijungti")).to_be_visible()
+    page.evaluate("() => { window.__turnstileKey = '1x00000000000000000000AA'; window.__requireCaptcha = true; }")
+    go(page, base + "#/prisijungti")
+    expect(page.locator(".ts-fake")).to_be_visible()
+    page.get_by_label("El. paštas").fill("zmogus@pastas.lt")
+    page.get_by_role("button", name="Siųsti nuorodą").click()
+    expect(page.get_by_text("Patikrink el. paštą")).to_be_visible()
+    assert calls(page, "signInWithOtp", email="zmogus@pastas.lt")[-1]["captchaToken"] == "tok-1"
+    page.get_by_role("button", name="Kitas el. paštas").click()
+    page.get_by_label("El. paštas").fill("zmogus2@pastas.lt")
+    page.get_by_role("button", name="Siųsti nuorodą").click()
+    expect(page.get_by_text("Patikrink el. paštą")).to_be_visible()
+    assert calls(page, "signInWithOtp", email="zmogus2@pastas.lt")[-1]["captchaToken"] == "tok-2", "žetonas turi būti naujas"
+    page.evaluate("() => { delete window.__turnstileKey; window.__requireCaptcha = false; }")
+    step("apsauga nuo botų: žetonas siunčiamas su laišku, naujas kiekvienam, aiški klaida neįkėlus")
+
+
 def main():
     httpd, base = base_mod.serve()
     errors = []
@@ -531,6 +573,9 @@ def main():
         )
         ctx.add_init_script(f"window.__appBase = {base!r};")
         ctx.add_init_script(PUSH_STUB)
+        ts_state = {"abort": False}
+        ctx.route(re.compile(r"https://challenges\.cloudflare\.com/.*"), lambda r: r.abort() if ts_state["abort"] else r.fulfill(
+            status=200, content_type="text/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=TURNSTILE_STUB))
         ctx.route(re.compile(r"https://fonts\.(googleapis|gstatic)\.com/.*"), lambda r: r.abort())
         ctx.route(CDN, lambda r: r.fulfill(status=200, content_type="text/javascript",
                                            headers={"Access-Control-Allow-Origin": "*"}, body=FAKE))
@@ -543,7 +588,7 @@ def main():
         page = ctx.new_page()
         page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
         page.on("console", lambda m: m.type == "error"
-                and not re.search(r"fonts\.(googleapis|gstatic)", (m.location or {}).get("url", ""))
+                and not re.search(r"fonts\.(googleapis|gstatic)|challenges\.cloudflare\.com", (m.location or {}).get("url", ""))
                 and errors.append(f"console: {m.text} @ {(m.location or {}).get('url', '')}"))
         expect.set_options(timeout=8000)
 
@@ -700,6 +745,7 @@ def main():
         more_real_tests(page, base)
         google_login_test(page, base, auth_settings)
         push_test(page, base)
+        captcha_test(page, base, ts_state)
 
         browser.close()
     httpd.shutdown()

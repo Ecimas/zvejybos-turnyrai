@@ -4,11 +4,14 @@ import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { backButton } from '../ui.js';
 import { rememberInvite } from './invite.js';
+import { mountCaptcha } from '../lib/captcha.js';
 
 const RESEND_S = 60;
 
 function errorText(err, fallback) {
   const m = String(err?.message || '');
+  if (/captcha_load/.test(m)) return 'Nepavyko įkelti apsaugos nuo botų – patikrink ryšį';
+  if (/captcha/i.test(m)) return 'Patvirtink, kad nesi robotas, ir bandyk dar kartą';
   if (/rate|too many|security purposes/i.test(m)) return 'Per daug bandymų – palauk minutę';
   if (/expired|invalid|token/i.test(m)) return 'Kodas neteisingas arba nebegalioja';
   return fallback;
@@ -39,6 +42,7 @@ export async function loginView(ctx) {
         <form class="stack" data-email-form novalidate>
           <label class="field"><span class="small muted strong">El. paštas</span>
             <input type="email" name="email" required autocomplete="email" inputmode="email" placeholder="vardas@pastas.lt"></label>
+          <div class="captcha" data-captcha></div>
           <button class="btn btn-primary btn-lg" type="submit">${icon('mail', 22)}Siųsti nuorodą</button>
         </form>
 
@@ -82,6 +86,7 @@ export async function loginView(ctx) {
         }
       });
       const emailForm = root.querySelector('[data-email-form]');
+      const captcha = mountCaptcha(root.querySelector('[data-captcha]')).catch(() => ({ failed: true }));
       const codeForm = root.querySelector('[data-code-form]');
       const resend = root.querySelector('[data-resend]');
       let email = '';
@@ -105,7 +110,15 @@ export async function loginView(ctx) {
       };
 
       const send = async () => {
-        await backend.signIn(email);
+        const cap = await captcha;
+        if (cap?.failed) throw new Error('captcha_load');
+        const token = cap ? await cap.token().catch(() => null) : null;
+        if (cap && !token) throw new Error('captcha_timeout');
+        try {
+          await backend.signIn(email, token);
+        } finally {
+          cap?.reset();
+        }
         root.querySelector('[data-email-shown]').textContent = email;
         emailForm.hidden = true;
         codeForm.hidden = false;

@@ -87,10 +87,10 @@ export async function createSupabaseBackend(url, anonKey) {
       });
       return () => data.subscription.unsubscribe();
     },
-    async signIn(email) {
+    async signIn(email, captchaToken) {
       check(await sb.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: location.origin + location.pathname }
+        options: { emailRedirectTo: location.origin + location.pathname, ...(captchaToken ? { captchaToken } : {}) }
       }));
     },
     // Kokie prisijungimo būdai įjungti Supabase (pvz. Google). Klaidos atveju – tik el. paštas.

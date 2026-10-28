@@ -394,7 +394,8 @@ export function createClient(url, key) {
         return { data: { subscription: { unsubscribe: () => listeners.delete(cb) } } };
       },
       async signInWithOtp(opts) {
-        log('signInWithOtp', { email: opts.email });
+        log('signInWithOtp', { email: opts.email, captchaToken: opts.options?.captchaToken ?? null });
+        if (window.__requireCaptcha && !opts.options?.captchaToken) return { data: null, error: { message: 'captcha protection: request disallowed (no captcha response)' } };
         return { data: {}, error: null };
       },
       // Google imitacija: sukuria (arba randa) vartotoją ir „grįžta“ į programėlę su #access_token, kaip tikras OAuth.

@@ -375,6 +375,9 @@ ol.plain { list-style: none; margin: 0; padding: 0; }
   background: var(--nav); border-top: 1px solid var(--line);
 }
 
+.captcha:empty { display: none; }
+.captcha { min-height: 65px; display: flex; justify-content: center; }
+
 .reg-closed {
   display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px;
   border-radius: 14px; background: var(--surface); border: 1px solid var(--line-2); color: var(--soft);
