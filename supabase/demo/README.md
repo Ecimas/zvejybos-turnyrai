@@ -20,3 +20,9 @@ commit;
 ```
 
 Po to nuotraukas saugykloje ištrina `demo-seed` veiksmas `cleanup` (žvejų aplankai) – Ecimo trys `demo-08x.jpg` lieka, jei jų neištrinsi rankiniu būdu.
+
+## Rėmėjai demonstraciniame turnyre
+
+Penki sugalvoti rėmėjai (jokių tikrų prekių ženklų): „Ežero banga“ (generalinis), „Marių valtys“, „Šiaurės masalai“,
+„Kranto kavinė“, „Lydekų klubas“. Logotipai – `store/demo-logos/*.webp` (sugeneruoti), į saugyklą `sponsor-logos`
+įkelti per `demo-seed` veiksmą `logo`. Jų nuorodos veda į `remejams.html`.
