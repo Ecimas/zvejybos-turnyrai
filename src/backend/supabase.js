@@ -10,7 +10,7 @@ export const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2
 // Viešai skaitomi laimikio stulpeliai. Masalas ir pastabos – tik savininkui per my_catch_notes() (0008).
 export const CATCH_COLS = 'id, user_id, client_id, species_id, length_mm, weight_g, weather, captured_at_device, received_at, ' +
   'photo_path, photo_sha256, status, reject_reason, reviewed_by, reviewed_at, created_at, clock_offset_s, send_offset_s';
-const TOURNAMENT_SEL = '*, tournament_species(species_id, points_pct), entries(count), tournament_sponsors(id, name, url, amount_cents, sort), ' +
+const TOURNAMENT_SEL = '*, tournament_species(species_id, points_pct), entries(count), tournament_sponsors(id, name, url, amount_cents, sort, logo_path, tier, blurb), ' +
   'tournament_announcements(created_at), tournament_divisions(id, name, sort), leagues(id, name, season)';
 const PERMANENT_CODES = new Set(['42501', '23514', '23503', '22P02', 'P0001', '42883']);
 
@@ -49,13 +49,15 @@ export async function createSupabaseBackend(url, anonKey) {
     return data;
   };
 
+  const LOGOS = 'sponsor-logos';
+  const logoUrl = (path) => (path ? sb.storage.from(LOGOS).getPublicUrl(path).data.publicUrl : null);
   const decorate = (t, mine) => ({
     ...t,
     species_ids: (t.tournament_species || []).map((x) => x.species_id),
     species_pct: Object.fromEntries((t.tournament_species || []).map((x) => [x.species_id, x.points_pct ?? 100])),
     divisions: (t.tournament_divisions || []).slice().sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name)),
     league: t.leagues ?? null,
-    sponsors: (t.tournament_sponsors || []).slice().sort((a, b) => a.sort - b.sort),
+    sponsors: (t.tournament_sponsors || []).slice().sort((a, b) => a.sort - b.sort).map((x) => ({ ...x, logo_url: logoUrl(x.logo_path) })),
     last_announcement_at: (t.tournament_announcements || []).reduce((m, a) => (!m || a.created_at > m ? a.created_at : m), null),
     participants: t.entries?.[0]?.count ?? 0,
     joined: mine.has(t.id),
@@ -223,6 +225,51 @@ export async function createSupabaseBackend(url, anonKey) {
     async deleteTournament(id) {
       const rows = check(await sb.from('tournaments').delete().eq('id', id).select('id'));
       if (!rows?.length) throw new Error('Prasidėjusio turnyro ištrinti negalima');
+    },
+    // Rėmėjai (0027): organizatorius ar administratorius tvarko bet kada. Esami atnaujinami (statistika išlieka),
+    // nauji įterpiami, pašalinti ištrinami; nebenaudojami logotipai ištrinami iš saugyklos.
+    async saveSponsors(tournamentId, list) {
+      const before = check(await sb.from('tournament_sponsors').select('id, logo_path, tier').eq('tournament_id', tournamentId));
+      const keep = new Set(list.filter((x) => x.id).map((x) => x.id));
+      const gone = before.filter((x) => !keep.has(x.id));
+      const row = (x, i) => ({ name: x.name, url: x.url || null, amount_cents: x.amount_cents || null, tier: x.tier === 'main' ? 'main' : 'partner',
+        blurb: x.blurb || null, logo_path: x.logo_path || null, sort: i });
+      const fail = (error) => friendly(error, [[/sponsor_limit/, 'Daugiausia 10 rėmėjų'], [/main_uniq|duplicate key/, 'Generalinis rėmėjas gali būti tik vienas'],
+        [/row-level security|permission/, 'Neturi teisės keisti šio turnyro rėmėjų']], 'Nepavyko išsaugoti rėmėjų');
+      if (gone.length) {
+        const { error } = await sb.from('tournament_sponsors').delete().in('id', gone.map((x) => x.id));
+        if (error) throw fail(error);
+      }
+      // Pirma partneriai, paskui generalinis – kad keičiant generalinį nesusidurtų du.
+      const ordered = list.map((x, i) => [x, i]).sort(([a], [b]) => (a.tier === 'main') - (b.tier === 'main'));
+      for (const [x, i] of ordered) {
+        const { error } = x.id
+          ? await sb.from('tournament_sponsors').update(row(x, i)).eq('id', x.id)
+          : await sb.from('tournament_sponsors').insert({ ...row(x, i), tournament_id: tournamentId });
+        if (error) throw fail(error);
+      }
+      const used = new Set(list.map((x) => x.logo_path).filter(Boolean));
+      const stale = before.map((x) => x.logo_path).filter((p) => p && !used.has(p));
+      if (stale.length) await sb.storage.from(LOGOS).remove(stale).catch(() => {});
+    },
+    async uploadSponsorLogo(tournamentId, blob) {
+      const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/jpeg' ? 'jpg' : 'webp';
+      const path = `${tournamentId}/${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}.${ext}`;
+      const { error } = await sb.storage.from(LOGOS).upload(path, blob, { contentType: blob.type, upsert: false, cacheControl: '31536000' });
+      if (error) throw friendly(error, [[/row-level security|403|Unauthorized/i, 'Neturi teisės įkelti logotipo'], [/size|too large|413/i, 'Logotipas per didelis']], 'Nepavyko įkelti logotipo');
+      return { path, url: logoUrl(path) };
+    },
+    async discardSponsorLogo(path) {
+      if (path) await sb.storage.from(LOGOS).remove([path]).catch(() => {});
+    },
+    async trackSponsors(ids, kind) {
+      if (!ids?.length) return;
+      await sb.rpc('sponsor_track', { p_ids: ids, p_kind: kind });
+    },
+    async sponsorReport(tournamentId) {
+      const { data, error } = await sb.rpc('sponsor_report', { p_tournament: tournamentId });
+      if (error) throw friendly(error, [[/not allowed/, 'Ataskaitą mato tik organizatorius']], 'Nepavyko gauti statistikos');
+      return data;
     },
     // Administratorius (0026): pašalina bet kurį turnyrą, priežastį gauna dalyviai.
     async adminDeleteTournament(id, reason) {

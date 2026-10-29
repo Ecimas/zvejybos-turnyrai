@@ -23,7 +23,7 @@ const TOPN_LABEL = {
 
 // Naujas turnyras (#/naujas) ir esamo redagavimas (#/t/:id/redaguoti): organizatorius – iki starto,
 // administratorius – bet kada (prasidėjus – tik tai, kas nekeičia rezultatų; žr. 0026).
-const LOCKED_KEYS = ['title', 'description', 'ends_at', 'visibility', 'leaderboard_hidden', 'late_join_minutes', 'prizes', 'sponsors'];
+const LOCKED_KEYS = ['title', 'description', 'ends_at', 'visibility', 'leaderboard_hidden', 'late_join_minutes', 'prizes'];
 export async function createView(ctx, [editId] = []) {
   const { backend, state } = ctx;
   const heading = editId ? 'Turnyro redagavimas' : 'Naujas turnyras';
@@ -160,8 +160,11 @@ export async function createView(ctx, [editId] = []) {
           <p class="small muted">Pinigų programėlė neperveda – fondą išmoka organizatorius arba rėmėjai.</p>
         </fieldset>
 
-        <fieldset class="field stack">
+        ${t ? html`<a class="card card-link row gap-10" href="#/t/${t.id}/remejai" data-sponsors-link>${icon('star', 20)}
+          <span class="grow stack-1"><span class="strong">Rėmėjai ir jų logotipai</span><span class="small muted">${t.sponsors?.length ? count(t.sponsors.length, 'rėmėjas', 'rėmėjai', 'rėmėjų') : 'Dar nėra'} · tvarkoma atskirai, galima ir vykstant turnyrui</span></span>${icon('chevron', 18)}</a>` : ''}
+        <fieldset class="field stack" ${t ? 'hidden' : ''}>
           <legend class="small muted strong">Rėmėjai (nebūtina, iki 10)</legend>
+          <span class="small muted">Logotipus, generalinį rėmėją ir pasiūlymus dalyviams pridėsi sukūręs turnyrą – skiltyje „Rėmėjai“.</span>
           <div class="stack" data-sponsor-rows></div>
           <button type="button" class="btn btn-ghost" data-add-sponsor>${icon('plus', 18, 2.6)}Pridėti rėmėją</button>
           <div class="row-between gap-8" data-sponsor-sum hidden>
@@ -455,7 +458,7 @@ export async function createView(ctx, [editId] = []) {
           prizes: form.prizes.value.trim() || null,
           prize_fund_cents: fund,
           prize_split: fund > 0 ? split.slice() : null,
-          sponsors: cleanSponsors,
+          ...(t ? {} : { sponsors: cleanSponsors }), // esamo turnyro rėmėjai – skiltyje „Rėmėjai“ (su logotipais)
           species_ids: [...picked],
           species_pct: format === 'species_points' ? Object.fromEntries([...picked].map((sid) => [sid, pct[sid] ?? 100])) : {},
           divisions: cleanDivs,

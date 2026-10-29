@@ -1,6 +1,6 @@
 // Service worker: programėlės apvalkalas veikia ir be ryšio.
 // API užklausų (Supabase) nesaugo – jos visada eina į tinklą.
-const VERSION = 'zt-v24';
+const VERSION = 'zt-v25';
 const SHELL = [
   './',
   'index.html',
@@ -51,7 +51,9 @@ const SHELL = [
   'src/views/social.js',
   'src/views/leagues.js',
   'src/views/stats.js',
-  'src/views/adminlog.js'
+  'src/views/adminlog.js',
+  'src/views/sponsors.js',
+  'src/lib/sponsors.js'
 ];
 const CDN = ['https://cdn.jsdelivr.net', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'];
 

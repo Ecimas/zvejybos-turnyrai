@@ -370,6 +370,96 @@ def stats_demo_test(page, base):
     step("statistika: vartotojai, aktyvūs, registracijų grafikas, telefonų modeliai")
 
 
+def logo_png(color=(40, 120, 200), size=(900, 300)):
+    import io
+    from PIL import Image, ImageDraw
+    img = Image.new("RGBA", size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.ellipse((30, 40, 300, 260), fill=color + (255,))
+    d.rectangle((340, 110, 860, 190), fill=(20, 30, 40, 255))
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def sponsors_demo_test(page, base):
+    # Turnyro puslapis: generalinis rėmėjas su logotipu ir pasiūlymu, kiti – tinklelyje
+    page.goto(base + "#/")
+    page.evaluate("() => localStorage.removeItem('zt-sponsor-seen')")  # ankstesni testai jau „matė“ šiandien
+    page.goto(base + "#/t/t-taure")
+    main = page.locator("[data-sponsor-main]")
+    expect(main).to_contain_text("Generalinis rėmėjas")
+    expect(main).to_contain_text("Ežero žvejybos parduotuvė")
+    expect(main).to_contain_text("−10 % visiems dalyviams su kodu TAURE")
+    expect(main.locator("img")).to_have_count(1)
+    expect(page.locator(".sponsor-grid .sponsor-logo")).to_have_count(1)
+    if SHOTS:  # rinkodaros nuotraukai – be administratoriaus mygtukų ir demo juostos
+        page.evaluate("() => document.querySelectorAll('[data-admin-edit], [data-sponsors-manage], .demo-banner').forEach(e => e.style.display = 'none')")
+    shot(page, "remejai-turnyras")
+    page.wait_for_function("() => (JSON.parse(localStorage.getItem('zt-demo-v1')).sponsor_stats || []).some(x => x.sponsor_id === 's1' && x.day === new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vilnius' }) && x.views >= 1)")
+    views = page.evaluate("() => JSON.parse(localStorage.getItem('zt-demo-v1')).sponsor_stats.filter(x => x.sponsor_id === 's1').reduce((a, x) => a + x.views, 0)")
+    page.reload()
+    page.wait_for_timeout(400)
+    again = page.evaluate("() => JSON.parse(localStorage.getItem('zt-demo-v1')).sponsor_stats.filter(x => x.sponsor_id === 's1').reduce((a, x) => a + x.views, 0)")
+    assert again == views, f"tas pats įrenginys suskaičiuotas du kartus per dieną: {views} -> {again}"
+    with page.context.expect_page() as popup:
+        main.locator("a[data-sponsor-click]").first.click()
+    popup.value.close()
+    page.wait_for_function("() => JSON.parse(localStorage.getItem('zt-demo-v1')).sponsor_stats.some(x => x.sponsor_id === 's1' && x.clicks >= 1 && x.day === new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vilnius' }))")
+    step("rėmėjai turnyro puslapyje: generalinis, logotipai, parodymai ir paspaudimai")
+
+    page.goto(base + "#/")
+    page.locator("[data-seg=live]").click()
+    card = page.locator(".t-card", has_text="Rudens lydekų taurė")
+    expect(card.locator(".t-sponsors img")).to_have_count(2)
+    if SHOTS:
+        card.evaluate("e => e.scrollIntoView({ block: 'center' })")
+        page.wait_for_timeout(200)
+        card.screenshot(path=f"{SHOTS}/remejai-sarasas.png")
+    page.goto(base + "#/t/t-taure/lentele")
+    expect(page.locator("[data-sponsor-strip]")).to_contain_text("Lentelę remia")
+    expect(page.locator("[data-sponsor-strip] img")).to_have_count(2)
+    shot(page, "remejai-lentele")
+    page.goto(base + "#/t/t-taure/tv")
+    expect(page.locator("[data-tv-sponsors] img")).to_have_count(2)
+    shot(page, "remejai-ekranas")
+    step("rėmėjų logotipai sąraše, lentelėje ir didžiajame ekrane")
+
+    # Tvarkymas: naujas generalinis rėmėjas su įkeltu logotipu
+    page.goto(base + "#/t/t-taure")
+    page.locator("[data-sponsors-manage]").click()
+    expect(page.locator("[data-sponsor-stats]")).to_contain_text("Ežero žvejybos parduotuvė")
+    expect(page.locator("[data-stat-sponsor=s1] [data-clicks]")).not_to_have_text("0")
+    shot(page, "remejai-statistika")
+    page.get_by_role("button", name="Pridėti rėmėją").click()
+    row = page.locator("[data-row='2']")
+    row.locator("[data-f=name]").fill("Valčių nuoma „Banga“")
+    row.locator("[data-f=url]").fill("https://example.org")
+    row.locator("[data-f=blurb]").fill("Valtis dalyviams −20 %")
+    row.locator("input[type=file]").set_input_files({"name": "logo.png", "mimeType": "image/png", "buffer": logo_png()})
+    expect(page.locator("#toast")).to_contain_text("Logotipas įkeltas")
+    row = page.locator("[data-row='2']")
+    expect(row.locator(".logo-preview img")).to_have_count(1)
+    stored = page.evaluate("() => { const db = JSON.parse(localStorage.getItem('zt-demo-v1')); return Object.entries(db.logos).filter(([k]) => k.startsWith('t-taure/')).map(([k, v]) => v.slice(0, 22)); }")
+    assert stored and stored[0].startswith("data:image/webp"), f"logotipas nesumažintas į WebP: {stored}"
+    row.get_by_text("Generalinis rėmėjas").click()
+    expect(page.locator("[data-row='0'] [data-f=name]")).to_have_value("Valčių nuoma „Banga“")
+    page.locator("[data-row='1'] [data-f=url]").fill("http://nesaugu.lt")
+    page.get_by_role("button", name="Išsaugoti rėmėjus").click()
+    expect(page.locator("[data-error]")).to_contain_text("https://")
+    page.locator("[data-row='1'] [data-f=url]").fill("https://example.com")
+    shot(page, "remejai-tvarkymas")
+    page.get_by_role("button", name="Išsaugoti rėmėjus").click()
+    expect(page.locator("#toast")).to_have_text("Rėmėjai išsaugoti")
+    expect(page.locator("[data-sponsor-main]")).to_contain_text("Valčių nuoma „Banga“")
+    expect(page.locator("[data-sponsor-main]")).to_contain_text("Valtis dalyviams −20 %")
+    expect(page.locator(".sponsor-grid .sponsor-logo")).to_have_count(2)
+    sp = page.evaluate("() => JSON.parse(localStorage.getItem('zt-demo-v1')).tournament_sponsors.filter(x => x.tournament_id === 't-taure').map(x => [x.id, x.tier, x.sort])")
+    assert [x[1] for x in sorted(sp, key=lambda x: x[2])] == ["main", "partner", "partner"], sp
+    assert any(x[0] == "s1" and x[1] == "partner" for x in sp), f"senojo rėmėjo statistika turi išlikti (tas pats ID): {sp}"
+    step("rėmėjų tvarkymas: logotipo įkėlimas, generalinis rėmėjas, statistika")
+
+
 def admin_demo_test(page, base):
     # Demo žvejys – savininkas, todėl turi teisę tvarkyti bet kurį turnyrą (0026)
     page.goto(base + "#/t/t-sezonas")
@@ -549,7 +639,7 @@ def extra_demo_tests(page, base, meteo_calls):
     expect(prize_rows.nth(0)).to_contain_text("50 %")
     expect(prize_rows.nth(0)).to_contain_text("500 €")
     expect(prize_rows.nth(2)).to_contain_text("200 €")
-    sponsor = page.get_by_role("link", name="Ežero parduotuvė")
+    sponsor = page.locator(".sponsor-list").get_by_role("link", name="Ežero parduotuvė")
     expect(sponsor).to_have_attribute("href", "https://example.com/zvejyba")
     expect(sponsor).to_have_attribute("rel", "noopener noreferrer sponsored")
     expect(page.locator(".sponsor-list .list-row").nth(1)).to_contain_text('<b onmouseover="window.__xss=1">Klubas</b>')
@@ -570,11 +660,10 @@ def extra_demo_tests(page, base, meteo_calls):
     expect(page.get_by_label("Registracija po starto")).to_have_value("180")
     page.get_by_label("Registracija po starto").select_option(label="Tik iki starto")
     expect(page.get_by_label("Fondo suma, €")).to_have_value("1000")
-    expect(page.get_by_label("Rėmėjo 2 įnašas, €")).to_have_value("400")
-    page.get_by_role("button", name="Pašalinti rėmėją 2").click()
-    page.get_by_label("Fondo suma, €").fill("")
-    page.get_by_role("button", name="Naudoti kaip fondą").click()
-    expect(page.get_by_label("Fondo suma, €")).to_have_value("600")
+    # Esamo turnyro rėmėjai tvarkomi atskiroje skiltyje (su logotipais) – formoje tik nuoroda
+    expect(page.locator("[data-sponsors-link]")).to_contain_text("2 rėmėjai")
+    expect(page.get_by_label("Rėmėjo 2 įnašas, €")).to_be_hidden()
+    page.get_by_label("Fondo suma, €").fill("600")
     page.get_by_role("button", name="Tik nugalėtojui").click()
     page.get_by_label("Pavadinimas", exact=True).fill("Klubo taurė 2026")
     page.get_by_role("button", name="Visi").click()
@@ -584,6 +673,11 @@ def extra_demo_tests(page, base, meteo_calls):
     expect(page.locator(".badge", has_text="Privatus")).to_have_count(0)
     expect(page.locator("[data-fund]")).to_have_text("600 €")
     expect(page.locator(".prize-card .list-row")).to_have_count(1)
+    expect(page.locator(".sponsor-list .list-row")).to_have_count(2)
+    page.locator("[data-sponsors-manage]").click()
+    page.locator("[data-remove='1']").click()
+    page.get_by_role("button", name="Išsaugoti rėmėjus").click()
+    expect(page.locator("#toast")).to_have_text("Rėmėjai išsaugoti")
     expect(page.locator(".sponsor-list .list-row")).to_have_count(1)
     expect(page.locator(".list-row", has_text="Registracija")).to_contain_text("Tik iki starto")
     stored = page.evaluate("() => JSON.parse(localStorage.getItem('zt-demo-v1')).tournaments.find(t => t.title === 'Klubo taurė 2026').late_join_minutes")
@@ -956,6 +1050,7 @@ def main():
         social_demo_test(page, base)
         formats_demo_test(page, base)
         stats_demo_test(page, base)
+        sponsors_demo_test(page, base)
         admin_demo_test(page, base)
 
         ctx.close()

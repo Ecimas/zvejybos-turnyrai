@@ -242,6 +242,23 @@ function splitSelect(sel) {
 }
 
 const beforeStart = (t) => t && Date.now() < new Date(t.starts_at).getTime();
+// 0027: rėmėjus organizatorius tvarko bet kada, administratorius – taip pat
+function canManageSponsors(tid) {
+  const t = db.tournaments.find((x) => x.id === tid);
+  return !!t && (t.organizer_id === uid() || hasPerm('tournaments'));
+}
+const LOGO_PATH = /^[0-9a-f-]{36}\/[A-Za-z0-9_-]{1,64}\.(webp|png|jpg)$/;
+const logoBlobs = new Map();
+function sponsorRowError(row) {
+  if (row.url && !/^https:\/\/[^\s<>"']{3,200}$/.test(row.url)) return err('23514', 'check constraint tournament_sponsors_url');
+  if (row.logo_path && (!LOGO_PATH.test(row.logo_path) || row.logo_path.split('/')[0] !== row.tournament_id)) return err('23514', 'tournament_sponsors_logo_path_check');
+  if (row.blurb && row.blurb.length > 140) return err('23514', 'tournament_sponsors_blurb_check');
+  if (row.tier && !['main', 'partner'].includes(row.tier)) return err('23514', 'tournament_sponsors_tier_check');
+  if (row.tier === 'main' && db.tournament_sponsors.some((x) => x !== row && x.id !== row.id && x.tournament_id === row.tournament_id && x.tier === 'main')) {
+    return err('23505', 'duplicate key value violates unique constraint "tournament_sponsors_main_uniq"');
+  }
+  return null;
+}
 function canEditTournament(id) {
   const t = db.tournaments.find((x) => x.id === id);
   return !!t && t.organizer_id === uid() && (beforeStart(t) || Date.now() - new Date(t.created_at) < 10 * 60e3);
@@ -249,7 +266,7 @@ function canEditTournament(id) {
 // RLS atitikmuo rašymui: eilutės, kurių taisyklė neleidžia, tiesiog nepaliečiamos (kaip PostgREST).
 function writable(table, row) {
   if (table === 'tournaments') return (row.organizer_id === uid() && beforeStart(row)) || hasPerm('tournaments');
-  if (table === 'tournament_sponsors') return canEditTournament(row.tournament_id) || hasPerm('tournaments');
+  if (table === 'tournament_sponsors') return canManageSponsors(row.tournament_id);
   if (table === 'tournament_species') return canEditTournament(row.tournament_id) || (hasPerm('tournaments') && beforeStart(db.tournaments.find((x) => x.id === row.tournament_id)));
   if (table === 'tournament_divisions') { const t = db.tournaments.find((x) => x.id === row.tournament_id); return !!t && beforeStart(t) && (t.organizer_id === uid() || hasPerm('tournaments')); }
   if (table === 'leagues') return row.owner_id === uid();
@@ -439,8 +456,10 @@ class Query {
           Object.assign(row, { id: uuid(), author_id: uid(), message: String(row.message).trim(), created_at: new Date().toISOString() });
         }
         if (this.table === 'tournament_sponsors') {
-          if (!canEditTournament(row.tournament_id)) return { data: null, error: err('42501', 'new row violates row-level security policy for table "tournament_sponsors"') };
-          if (row.url && !/^https:\/\/[^\s<>"']{3,200}$/.test(row.url)) return { data: null, error: err('23514', 'check constraint tournament_sponsors_url') };
+          if (!canManageSponsors(row.tournament_id)) return { data: null, error: err('42501', 'new row violates row-level security policy for table "tournament_sponsors"') };
+          row.tier ||= 'partner';
+          const bad = sponsorRowError(row);
+          if (bad) return { data: null, error: bad };
           if (db.tournament_sponsors.filter((x) => x.tournament_id === row.tournament_id).length >= 10) return { data: null, error: err('P0001', 'sponsor_limit') };
           Object.assign(row, { id: uuid(), name: String(row.name).trim(), created_at: new Date().toISOString() });
         }
@@ -494,6 +513,9 @@ class Query {
         }
       }
       data = t.filter((r) => this.matches(r) && writable(this.table, r));
+      if (this.table === 'tournament_sponsors') {
+        for (const r of data) { const bad = sponsorRowError({ ...r, ...this.patch, id: r.id }); if (bad) return { data: null, error: bad }; }
+      }
       if (this.table === 'tournaments') {
         const RULES = ['format', 'top_n', 'min_length_mm', 'starts_at', 'team_mode', 'league_id', 'prize_fund_cents', 'prize_split'];
         const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -919,6 +941,31 @@ export function createClient(url, key) {
         save();
         return { data: null, error: null };
       }
+      if (name === 'sponsor_track') {
+        if (!['view', 'click'].includes(args.p_kind)) return { data: null, error: null };
+        const day = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vilnius' });
+        db.sponsor_stats ||= [];
+        for (const id of (args.p_kind === 'click' ? args.p_ids.slice(0, 1) : args.p_ids.slice(0, 20))) {
+          if (!db.tournament_sponsors.some((x) => x.id === id)) continue;
+          let r = db.sponsor_stats.find((x) => x.sponsor_id === id && x.day === day);
+          if (!r) db.sponsor_stats.push(r = { sponsor_id: id, day, views: 0, clicks: 0 });
+          r[args.p_kind === 'click' ? 'clicks' : 'views'] += 1;
+        }
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'sponsor_report') {
+        const t = db.tournaments.find((x) => x.id === args.p_tournament);
+        if (!t || !(t.organizer_id === uid() || hasPerm('tournaments'))) return { data: null, error: err('P0001', 'not allowed') };
+        const st = db.sponsor_stats || [];
+        const sum = (id, k) => st.filter((x) => x.sponsor_id === id).reduce((a, x) => a + x[k], 0);
+        return { data: {
+          participants: db.entries.filter((e) => e.tournament_id === t.id).length,
+          catches: db.catches.filter((c) => c.status === 'approved' && db.entries.some((e) => e.tournament_id === t.id && e.user_id === c.user_id)).length,
+          sponsors: db.tournament_sponsors.filter((x) => x.tournament_id === t.id).sort((a, b) => (b.tier === 'main') - (a.tier === 'main') || a.sort - b.sort)
+            .map((x) => ({ id: x.id, name: x.name, tier: x.tier || 'partner', views: sum(x.id, 'views'), clicks: sum(x.id, 'clicks'), views_7d: sum(x.id, 'views'), clicks_7d: sum(x.id, 'clicks') }))
+        }, error: null };
+      }
       if (name === 'admin_delete_tournament') {
         if (!hasPerm('tournaments')) return { data: null, error: err('P0001', 'not allowed') };
         const why = String(args.p_reason || '').trim();
@@ -1023,8 +1070,18 @@ export function createClient(url, key) {
     storage: {
       from(bucket) {
         return {
+          getPublicUrl(path) {
+            const b = logoBlobs.get(path);
+            return { data: { publicUrl: b ? URL.createObjectURL(b) : `https://fake.supabase.co/storage/v1/object/public/${bucket}/${path}` } };
+          },
           async upload(path, blob, opts) {
             log('upload', { bucket, path, type: blob?.type, size: blob?.size, upsert: opts?.upsert });
+            if (bucket === 'sponsor-logos') {
+              if (!uid() || !LOGO_PATH.test(path) || !canManageSponsors(path.split('/')[0])) return { data: null, error: { statusCode: '403', message: 'new row violates row-level security policy' } };
+              if (blob.size > 307200) return { data: null, error: { statusCode: '413', message: 'The object exceeded the maximum allowed size' } };
+              logoBlobs.set(path, blob);
+              return { data: { path }, error: null };
+            }
             if (failNext.upload) { failNext.upload--; return { data: null, error: { name: 'StorageUnknownError', message: 'Failed to fetch' } }; }
             if (!uid() || path.split('/')[0] !== uid()) return { data: null, error: { statusCode: '403', message: 'new row violates row-level security policy' } };
             if (blobs.has(path) && !opts?.upsert) return { data: null, error: { statusCode: '409', message: 'The resource already exists' } };
@@ -1038,6 +1095,11 @@ export function createClient(url, key) {
           },
           async remove(paths) {
             log('remove', { bucket, paths });
+            if (bucket === 'sponsor-logos') {
+              const ok = paths.filter((x) => canManageSponsors(x.split('/')[0]));
+              ok.forEach((x) => logoBlobs.delete(x));
+              return { data: ok.map((name) => ({ name })), error: null };
+            }
             const prof = db.profiles.find((x) => x.id === uid());
             if (!prof?.deleting_at) return { data: [], error: null }; // RLS: be leidimo niekas neištrinama
             paths.filter((x) => x.split('/')[0] === uid()).forEach((x) => blobs.delete(x));

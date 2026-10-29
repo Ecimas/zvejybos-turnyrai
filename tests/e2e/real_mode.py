@@ -385,15 +385,26 @@ def more_real_tests(page, base):
     page.get_by_label("Daiktiniai prizai (nebūtina)").fill("Kepurė")
     page.get_by_label("Fondo suma, €").fill("250,50")
     page.get_by_role("button", name="Trims: 50 / 30 / 20").click()
+    page.locator("[data-form]").get_by_role("button", name="Lydeka").click()
+    page.get_by_role("button", name="Išsaugoti pakeitimus").click()
+    expect(page.get_by_role("heading", name="Ešerių savaitgalis+")).to_be_visible()
+    # Rėmėjai – atskiroje skiltyje (0027): logotipas į viešą saugyklą, generalinis rėmėjas
+    page.locator("[data-sponsors-manage]").click()
     page.get_by_role("button", name="Pridėti rėmėją").click()
     page.get_by_label("Rėmėjo 1 pavadinimas").fill("  Žvejų klubas  ")
     page.get_by_label("Rėmėjo 1 įnašas, €").fill("100")
     page.get_by_role("button", name="Pridėti rėmėją").click()
     page.get_by_label("Rėmėjo 2 pavadinimas").fill("Ežero parduotuvė")
     page.get_by_label("Rėmėjo 2 svetainė").fill("https://example.com")
-    page.locator("[data-form]").get_by_role("button", name="Lydeka").click()
-    page.get_by_role("button", name="Išsaugoti pakeitimus").click()
-    expect(page.get_by_role("heading", name="Ešerių savaitgalis+")).to_be_visible()
+    page.locator("[data-row='1'] input[type=file]").set_input_files({"name": "logo.png", "mimeType": "image/png", "buffer": base_mod.logo_png()})
+    expect(page.locator("#toast")).to_contain_text("Logotipas įkeltas")
+    up = calls(page, "upload", bucket="sponsor-logos")
+    assert len(up) == 1 and up[0]["path"].startswith(tid + "/") and up[0]["type"] in ("image/webp", "image/png") and up[0]["size"] <= 307200, up
+    page.locator("[data-row='1']").get_by_text("Generalinis rėmėjas").click()
+    page.get_by_role("button", name="Išsaugoti rėmėjus").click()
+    expect(page.locator("#toast")).to_have_text("Rėmėjai išsaugoti")
+    expect(page.locator("[data-sponsor-main]")).to_contain_text("Ežero parduotuvė")
+    expect(page.locator("[data-sponsor-main] img")).to_have_count(1)
     expect(page.locator("[data-fund]")).to_have_text("250,50 €")
     expect(page.locator(".prize-card .list-row").nth(0)).to_contain_text("125,25 €")
     expect(page.locator(".prize-card .list-row").nth(2)).to_contain_text("50,10 €")
@@ -402,8 +413,11 @@ def more_real_tests(page, base):
     assert t["prize_fund_cents"] == 25050 and t["prize_split"] == [50, 30, 20], t
     assert "sponsor_name" not in [k for k, v in t.items() if v], "senų rėmėjo laukų nebenaudojam"
     sp = fake(page, "return db.tournament_sponsors.filter(x => x.tournament_id === arg).sort((a, b) => a.sort - b.sort);", tid)
-    assert [(x["name"], x["url"], x["amount_cents"], x["sort"]) for x in sp] == [
-        ("Žvejų klubas", None, 10000, 0), ("Ežero parduotuvė", "https://example.com", None, 1)], sp
+    assert [(x["name"], x["url"], x["amount_cents"], x["sort"], x["tier"]) for x in sp] == [
+        ("Ežero parduotuvė", "https://example.com", None, 0, "main"), ("Žvejų klubas", None, 10000, 1, "partner")], sp
+    assert sp[0]["logo_path"] == up[0]["path"], sp
+    rep = page.evaluate("(id) => window.__zt.backend.sponsorReport(id)", tid)
+    assert [x["name"] for x in rep["sponsors"]] == ["Ežero parduotuvė", "Žvejų klubas"] and rep["sponsors"][0]["views"] >= 1, rep
     # Paprastas žvejys (be rolių): svetimo prasidėjusio turnyro keisti negalima
     fake(page, "const p = db.profiles.find(p => p.id === arg); p.is_admin = false; p.roles = []; window.__fakeDb.save();", me)
     page.evaluate("async () => { window.__zt.state.profile = await window.__zt.backend.myProfile(); }")

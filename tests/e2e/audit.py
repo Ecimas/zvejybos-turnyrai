@@ -175,7 +175,7 @@ def main():
                 page.evaluate(f"() => localStorage.setItem('zt-theme', '{theme}')")
                 page.reload()
                 page.wait_for_selector("h1", state="attached")
-                routes = ["#/", "#/t/t-taure", "#/t/t-taure/lentele", "#/t/t-taure/tv", "#/t/t-plesrunai", "#/t/t-slaptas", "#/moderavimas/turnyrai", "#/t/t-taure/redaguoti",
+                routes = ["#/", "#/t/t-taure", "#/t/t-taure/lentele", "#/t/t-taure/tv", "#/t/t-plesrunai", "#/t/t-slaptas", "#/moderavimas/turnyrai", "#/t/t-taure/redaguoti", "#/t/t-taure/remejai",
                           "#/t/t-eseriai", "#/dienorastis", "#/lenteles", "#/profilis", f"#/zvejys/{ids['other']}",
                           "#/naujas", "#/moderavimas", "#/moderavimas/gincai", "#/moderavimas/komanda",
                           "#/privatumas", "#/taisykles", "#/kvietimas/zzzzzz", "#/laimikis", "#/t/nera",

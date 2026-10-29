@@ -5,6 +5,7 @@ import { phaseBadge, empty, defaultNickname, banNotice } from '../ui.js';
 import { eur } from '../lib/prizes.js';
 import { hasUnseen } from '../lib/seen.js';
 import { checkBanners } from './check.js';
+import { sponsorMini, trackViews } from '../lib/sponsors.js';
 
 const SEGMENTS = [
   ['mano', 'Mano'],
@@ -40,6 +41,7 @@ export function card(t, species) {
       ${t.prize_fund_cents ? html`<span class="accent strong">${icon('trophy', 16)}${eur(t.prize_fund_cents)}</span>`
         : t.prizes ? html`<span>${icon('trophy', 16)}Prizai</span>` : ''}
     </div>
+    ${sponsorMini(t)}
     ${t.joined ? html`<span class="accent strong">${phase(t) === 'soon' ? 'Užsiregistravai' : 'Dalyvauji'}</span>` : ''}
     ${hasUnseen(t) ? html`<span class="chip chip-wait ann-chip">${icon('alert', 13, 2.6)}Naujas organizatoriaus pranešimas</span>` : ''}
   </a>`;
@@ -132,8 +134,11 @@ export async function tournamentsView(ctx) {
       </section>
     </div>`,
     mount(root) {
+      const seen = (key) => trackViews(ctx.backend, segmentOf(list, key).flatMap((t) => t.sponsors || []));
+      seen(seg);
       root.querySelectorAll('[data-seg]').forEach((b) => b.addEventListener('click', () => {
         seg = b.dataset.seg;
+        seen(seg);
         sessionStorage.setItem('zt-seg', seg);
         root.querySelectorAll('[data-seg]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
         root.querySelector('[data-list]').innerHTML = String(html`${listHtml(seg)}`);

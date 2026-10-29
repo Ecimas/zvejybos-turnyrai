@@ -16,6 +16,27 @@ const LEAGUE_NAME = /^[A-Za-z0-9ĄČĘĖĮŠŲŪŽąčęėįšųūž .,_"„“(
 const DIV_NAME = /^[A-Za-z0-9ĄČĘĖĮŠŲŪŽąčęėįšųūž .,_+()-]+$/;
 const code10 = () => Array.from(crypto.getRandomValues(new Uint8Array(5)), (b) => b.toString(16).padStart(2, '0')).join('');
 
+
+// Demonstraciniai rėmėjai su sugalvotais logotipais (jokių tikrų prekių ženklų).
+function demoLogo(text, sub, color) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="200" viewBox="0 0 480 200">
+<path d="M40 100c30-38 80-38 110 0-30 38-80 38-110 0z" fill="${color}"/><path d="M150 100l28-22v44z" fill="${color}"/><circle cx="70" cy="94" r="7" fill="#fff"/>
+<text x="200" y="98" font-family="Arial,Helvetica,sans-serif" font-size="40" font-weight="700" fill="#0f2430">${text}</text>
+<text x="202" y="138" font-family="Arial,Helvetica,sans-serif" font-size="22" fill="#4b6470">${sub}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+const DEMO_LOGOS = {
+  'demo-s1': demoLogo('Ežeras', 'žvejybos parduotuvė', '#e8902a'),
+  'demo-s2': demoLogo('Kauno', 'žvejų klubas', '#2a7fb8'),
+  'demo-s3': demoLogo('Plėšrūnai', 'bendrija', '#3a9b5c')
+};
+const DEMO_SPONSORS = [
+  { id: 's1', tournament_id: 't-taure', name: 'Ežero žvejybos parduotuvė', url: 'https://example.com', amount_cents: 30000, sort: 0,
+    tier: 'main', blurb: '−10 % visiems dalyviams su kodu TAURE', logo_path: 'demo-s1' },
+  { id: 's2', tournament_id: 't-taure', name: 'Kauno žvejų klubas', url: null, amount_cents: 20000, sort: 1, tier: 'partner', blurb: null, logo_path: 'demo-s2' },
+  { id: 's3', tournament_id: 't-plesrunai', name: 'Plėšrūnų bendrija', url: null, amount_cents: 10000, sort: 0, tier: 'partner', blurb: null, logo_path: 'demo-s3' }
+];
+
 function seed() {
   const now = Date.now();
   const iso = (off) => new Date(now + off).toISOString();
@@ -115,11 +136,7 @@ function seed() {
     if (i % 2) add(u, 'eserys', 310 + ((i * 53) % 200), -0.4 * D + i * H);
   });
 
-  const tournament_sponsors = [
-    { id: 's1', tournament_id: 't-taure', name: 'Ežero žvejybos parduotuvė', url: 'https://example.com', amount_cents: 30000, sort: 0 },
-    { id: 's2', tournament_id: 't-taure', name: 'Kauno žvejų klubas', url: null, amount_cents: 20000, sort: 1 },
-    { id: 's3', tournament_id: 't-plesrunai', name: 'Plėšrūnų bendrija', url: null, amount_cents: 10000, sort: 0 }
-  ];
+  const tournament_sponsors = DEMO_SPONSORS.map((x) => ({ ...x }));
   const announcements = [
     { id: 'a1', tournament_id: 't-taure', author_id: ids[0], created_at: iso(-2 * H),
       message: 'Primename: ilgis matuojamas nuo snukio iki uodegos galo, liniuotė turi matytis visa. Sėkmės!' }
@@ -156,7 +173,7 @@ function seed() {
     { id: 'div-valtis', tournament_id: 't-taure', name: 'Valtis', sort: 1 }
   ];
   entries.filter((e) => e.tournament_id === 't-taure').forEach((e, i) => { e.division_id = i % 2 ? 'div-valtis' : 'div-krantas'; });
-  return { profiles, tournaments, tournament_species, tournament_sponsors, entries, catches, locations, disputes: [],
+  return { profiles, tournaments, tournament_species, tournament_sponsors, logos: { ...DEMO_LOGOS }, sponsor_stats: [], entries, catches, locations, disputes: [],
     announcements, reports, blank_trips: [], bans: [], follows: [], clubs, club_members, leagues, divisions };
 }
 
@@ -166,6 +183,20 @@ export function createDemoBackend({ photos } = {}) {
   if (!db) { db = seed(); }
   db.disputes ||= [];
   db.tournament_sponsors ||= [];
+  db.logos ||= {};
+  db.sponsor_stats ||= [];
+  // Seniau išsaugotas demo – rėmėjams pridedami logotipai ir lygiai (0027)
+  for (const d of DEMO_SPONSORS) {
+    const x = db.tournament_sponsors.find((y) => y.id === d.id);
+    if (x && x.tier === undefined) Object.assign(x, { tier: d.tier, blurb: d.blurb, logo_path: d.logo_path });
+  }
+  for (const [k, v] of Object.entries(DEMO_LOGOS)) db.logos[k] ||= v;
+  if (!db.sponsor_stats.length && db.tournament_sponsors.some((x) => x.id === 's1')) {
+    for (let d = 1; d <= 4; d += 1) {
+      const day = new Date(Date.now() - d * D).toLocaleDateString('sv-SE', { timeZone: 'Europe/Vilnius' });
+      db.sponsor_stats.push({ sponsor_id: 's1', day, views: 38 + d * 7, clicks: 3 + d }, { sponsor_id: 's2', day, views: 31 + d * 5, clicks: d });
+    }
+  }
   db.reports ||= [];
   db.blank_trips ||= [];
   db.announcements ||= [];
@@ -197,7 +228,8 @@ export function createDemoBackend({ photos } = {}) {
     divisions: db.divisions.filter((d) => d.tournament_id === t.id).sort((a, b) => a.sort - b.sort),
     league: (({ id, name, season } = {}) => (id ? { id, name, season } : null))(db.leagues.find((l) => l.id === t.league_id)),
     my_division_id: db.entries.find((e) => e.tournament_id === t.id && e.user_id === ME)?.division_id ?? null,
-    sponsors: db.tournament_sponsors.filter((x) => x.tournament_id === t.id).sort((a, b) => a.sort - b.sort),
+    sponsors: db.tournament_sponsors.filter((x) => x.tournament_id === t.id).sort((a, b) => a.sort - b.sort)
+      .map((x) => ({ ...x, logo_url: x.logo_path ? (db.logos || {})[x.logo_path] || null : null })),
     last_announcement_at: db.announcements.filter((a) => a.tournament_id === t.id)
       .reduce((m, a) => (!m || a.created_at > m ? a.created_at : m), null),
     participants: db.entries.filter((e) => e.tournament_id === t.id).length,
@@ -270,7 +302,7 @@ export function createDemoBackend({ photos } = {}) {
         invite_code: code10(), created_at: new Date().toISOString(), ...rest }));
       species_ids.forEach((species_id) => db.tournament_species.push({ tournament_id: id, species_id, points_pct: species_pct[species_id] ?? 100 }));
       saveDivisions(id, divisions);
-      sponsors.forEach((s, i) => db.tournament_sponsors.push({ ...s, id: `s-${id}-${i}`, tournament_id: id, sort: i }));
+      sponsors.forEach((s, i) => db.tournament_sponsors.push({ tier: 'partner', blurb: null, logo_path: null, ...s, id: `s-${id}-${i}`, tournament_id: id, sort: i }));
       db.entries.push({ tournament_id: id, user_id: ME, joined_at: new Date().toISOString() });
       save();
       return id;
@@ -314,6 +346,62 @@ export function createDemoBackend({ photos } = {}) {
       db.entries = db.entries.filter((x) => x.tournament_id !== id);
       db.divisions = db.divisions.filter((x) => x.tournament_id !== id);
       save();
+    },
+    async saveSponsors(tournamentId, list) {
+      const t = db.tournaments.find((x) => x.id === tournamentId);
+      if (!t || (t.organizer_id !== ME && !isTournamentAdmin())) throw new Error('Neturi teisės keisti šio turnyro rėmėjų');
+      if (list.length > 10) throw new Error('Daugiausia 10 rėmėjų');
+      if (list.filter((x) => x.tier === 'main').length > 1) throw new Error('Generalinis rėmėjas gali būti tik vienas');
+      const before = db.tournament_sponsors.filter((x) => x.tournament_id === tournamentId);
+      const rows = list.map((x, i) => ({ id: x.id || `s-${tournamentId}-${Date.now().toString(36)}-${i}`, tournament_id: tournamentId, name: x.name, url: x.url || null,
+        amount_cents: x.amount_cents || null, tier: x.tier === 'main' ? 'main' : 'partner', blurb: x.blurb || null, logo_path: x.logo_path || null, sort: i }));
+      const used = new Set(rows.map((x) => x.logo_path).filter(Boolean));
+      before.forEach((x) => { if (x.logo_path && !used.has(x.logo_path) && !DEMO_LOGOS[x.logo_path]) delete db.logos[x.logo_path]; });
+      const keep = new Set(rows.map((x) => x.id));
+      db.sponsor_stats = db.sponsor_stats.filter((x) => keep.has(x.sponsor_id) || !before.some((b) => b.id === x.sponsor_id));
+      db.tournament_sponsors = db.tournament_sponsors.filter((x) => x.tournament_id !== tournamentId).concat(rows);
+      save();
+    },
+    async uploadSponsorLogo(tournamentId, blob) {
+      const url = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = () => reject(new Error('Nepavyko įkelti logotipo'));
+        r.readAsDataURL(blob);
+      });
+      const path = `${tournamentId}/${Date.now().toString(36)}.webp`;
+      db.logos[path] = url;
+      save();
+      return { path, url };
+    },
+    async discardSponsorLogo(path) {
+      if (path && !DEMO_LOGOS[path] && !db.tournament_sponsors.some((x) => x.logo_path === path)) { delete db.logos[path]; save(); }
+    },
+    async trackSponsors(ids, kind) {
+      const day = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vilnius' });
+      for (const id of (kind === 'click' ? ids.slice(0, 1) : ids.slice(0, 20))) {
+        if (!db.tournament_sponsors.some((x) => x.id === id)) continue;
+        let r = db.sponsor_stats.find((x) => x.sponsor_id === id && x.day === day);
+        if (!r) db.sponsor_stats.push(r = { sponsor_id: id, day, views: 0, clicks: 0 });
+        r[kind === 'click' ? 'clicks' : 'views'] += 1;
+      }
+      save();
+    },
+    async sponsorReport(tournamentId) {
+      const t = db.tournaments.find((x) => x.id === tournamentId);
+      if (!t || (t.organizer_id !== ME && !isTournamentAdmin())) throw new Error('Ataskaitą mato tik organizatorius');
+      const week = Date.now() - 7 * D;
+      const sum = (id, k, since = 0) => db.sponsor_stats.filter((x) => x.sponsor_id === id && Date.parse(x.day) >= since).reduce((a, x) => a + x[k], 0);
+      const members = new Set(db.entries.filter((e) => e.tournament_id === tournamentId).map((e) => e.user_id));
+      return {
+        participants: members.size,
+        catches: db.catches.filter((c) => members.has(c.user_id) && c.status === 'approved'
+          && c.captured_at_device >= t.starts_at && c.captured_at_device < t.ends_at).length,
+        sponsors: db.tournament_sponsors.filter((x) => x.tournament_id === tournamentId)
+          .sort((a, b) => (b.tier === 'main') - (a.tier === 'main') || a.sort - b.sort)
+          .map((x) => ({ id: x.id, name: x.name, tier: x.tier, views: sum(x.id, 'views'), clicks: sum(x.id, 'clicks'),
+            views_7d: sum(x.id, 'views', week), clicks_7d: sum(x.id, 'clicks', week) }))
+      };
     },
     async adminDeleteTournament(id, reason) {
       if (!isTournamentAdmin()) throw new Error('Neturi teisės šalinti turnyrų');

@@ -110,7 +110,7 @@ do $$ begin
 end $$;
 reset role;
 
--- Prasidėjus turnyrui rėmėjų keisti nebegalima (sukurtas seniau nei prieš 10 min.).
+-- Prasidėjus turnyrui organizatorius rėmėjus tvarkyti gali (0027: rėmėjai – ne taisyklės, gali prisijungti vėliau).
 set session_replication_role = replica;  -- sukūrimo laiką saugo trigeris; testui jį apeinam
 update public.tournaments set starts_at = now() - interval '1 hour', created_at = now() - interval '1 day'
  where id = (select id from px where k = 'pub');
@@ -120,11 +120,8 @@ set request.jwt.claim.sub = '77777777-7777-4777-8777-777777777777';
 do $$ declare n int; begin
   update public.tournament_sponsors set amount_cents = 1 where tournament_id = (select id from px where k = 'pub');
   get diagnostics n = row_count;
-  assert n = 0, 'po starto pakeisti rėmėjai';
-  begin
-    insert into public.tournament_sponsors (tournament_id, name) select id, 'Vėlyvas' from px where k = 'pub';
-    raise exception 'FAIL: po starto pridėtas rėmėjas';
-  exception when insufficient_privilege then null; end;
+  assert n > 0, 'organizatorius negali tvarkyti rėmėjų po starto';
+  insert into public.tournament_sponsors (tournament_id, name, sort) select id, 'Vėlyvas', 9 from px where k = 'pub';
 end $$;
 reset role;
 

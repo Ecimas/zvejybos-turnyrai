@@ -7,6 +7,7 @@ import { phaseBadge, statusChip, backButton, thumb, hydratePhotos, empty, avatar
 import { eur, placeAmounts, payouts } from '../lib/prizes.js';
 import { lastSeen, markSeen } from '../lib/seen.js';
 import { isStaff, can } from '../lib/roles.js';
+import { sortSponsors, mainSponsor, logoTile, sponsorLink, trackViews, bindSponsorClicks } from '../lib/sponsors.js';
 
 // Organizatoriaus pranešimai dalyviams: rašo organizatorius, mato visi, kas mato turnyrą.
 function announcementsBlock(t, list, organizer, seenBefore) {
@@ -63,19 +64,44 @@ function winners(t, board, me) {
   </section>`;
 }
 
-const SAFE_URL = /^https:\/\/[^\s<>"']{3,200}$/;
-
 // Rėmėjo nuoroda rodoma tik su https:// (serveris tai tikrina, bet tikrinam ir čia – jokių javascript: nuorodų).
-function sponsorName(s) {
-  return SAFE_URL.test(s.url || '')
-    ? html`<a class="link strong" href="${s.url}" target="_blank" rel="noopener noreferrer sponsored">${s.name}</a>`
-    : html`<span class="strong">${s.name}</span>`;
+const sponsorName = (s) => sponsorLink(s, s.name, 'link strong');
+
+// Plona rėmėjų juosta (lentelė): „Remia“ + logotipai, generalinis – didesnis.
+export function sponsorStrip(t, label = 'Remia') {
+  const list = sortSponsors(t.sponsors);
+  if (!list.length) return '';
+  return html`<div class="sponsor-strip" data-sponsor-strip><span class="small muted strong">${label}</span>
+    ${list.map((s) => sponsorLink(s, logoTile(s, s.tier === 'main' ? 'logo-md' : 'logo-sm'), 'sponsor-tile-link'))}</div>`;
+}
+
+// Rėmėjų vitrina turnyro viršuje (0027): generalinis – didelis, kiti – logotipų tinklelis.
+export function sponsorShowcase(t) {
+  const list = sortSponsors(t.sponsors);
+  if (!list.length) return '';
+  const main = mainSponsor(list);
+  const rest = list.filter((s) => s !== main);
+  return html`<section class="stack-2 sponsor-showcase" aria-label="Rėmėjai" data-sponsors>
+    ${main ? html`<div class="card sponsor-main stack-2" data-sponsor-main>
+      <span class="small muted strong">Generalinis rėmėjas</span>
+      ${sponsorLink(main, logoTile(main, 'logo-lg'), 'sponsor-tile-link')}
+      <span class="strong">${sponsorName(main)}</span>
+      ${main.blurb ? html`<p class="sponsor-blurb">${icon('star', 16)}${main.blurb}</p>` : ''}
+    </div>` : ''}
+    ${rest.length ? html`<div class="stack-2">
+      <span class="small muted strong">${main ? 'Taip pat remia' : 'Turnyrą remia'}</span>
+      <div class="sponsor-grid">${rest.map((s) => html`<div class="sponsor-cell stack-1">
+        ${sponsorLink(s, logoTile(s), 'sponsor-tile-link')}
+        ${s.blurb ? html`<span class="small sponsor-blurb-sm">${s.blurb}</span>` : ''}
+      </div>`)}</div>
+    </div>` : ''}
+  </section>`;
 }
 
 function prizesBlock(t) {
   const fund = t.prize_fund_cents || 0;
   const sponsors = t.sponsors || [];
-  if (!fund && !t.prizes && !sponsors.length) return '';
+  if (!fund && !t.prizes && !sponsors.some((s) => s.amount_cents)) return '';
   const amounts = placeAmounts(fund, t.prize_split);
   return html`<section class="stack" aria-label="Prizai ir rėmėjai">
     <h2 class="h2">Prizai</h2>
@@ -88,11 +114,11 @@ function prizesBlock(t) {
       </div>`)}</dl>
     </div>` : ''}
     ${t.prizes ? html`<div class="card"><p class="prewrap">${t.prizes}</p></div>` : ''}
-    ${sponsors.length ? html`<div class="stack-2">
-      <span class="small muted strong">Rėmėjai</span>
-      <div class="list sponsor-list">${sponsors.map((s) => html`<div class="list-row">
+    ${sponsors.some((s) => s.amount_cents) ? html`<div class="stack-2">
+      <span class="small muted strong">Rėmėjų įnašai į fondą</span>
+      <div class="list sponsor-list">${sortSponsors(sponsors).filter((s) => s.amount_cents).map((s) => html`<div class="list-row">
         ${icon('star', 18)}<span class="grow">${sponsorName(s)}</span>
-        ${s.amount_cents ? html`<span class="num-sm">${eur(s.amount_cents)}</span>` : ''}
+        <span class="num-sm">${eur(s.amount_cents)}</span>
       </div>`)}</div>
     </div>` : ''}
   </section>`;
@@ -187,12 +213,15 @@ export async function tournamentView(ctx, [id]) {
         ${t.description ? html`<p>${t.description}</p>` : ''}
       </section>
 
+      ${sponsorShowcase(t)}
+
       ${p === 'done' && !hidden ? winners(t, board, me) : ''}
 
       ${organizer || (t.visibility === 'private' && t.joined) || tAdmin ? html`<section class="row gap-10 wrap">
         ${t.invite_code && p !== 'done' && (organizer || (t.visibility === 'private' && t.joined)) ? html`<button class="btn" data-invite>${icon('users', 18)}Kviesti draugus</button>` : ''}
         ${organizer && p === 'soon' ? html`<a class="btn" href="#/t/${t.id}/redaguoti">${icon('edit', 18)}Redaguoti</a>`
           : tAdmin ? html`<a class="btn" href="#/t/${t.id}/redaguoti" data-admin-edit>${icon('shield', 18)}Tvarkyti (administratorius)</a>` : ''}
+        ${organizer || tAdmin ? html`<a class="btn" href="#/t/${t.id}/remejai" data-sponsors-manage>${icon('star', 18)}Rėmėjai</a>` : ''}
       </section>` : ''}
 
       ${announcementsBlock(t, anns, organizer, seenBefore)}
@@ -283,6 +312,8 @@ export async function tournamentView(ctx, [id]) {
     ${cta ? html`<div class="cta-bar">${cta}</div>` : ''}`,
     mount(root) {
       hydratePhotos(root, backend);
+      trackViews(backend, t.sponsors);
+      bindSponsorClicks(root, backend);
       root.querySelector('[data-division]')?.addEventListener('change', async (e) => {
         const sel = e.currentTarget;
         sel.disabled = true;
@@ -377,9 +408,12 @@ export async function tvView(ctx, [id]) {
           <span class="tv-meta">${count(Number(r.counted), 'žuvis', 'žuvys', 'žuvų')}</span><span class="tv-score">${scoreText(t, r.score_mm)}</span>
         </li>`)}</ol>`
         : html`<p class="tv-empty">Patvirtintų laimikių dar nėra</p>`}
+      ${t.sponsors?.length ? html`<footer class="tv-sponsors" data-tv-sponsors><span class="tv-sponsors-label">Rėmėjai</span>
+        ${sortSponsors(t.sponsors).map((s) => logoTile(s, s.tier === 'main' ? 'logo-tv-main' : 'logo-tv'))}</footer>` : ''}
       <footer class="tv-foot muted small">Žvejybos turnyrai · atnaujinama automatiškai</footer>
     </div>`,
     mount() {
+      trackViews(backend, t.sponsors);
       if (p === 'done') return null;
       const timer = setInterval(() => ctx.rerender(), 30000);
       return () => clearInterval(timer);
@@ -446,6 +480,7 @@ export async function boardView(ctx, [id], query) {
         ${phaseBadge(t)}
       </header>
       ${hasTabs(t) ? boardTabs(t, div ? div.id : 'people') : ''}
+      ${sponsorStrip(t, 'Lentelę remia')}
 
       ${board.length ? html`
         <div class="podium">${podium.map((r) => html`
@@ -467,7 +502,9 @@ export async function boardView(ctx, [id], query) {
         <span class="small">${above ? gapText(above, mine, t) : 'Tu pirmauji'}${p === 'live' ? ` · ${timeLabel(t).toLowerCase()}` : ''}</span>
       </span>
     </div>` : ''}`,
-    mount() {
+    mount(root) {
+      trackViews(backend, t.sponsors);
+      bindSponsorClicks(root, backend);
       if (p !== 'live') return null;
       const timer = setInterval(() => ctx.rerender(), 30000);
       return () => clearInterval(timer);
