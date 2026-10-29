@@ -203,6 +203,45 @@ def more_real_tests(page, base):
     page.evaluate("async () => { window.__zt.state.profile = await window.__zt.backend.myProfile(); }")
     step("ribota rolė: matomos tik jai priklausančios skiltys, kitos uždraustos")
 
+    # Organizatoriai (0028): paprastas žvejys kuria tik turnyrus su kvietimu ir gali paprašyti teisių
+    fake(page, "const p = db.profiles.find(p => p.id === arg); p.roles = []; p.is_admin = false; window.__fakeDb.save(); return 1;", me)
+    page.evaluate("async () => { window.__zt.state.profile = await window.__zt.backend.myProfile(); }")
+    go(page, base + "#/naujas")
+    expect(page.get_by_role("button", name="Visi", exact=True)).to_be_disabled()
+    expect(page.get_by_role("button", name="Tik su kvietimu")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("[data-public-hint]")).to_contain_text("Tapti organizatoriumi")
+    res = page.evaluate("""() => window.__zt.backend.createTournament({ title: 'Viešas be teisės', format: 'biggest', top_n: 3, min_length_mm: 0,
+      starts_at: new Date(Date.now() + 864e5).toISOString(), ends_at: new Date(Date.now() + 2 * 864e5).toISOString(), visibility: 'public', species_ids: [] })
+      .then(() => 'ok', e => e.message)""")
+    assert res == "Viešus turnyrus kuria patvirtinti organizatoriai – sukurk turnyrą su kvietimu", res
+    go(page, base + "#/profilis")
+    page.locator("[data-become-organizer]").click()
+    page.get_by_label("Trumpai apie save (nebūtina)").fill("Rengiu Kauno marių turnyrus")
+    page.get_by_role("button", name="Siųsti prašymą").click()
+    expect(page.locator("#toast")).to_have_text("Prašymas išsiųstas")
+    expect(page.locator("[data-org-pending]")).to_contain_text("Rengiu Kauno marių turnyrus")
+    res = page.evaluate("() => window.__zt.backend.requestOrganizer('dar').then(() => 'ok', e => e.message)")
+    assert res == "Prašymas jau išsiųstas – laukia patvirtinimo", res
+    # Savininkas: prašymai komandos skiltyje, patvirtinimas
+    other = fake(page, "return db.profiles.find(p => p.nickname === 'Kitas_Zvejys').id;")
+    fake(page, "db.organizer_requests.push({ user_id: arg, message: 'Klubo turnyrai', status: 'pending', created_at: new Date().toISOString(), decided_at: null }); window.__fakeDb.save(); return 1;", other)
+    fake(page, "const p = db.profiles.find(p => p.id === arg); p.roles = ['owner']; p.is_admin = true; window.__fakeDb.save(); return 1;", me)
+    page.evaluate("async () => { window.__zt.state.profile = await window.__zt.backend.myProfile(); }")
+    go(page, base + "#/profilis")
+    expect(page.locator("[data-org-requests]")).to_have_text("2")
+    go(page, base + "#/moderavimas/komanda")
+    expect(page.locator("[data-org-req]")).to_have_count(2)
+    page.locator(f"[data-org-yes='{other}']").click()
+    expect(page.locator("#toast")).to_have_text("Organizatorius patvirtintas")
+    p2 = fake(page, "const p = db.profiles.find(p => p.id === arg); return { roles: p.roles, is_admin: p.is_admin };", other)
+    assert p2 == {"roles": ["organizer"], "is_admin": False}, p2
+    expect(page.locator(".team-card", has_text="Kitas_Zvejys").get_by_label("Organizatorius")).to_be_checked()
+    page.locator(f"[data-org-no='{me}']").click()
+    expect(page.locator("#toast")).to_have_text("Prašymas atmestas")
+    expect(page.locator("[data-org-req]")).to_have_count(0)
+    fake(page, "const p = db.profiles.find(p => p.id === arg); p.roles = []; window.__fakeDb.save(); return 1;", other)
+    step("organizatoriai: vieši turnyrai tik patvirtintiems, prašymas ir patvirtinimas")
+
     # Atsitiktinė patikra: savininkas parenka lyderį ir paprašo papildomos nuotraukos
     go(page, base + "#/moderavimas")
     page.get_by_role("button", name="Atsitiktinė patikra").click()

@@ -31,7 +31,7 @@ set request.jwt.claim.sub = 'e1000000-0000-4000-8000-0000000000e1';
 do $$
 declare e text;
 begin
-  assert public.my_permissions() = array['ban', 'disputes', 'review', 'roles', 'tournaments'], format('savininko teisės: %s', public.my_permissions());
+  assert public.my_permissions() = array['ban', 'disputes', 'publish', 'review', 'roles', 'tournaments'], format('savininko teisės: %s', public.my_permissions());
   perform public.set_role('r_admin', 'admin', true);
   perform public.set_role('R_Tikrintojas', 'moderator', true);
   perform public.set_role('R_Teisejas', 'judge', true);
@@ -59,7 +59,7 @@ end $$;
 -- Administratorius rolių skirti negali; savo rolių pasikeisti niekas negali
 set request.jwt.claim.sub = 'e2000000-0000-4000-8000-0000000000e2';
 do $$ begin
-  assert public.my_permissions() = array['ban', 'disputes', 'review', 'tournaments'], format('admin teisės: %s', public.my_permissions());
+  assert public.my_permissions() = array['ban', 'disputes', 'publish', 'review', 'tournaments'], format('admin teisės: %s', public.my_permissions());
   begin
     perform public.set_role('R_Zvejys', 'moderator', true);
     raise exception 'FAIL: administratorius skyrė rolę';

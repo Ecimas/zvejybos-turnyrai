@@ -6,7 +6,7 @@ import { duelBracket } from '../lib/duels.js';
 import { PermanentError, RetryLaterError, idbStore, memoryStore } from '../lib/outbox.js';
 import { phase, registrationOpen } from '../lib/format.js';
 import { banActive } from '../lib/bans.js';
-import { rolesOf, ASSIGNABLE, permsOf } from '../lib/roles.js';
+import { rolesOf, ASSIGNABLE, permsOf, STAFF_ROLES } from '../lib/roles.js';
 
 const KEY = 'zt-demo-v1';
 const ME = '00000000-0000-4000-8000-000000000001';
@@ -208,6 +208,12 @@ export function createDemoBackend({ photos } = {}) {
   db.leagues ||= [];
   db.divisions ||= [];
   db.admin_log ||= [];
+  if (!db.org_requests) {
+    // Demo: vienas žvejys laukia organizatoriaus teisių (savininkas mato skiltyje „Komanda“)
+    const who = Object.values(db.profiles).find((p) => p.nickname === 'Nemuno_Jonas');
+    db.org_requests = who ? [{ user_id: who.id, message: 'Kasmet rengiu Nemuno taurę Kauno rajone, norėčiau ją skelbti viešai.',
+      status: 'pending', created_at: new Date(Date.now() - 5 * H).toISOString() }] : [];
+  }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* pilna atmintis */ } };
   save();
   const photoStore = photos || (typeof indexedDB !== 'undefined' ? idbStore('zvejybos-turnyrai-demo', 'photos') : memoryStore());
@@ -298,6 +304,7 @@ export function createDemoBackend({ photos } = {}) {
       const recent = db.tournaments.filter((t) => t.organizer_id === ME && Date.now() - new Date(t.created_at) < D).length;
       if (recent >= 10) throw new Error('Per parą galima sukurti ne daugiau kaip 10 turnyrų');
       checkLeague(rest.league_id);
+      if ((rest.visibility || 'public') === 'public' && !permsOf(db.profiles[ME]).has('publish')) throw new Error('Viešus turnyrus kuria patvirtinti organizatoriai – sukurk turnyrą su kvietimu');
       db.tournaments.push(formatRules({ id, organizer_id: ME, visibility: 'public', fee_cents: 0, leaderboard_hidden: false,
         invite_code: code10(), created_at: new Date().toISOString(), ...rest }));
       species_ids.forEach((species_id) => db.tournament_species.push({ tournament_id: id, species_id, points_pct: species_pct[species_id] ?? 100 }));
@@ -318,6 +325,7 @@ export function createDemoBackend({ photos } = {}) {
         if ('ends_at' in rest && new Date(rest.ends_at) < Date.now() - 60e3) throw new Error('Pabaiga negali būti praeityje');
       }
       if (rest.league_id && rest.league_id !== t.league_id) checkLeague(rest.league_id);
+      if (rest.visibility === 'public' && t.visibility !== 'public' && !permsOf(db.profiles[ME]).has('publish')) throw new Error('Viešus turnyrus kuria patvirtinti organizatoriai');
       if (!asOrganizer) {
         const changes = Object.fromEntries(Object.keys(rest).filter((k) => !same(rest[k], t[k])).map((k) => [k, [t[k] ?? null, rest[k] ?? null]]));
         if (Object.keys(changes).length) {
@@ -692,7 +700,37 @@ export function createDemoBackend({ photos } = {}) {
       if (roles.includes('owner')) throw new Error('Savininko rolių keisti negalima');
       if (on && banActive(db.bans.find((b) => b.user_id === p.id))) throw new Error('Užblokuotam žvejui rolės suteikti negalima');
       p.roles = on ? [...new Set([...roles, role])].sort() : roles.filter((r) => r !== role);
-      p.is_admin = p.roles.length > 0;
+      p.is_admin = p.roles.some((r) => STAFF_ROLES.includes(r));
+      if (role === 'organizer' && on) db.org_requests = db.org_requests.filter((x) => x.user_id !== p.id);
+      save();
+    },
+    async requestOrganizer(message) {
+      if (permsOf(db.profiles[ME]).has('publish')) throw new Error('Tu jau organizatorius');
+      if (db.org_requests.some((x) => x.user_id === ME && x.status === 'pending')) throw new Error('Prašymas jau išsiųstas – laukia patvirtinimo');
+      db.org_requests = db.org_requests.filter((x) => x.user_id !== ME)
+        .concat({ user_id: ME, message: String(message || '').trim().slice(0, 300) || null, status: 'pending', created_at: new Date().toISOString() });
+      save();
+    },
+    async myOrganizerRequest() {
+      return db.org_requests.find((x) => x.user_id === ME) || null;
+    },
+    async organizerRequests() {
+      if (!permsOf(db.profiles[ME]).has('roles')) throw new Error('Sprendžia tik savininkas');
+      return db.org_requests.filter((x) => x.status === 'pending')
+        .map((x) => ({ ...x, nickname: db.profiles[x.user_id]?.nickname ?? '', region: db.profiles[x.user_id]?.region ?? null }));
+    },
+    async decideOrganizer(userId, approve) {
+      if (!permsOf(db.profiles[ME]).has('roles')) throw new Error('Sprendžia tik savininkas');
+      const r = db.org_requests.find((x) => x.user_id === userId && x.status === 'pending');
+      if (!r) throw new Error('Prašymas jau išspręstas');
+      const p = db.profiles[userId];
+      if (approve) {
+        p.roles = [...new Set([...rolesOf(p), 'organizer'])].sort();
+        r.status = 'approved';
+      } else {
+        r.status = 'rejected';
+      }
+      r.decided_at = new Date().toISOString();
       save();
     },
     async setModerator(nickname, admin) {

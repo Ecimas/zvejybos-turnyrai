@@ -206,7 +206,8 @@ export async function teamView(ctx) {
   const { backend, state } = ctx;
   tabState = state;
   if (!can(state, 'roles')) return denied();
-  const staff = (await backend.staff()).sort((a, b) => rolesOf(b).includes('owner') - rolesOf(a).includes('owner'));
+  const [staffRows, reqs] = await Promise.all([backend.staff(), backend.organizerRequests ? backend.organizerRequests().catch(() => []) : []]);
+  const staff = staffRows.sort((a, b) => rolesOf(b).includes('owner') - rolesOf(a).includes('owner'));
   return {
     nav: 'profilis',
     title: 'Komanda ir rolės',
@@ -214,6 +215,17 @@ export async function teamView(ctx) {
       <header class="top-bar">${backButton('#/profilis')}<span class="muted strong">Komanda</span><span></span></header>
       <h1 class="sr-only" tabindex="-1">Komanda ir rolės</h1>
       ${tabs('team')}
+      ${reqs.length ? html`<section class="stack-2" data-org-requests-list>
+        <h2 class="h2">Prašymai tapti organizatoriumi</h2>
+        ${reqs.map((r) => html`<article class="card stack-2 org-req" data-org-req="${r.user_id}">
+          <div class="row-between gap-8"><a class="strong link-plain" href="#/zvejys/${r.user_id}">${r.nickname}</a><span class="small muted">${dateTime(r.created_at)}</span></div>
+          ${r.region ? html`<span class="small muted">${r.region}</span>` : ''}
+          ${r.message ? html`<p class="small prewrap">„${r.message}“</p>` : html`<p class="small muted">Žinutės nėra</p>`}
+          <div class="row gap-10"><button class="btn btn-primary grow" data-org-yes="${r.user_id}">${icon('check', 18, 2.6)}Patvirtinti</button>
+            <button class="btn grow" data-org-no="${r.user_id}">Atmesti</button></div>
+        </article>`)}
+        <p class="small muted">Organizatorius gali kurti viešus turnyrus. Komandos teisių (laimikių tikrinimo, vietų, blokavimo) jis negauna.</p>
+      </section>` : ''}
       <section class="stack">${staff.map((m) => {
         const roles = rolesOf(m);
         const owner = roles.includes('owner');
@@ -253,6 +265,18 @@ export async function teamView(ctx) {
       root.querySelectorAll('[data-role]').forEach((b) => b.addEventListener('change', () => {
         if (!b.checked && !confirm(`Atimti iš ${b.dataset.nick} rolę „${roleLabel(b.dataset.role)}“?`)) { b.checked = true; return; }
         set(b.dataset.nick, b.dataset.role, b.checked);
+      }));
+      root.querySelectorAll('[data-org-yes], [data-org-no]').forEach((b) => b.addEventListener('click', async () => {
+        const yes = b.dataset.orgYes !== undefined;
+        const id = yes ? b.dataset.orgYes : b.dataset.orgNo;
+        b.disabled = true;
+        try {
+          await backend.decideOrganizer(id, yes);
+          ctx.toast(yes ? 'Organizatorius patvirtintas' : 'Prašymas atmestas');
+        } catch (err) {
+          ctx.toast(err.message || 'Nepavyko');
+        }
+        ctx.rerender();
       }));
       root.querySelector('[data-add]').addEventListener('submit', (e) => {
         e.preventDefault();

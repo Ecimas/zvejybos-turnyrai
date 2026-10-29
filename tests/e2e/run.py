@@ -460,6 +460,23 @@ def sponsors_demo_test(page, base):
     step("rėmėjų tvarkymas: logotipo įkėlimas, generalinis rėmėjas, statistika")
 
 
+def organizer_demo_test(page, base):
+    page.goto(base + "#/moderavimas/komanda")
+    req = page.locator("[data-org-req]")
+    expect(req).to_contain_text("Nemuno_Jonas")
+    expect(req).to_contain_text("Nemuno taurę")
+    shot(page, "organizatoriaus-prasymas")
+    req.get_by_role("button", name="Patvirtinti").click()
+    expect(page.locator("#toast")).to_have_text("Organizatorius patvirtintas")
+    expect(page.locator("[data-org-req]")).to_have_count(0)
+    expect(page.locator(".team-card", has_text="Nemuno_Jonas").get_by_label("Organizatorius")).to_be_checked()
+    p = page.evaluate("() => Object.values(JSON.parse(localStorage.getItem('zt-demo-v1')).profiles).find(p => p.nickname === 'Nemuno_Jonas')")
+    assert p["roles"] == ["organizer"], p
+    page.goto(base + "#/organizatorius")
+    expect(page.locator("[data-org-ok]")).to_contain_text("Tu – organizatorius")
+    step("organizatoriaus prašymas: savininkas patvirtina, organizatorius – ne komandos narys")
+
+
 def admin_demo_test(page, base):
     # Demo žvejys – savininkas, todėl turi teisę tvarkyti bet kurį turnyrą (0026)
     page.goto(base + "#/t/t-sezonas")
@@ -1051,6 +1068,7 @@ def main():
         formats_demo_test(page, base)
         stats_demo_test(page, base)
         sponsors_demo_test(page, base)
+        organizer_demo_test(page, base)
         admin_demo_test(page, base)
 
         ctx.close()

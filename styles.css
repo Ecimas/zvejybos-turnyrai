@@ -693,3 +693,9 @@ fieldset[disabled] button { cursor: not-allowed; }
 .tv-sponsors-label { font-size: 1.1rem; color: var(--muted); font-weight: 600; }
 .sponsor-logo.logo-tv { height: 72px; min-width: 120px; }
 .sponsor-logo.logo-tv-main { height: 104px; min-width: 200px; padding: 12px 22px; }
+
+/* Organizatoriai (0028) */
+.public-hint { margin: 4px 0 0; color: var(--muted); }
+.seg button:disabled { opacity: .45; cursor: not-allowed; }
+.org-req { border-left: 4px solid var(--wait); }
+.org-req a.link-plain { min-height: 44px; display: inline-flex; align-items: center; }

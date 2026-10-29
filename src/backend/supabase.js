@@ -189,7 +189,8 @@ export async function createSupabaseBackend(url, anonKey) {
     async createTournament(data) {
       const { species_ids, species_pct = {}, sponsors = [], divisions = [], ...rest } = data;
       const ins = await sb.from('tournaments').insert({ ...rest, organizer_id: uid() }).select('id').single();
-      if (ins.error) throw friendly(ins.error, [[/tournament_limit/, 'Per parą galima sukurti ne daugiau kaip 10 turnyrų'], [/league_owner/, 'Į lygą gali įtraukti tik lygos savininkas']]);
+      if (ins.error) throw friendly(ins.error, [[/tournament_limit/, 'Per parą galima sukurti ne daugiau kaip 10 turnyrų'], [/league_owner/, 'Į lygą gali įtraukti tik lygos savininkas'],
+        [/public_not_allowed/, 'Viešus turnyrus kuria patvirtinti organizatoriai – sukurk turnyrą su kvietimu']]);
       const t = ins.data;
       if (species_ids.length) {
         check(await sb.from('tournament_species').insert(speciesRows(t.id, species_ids, species_pct)));
@@ -206,7 +207,8 @@ export async function createSupabaseBackend(url, anonKey) {
       const before = divisions ? check(await sb.from('tournament_divisions').select('id, name, sort').eq('tournament_id', id)) : [];
       const { data: rows, error } = await sb.from('tournaments').update(rest).eq('id', id).select('id');
       if (error) throw friendly(error, [[/league_owner/, 'Į lygą gali įtraukti tik lygos savininkas'],
-        [/started_rules_locked/, 'Prasidėjusio turnyro taisyklių keisti negalima'], [/ends_in_past/, 'Pabaiga negali būti praeityje']]);
+        [/started_rules_locked/, 'Prasidėjusio turnyro taisyklių keisti negalima'], [/ends_in_past/, 'Pabaiga negali būti praeityje'],
+        [/public_not_allowed/, 'Viešus turnyrus kuria patvirtinti organizatoriai']]);
       if (!rows?.length) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
       if (species_ids) {
         check(await sb.from('tournament_species').delete().eq('tournament_id', id));
@@ -500,7 +502,33 @@ export async function createSupabaseBackend(url, anonKey) {
     },
     // Komanda: visi, turintys bent vieną rolę (is_admin sinchronizuojamas su roles, 0014).
     async staff() {
-      return check(await sb.from('profiles').select('id, nickname, region, roles, is_admin').eq('is_admin', true).order('nickname'));
+      // Komanda (is_admin) ir organizatoriai (0028: organizatorius nėra komandos narys, todėl atskira užklausa)
+      const [team, orgs] = await Promise.all([
+        sb.from('profiles').select('id, nickname, region, roles, is_admin').eq('is_admin', true).order('nickname'),
+        sb.from('profiles').select('id, nickname, region, roles, is_admin').contains('roles', ['organizer']).order('nickname')
+      ]);
+      const seen = new Set();
+      return [...check(team), ...check(orgs)].filter((p) => !seen.has(p.id) && seen.add(p.id))
+        .sort((a, b) => a.nickname.localeCompare(b.nickname));
+    },
+    // Organizatoriai (0028)
+    async requestOrganizer(message) {
+      const { error } = await sb.rpc('request_organizer', { p_message: message || null });
+      if (error) throw friendly(error, [[/request_pending/, 'Prašymas jau išsiųstas – laukia patvirtinimo'], [/request_cooldown/, 'Pakartotinai prašyti galėsi po 7 dienų nuo atmetimo'],
+        [/already_organizer/, 'Tu jau organizatorius'], [/banned/, 'Paskyra užblokuota']], 'Nepavyko išsiųsti prašymo');
+    },
+    async myOrganizerRequest() {
+      return check(await sb.from('organizer_requests').select('status, message, created_at, decided_at').eq('user_id', uid()).maybeSingle());
+    },
+    async organizerRequests() {
+      const rows = check(await sb.from('organizer_requests')
+        .select('user_id, message, created_at, profiles!organizer_requests_user_id_fkey(nickname, region)')
+        .eq('status', 'pending').order('created_at'));
+      return rows.map(({ profiles: p, ...r }) => ({ ...r, nickname: p?.nickname ?? '', region: p?.region ?? null }));
+    },
+    async decideOrganizer(userId, approve) {
+      const { error } = await sb.rpc('decide_organizer', { p_user: userId, p_approve: !!approve });
+      if (error) throw friendly(error, [[/request_not_found/, 'Prašymas jau išspręstas'], [/not allowed/, 'Sprendžia tik savininkas']], 'Nepavyko');
     },
     async setRole(nickname, role, on) {
       const { error } = await sb.rpc('set_role', { p_nickname: nickname, p_role: role, p_on: on });

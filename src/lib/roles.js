@@ -1,18 +1,24 @@
 // Rolės ir teisės (0014). Tikrina serveris – čia tik tam, kad rodytume tinkamus meniu.
 // Teisės: review – laimikių eilė ir GPS vietos; disputes – ginčai ir pranešimai;
-//         ban – blokavimas ir slapyvardžiai; roles – rolių skyrimas; tournaments – bet kurio turnyro taisymas ir pašalinimas (0026).
+//         ban – blokavimas ir slapyvardžiai; roles – rolių skyrimas; tournaments – bet kurio turnyro taisymas ir pašalinimas (0026);
+//         publish – viešų turnyrų kūrimas (0028; organizatorius nėra komandos narys).
 export const ROLES = [
-  { key: 'owner', label: 'Savininkas', perms: ['review', 'disputes', 'ban', 'roles', 'tournaments'],
+  { key: 'owner', label: 'Savininkas', perms: ['review', 'disputes', 'ban', 'roles', 'tournaments', 'publish'],
     desc: 'Viskas, taip pat rolių skyrimas. Programėlėje nekeičiama.' },
-  { key: 'admin', label: 'Administratorius', perms: ['review', 'disputes', 'ban', 'tournaments'],
+  { key: 'admin', label: 'Administratorius', perms: ['review', 'disputes', 'ban', 'tournaments', 'publish'],
     desc: 'Tikrina laimikius, sprendžia ginčus ir pranešimus, blokuoja žvejus, taiso ir šalina bet kurį turnyrą.' },
   { key: 'moderator', label: 'Laimikių tikrintojas', perms: ['review'],
     desc: 'Tvirtina ir atmeta laimikius, mato jų tikslias vietas.' },
   { key: 'judge', label: 'Ginčų teisėjas', perms: ['disputes'],
     desc: 'Sprendžia ginčus ir pranešimus apie įtartinus laimikius.' },
   { key: 'guard', label: 'Bendruomenės prižiūrėtojas', perms: ['ban'],
-    desc: 'Blokuoja žvejus ir keičia netinkamus slapyvardžius.' }
+    desc: 'Blokuoja žvejus ir keičia netinkamus slapyvardžius.' },
+  { key: 'organizer', label: 'Organizatorius', perms: ['publish'], staff: false,
+    desc: 'Kuria viešus turnyrus, matomus visų sąraše. Komandos teisių neturi. Privačius turnyrus su kvietimu gali kurti visi.' }
 ];
+
+// Komandos rolės (mato moderavimą ir pan.); organizatorius – ne komanda.
+export const STAFF_ROLES = ROLES.filter((r) => r.staff !== false).map((r) => r.key);
 
 export const ASSIGNABLE = ROLES.filter((r) => r.key !== 'owner');
 
@@ -31,7 +37,7 @@ export function permsOf(profile) {
   return out;
 }
 
-export const isStaff = (profile) => rolesOf(profile).length > 0;
+export const isStaff = (profile) => rolesOf(profile).some((r) => STAFF_ROLES.includes(r));
 
 // Ar prisijungęs vartotojas turi teisę (pagal jo profilį būsenoje).
 export const can = (state, perm) => permsOf(state?.profile).has(perm);

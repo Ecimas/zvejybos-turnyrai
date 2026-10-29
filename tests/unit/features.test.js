@@ -97,8 +97,8 @@ test('blokavimas: galiojimas ir tekstai', async () => {
 test('rolės: teisės, senas is_admin, savininko neskiriama', async () => {
   const { permsOf, rolesOf, isStaff, can, ASSIGNABLE, roleLabel } = await import('../../src/lib/roles.js');
   const sorted = (s) => [...s].sort();
-  assert.deepEqual(sorted(permsOf({ roles: ['owner'] })), ['ban', 'disputes', 'review', 'roles', 'tournaments']);
-  assert.deepEqual(sorted(permsOf({ roles: ['admin'] })), ['ban', 'disputes', 'review', 'tournaments']);
+  assert.deepEqual(sorted(permsOf({ roles: ['owner'] })), ['ban', 'disputes', 'publish', 'review', 'roles', 'tournaments']);
+  assert.deepEqual(sorted(permsOf({ roles: ['admin'] })), ['ban', 'disputes', 'publish', 'review', 'tournaments']);
   assert.deepEqual(sorted(permsOf({ roles: ['moderator'] })), ['review']);
   assert.deepEqual(sorted(permsOf({ roles: ['judge'] })), ['disputes']);
   assert.deepEqual(sorted(permsOf({ roles: ['guard'] })), ['ban']);
@@ -111,6 +111,11 @@ test('rolės: teisės, senas is_admin, savininko neskiriama', async () => {
   assert.equal(can({ profile: null }, 'review'), false);
   assert.ok(!ASSIGNABLE.some((r) => r.key === 'owner'), 'savininko programėlėje skirti negalima');
   assert.equal(roleLabel('judge'), 'Ginčų teisėjas');
+  // 0028: organizatorius kuria viešus turnyrus, bet nėra komandos narys
+  assert.deepEqual(sorted(permsOf({ roles: ['organizer'] })), ['publish']);
+  assert.equal(isStaff({ roles: ['organizer'] }), false, 'organizatorius – ne komanda');
+  assert.equal(isStaff({ roles: ['organizer', 'judge'] }), true);
+  assert.ok(ASSIGNABLE.some((r) => r.key === 'organizer'), 'organizatorių skiria savininkas');
 });
 
 test('žemėlapis: atstumas ir vietų grupavimas (~50 m)', async () => {

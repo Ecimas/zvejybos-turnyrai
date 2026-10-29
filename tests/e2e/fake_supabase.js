@@ -52,6 +52,7 @@ function seed() {
     leagues: [],
     tournament_divisions: [],
     tournament_admin_log: [],
+    organizer_requests: [],
     entries: [{ tournament_id: 'tttttttt-0000-4000-8000-000000000001', user_id: other, joined_at: iso(-20 * H) },
       { tournament_id: 'tttttttt-0000-4000-8000-000000000002', user_id: other, joined_at: iso(-20 * H) }],
     catches: [{
@@ -93,8 +94,9 @@ const myRoles = () => {
   const p = db.profiles.find((x) => x.id === uid());
   return p ? (Array.isArray(p.roles) ? p.roles : (p.is_admin ? ['owner'] : [])) : [];
 };
-const isAdmin = () => myRoles().length > 0;
-const PERMS = { owner: ['review', 'disputes', 'ban', 'roles', 'tournaments'], admin: ['review', 'disputes', 'ban', 'tournaments'], moderator: ['review'], judge: ['disputes'], guard: ['ban'] };
+const STAFF = ['owner', 'admin', 'moderator', 'judge', 'guard'];
+const isAdmin = () => myRoles().some((r) => STAFF.includes(r));
+const PERMS = { owner: ['review', 'disputes', 'ban', 'roles', 'tournaments', 'publish'], admin: ['review', 'disputes', 'ban', 'tournaments', 'publish'], moderator: ['review'], judge: ['disputes'], guard: ['ban'], organizer: ['publish'] };
 const hasPerm = (perm) => myRoles().some((r) => PERMS[r]?.includes(perm));
 // 0013: aktyvus blokavimas
 db.user_bans ||= [];
@@ -126,6 +128,7 @@ function visible(table, row) {
       || db.entries.some((e) => e.tournament_id === row.id && e.user_id === uid()) || hasPerm('tournaments');
   }
   if (table === 'tournament_admin_log') return hasPerm('tournaments');
+  if (table === 'organizer_requests') return !!uid() && (row.user_id === uid() || hasPerm('roles'));
   if (table === 'disputes') return row.user_id === uid() || hasPerm('disputes');
   if (table === 'catch_reports') return row.reporter_id === uid() || hasPerm('disputes');
   if (table === 'user_bans') return !!uid() && (row.user_id === uid() || hasPerm('ban'));
@@ -175,6 +178,9 @@ function embed(table, row, spec) {
     } else if (table === 'entries' && part.startsWith('profiles(')) {
       const p = db.profiles.find((x) => x.id === row.user_id);
       out.profiles = p ? { id: p.id, nickname: p.nickname, region: p.region } : null;
+    } else if (table === 'organizer_requests' && part.startsWith('profiles!organizer_requests_user_id_fkey(')) {
+      const p = db.profiles.find((x) => x.id === row.user_id);
+      out.profiles = p ? { nickname: p.nickname, region: p.region } : null;
     } else if (table === 'tournament_admin_log' && part.startsWith('actor:profiles!tournament_admin_log_actor_id_fkey(')) {
       const p = db.profiles.find((x) => x.id === row.actor_id);
       out.actor = p ? { nickname: p.nickname } : null;
@@ -305,13 +311,17 @@ class Query {
   delete() { this.op = 'delete'; return this; }
   eq(col, val) { this.filters.push([col, val]); return this; }
   in(col, vals) { this.filters.push([col, { in: vals }]); return this; }
+  contains(col, vals) { this.filters.push([col, { contains: vals }]); return this; }
   order(col, o = {}) { this.sort = [col, o.ascending !== false]; return this; }
   limit(n) { this.max = n; return this; }
   single() { this.mode = 'single'; return this; }
   maybeSingle() { this.mode = 'maybe'; return this; }
   then(res, rej) { return Promise.resolve().then(() => this.run()).then(res, rej); }
 
-  matches(row) { return this.filters.every(([c, v]) => (v && typeof v === 'object' && Array.isArray(v.in) ? v.in.includes(row[c]) : row[c] === v)); }
+  matches(row) {
+    return this.filters.every(([c, v]) => (v && typeof v === 'object' && Array.isArray(v.in) ? v.in.includes(row[c])
+      : v && typeof v === 'object' && Array.isArray(v.contains) ? v.contains.every((x) => (row[c] || []).includes(x)) : row[c] === v));
+  }
 
   run() {
     log('from', { table: this.table, op: this.op, sel: this.sel, filters: this.filters, rows: this.rows, patch: this.patch });
@@ -463,6 +473,9 @@ class Query {
           if (db.tournament_sponsors.filter((x) => x.tournament_id === row.tournament_id).length >= 10) return { data: null, error: err('P0001', 'sponsor_limit') };
           Object.assign(row, { id: uuid(), name: String(row.name).trim(), created_at: new Date().toISOString() });
         }
+        if (this.table === 'tournaments' && (row.visibility || 'public') === 'public' && !hasPerm('publish')) {
+          return { data: null, error: err('P0001', 'public_not_allowed') };
+        }
         if (this.table === 'tournaments' && row.prize_fund_cents && !Array.isArray(row.prize_split)) {
           return { data: null, error: err('23514', 'tournaments_prize_split_required') };
         }
@@ -515,6 +528,9 @@ class Query {
       data = t.filter((r) => this.matches(r) && writable(this.table, r));
       if (this.table === 'tournament_sponsors') {
         for (const r of data) { const bad = sponsorRowError({ ...r, ...this.patch, id: r.id }); if (bad) return { data: null, error: bad }; }
+      }
+      if (this.table === 'tournaments' && this.patch.visibility === 'public' && !hasPerm('publish') && data.some((r) => r.visibility !== 'public')) {
+        return { data: null, error: err('P0001', 'public_not_allowed') };
       }
       if (this.table === 'tournaments') {
         const RULES = ['format', 'top_n', 'min_length_mm', 'starts_at', 'team_mode', 'league_id', 'prize_fund_cents', 'prize_split'];
@@ -825,14 +841,37 @@ export function createClient(url, key) {
         if (!hasPerm('roles')) return { data: null, error: err('P0001', 'not allowed') };
         const role = name === 'set_moderator' ? 'admin' : args.p_role;
         const on = name === 'set_moderator' ? !!args.p_admin : !!args.p_on;
-        if (!['admin', 'moderator', 'judge', 'guard'].includes(role)) return { data: null, error: err('P0001', 'role_invalid') };
+        if (!['admin', 'moderator', 'judge', 'guard', 'organizer'].includes(role)) return { data: null, error: err('P0001', 'role_invalid') };
         const p = db.profiles.find((x) => x.nickname.toLowerCase() === String(args.p_nickname).trim().toLowerCase());
         if (!p) return { data: null, error: err('P0001', 'user not found') };
         const roles = Array.isArray(p.roles) ? p.roles : (p.is_admin ? ['owner'] : []);
         if (roles.includes('owner')) return { data: null, error: err('P0001', 'role_owner') };
         if (on && bannedId(p.id)) return { data: null, error: err('P0001', 'role_banned') };
         p.roles = on ? [...new Set([...roles, role])].sort() : roles.filter((x) => x !== role);
-        p.is_admin = p.roles.length > 0;
+        p.is_admin = p.roles.some((x) => STAFF.includes(x));
+        if (role === 'organizer' && on) (db.organizer_requests || []).forEach((r) => { if (r.user_id === p.id && r.status === 'pending') r.status = 'approved'; });
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'request_organizer') {
+        if (!uid()) return { data: null, error: err('P0001', 'not allowed') };
+        if (hasPerm('publish')) return { data: null, error: err('P0001', 'already_organizer') };
+        db.organizer_requests ||= [];
+        const old = db.organizer_requests.find((r) => r.user_id === uid());
+        if (old?.status === 'pending') return { data: null, error: err('P0001', 'request_pending') };
+        if (old?.status === 'rejected' && Date.now() - Date.parse(old.decided_at) < 7 * 864e5) return { data: null, error: err('P0001', 'request_cooldown') };
+        db.organizer_requests = db.organizer_requests.filter((r) => r.user_id !== uid())
+          .concat({ user_id: uid(), message: String(args.p_message || '').trim().slice(0, 300) || null, status: 'pending', created_at: new Date().toISOString(), decided_at: null });
+        save();
+        return { data: null, error: null };
+      }
+      if (name === 'decide_organizer') {
+        if (!hasPerm('roles')) return { data: null, error: err('P0001', 'not allowed') };
+        const r = (db.organizer_requests || []).find((x) => x.user_id === args.p_user && x.status === 'pending');
+        if (!r) return { data: null, error: err('P0001', 'request_not_found') };
+        const p = db.profiles.find((x) => x.id === args.p_user);
+        if (args.p_approve) { p.roles = [...new Set([...(p.roles || []), 'organizer'])].sort(); r.status = 'approved'; } else r.status = 'rejected';
+        r.decided_at = new Date().toISOString();
         save();
         return { data: null, error: null };
       }

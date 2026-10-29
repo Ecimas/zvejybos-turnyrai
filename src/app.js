@@ -9,6 +9,7 @@ import { leaguesView, leagueView } from './views/leagues.js';
 import { statsView } from './views/stats.js';
 import { adminLogView } from './views/adminlog.js';
 import { sponsorsView } from './views/sponsors.js';
+import { organizerView } from './views/organizer.js';
 import { startPresence } from './lib/presence.js';
 import { captureView } from './views/capture.js';
 import { catchView } from './views/catch.js';
@@ -34,6 +35,7 @@ const ROUTES = [
   [/^\/lyga\/([\w-]+)$/, leagueView],
   [/^\/t\/([\w-]+)\/redaguoti$/, createView],
   [/^\/t\/([\w-]+)\/remejai$/, sponsorsView],
+  [/^\/organizatorius$/, organizerView],
   [/^\/kvietimas\/(\w+)$/, inviteView],
   [/^\/laimikis$/, captureView],
   [/^\/l\/([\w-]+)$/, catchView],

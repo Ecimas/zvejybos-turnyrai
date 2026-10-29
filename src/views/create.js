@@ -64,7 +64,9 @@ export async function createView(ctx, [editId] = []) {
   const myLeagues = backend.myLeagues ? await backend.myLeagues().catch(() => []) : [];
   let divisions = (t?.divisions || []).map((d) => ({ id: d.id, name: d.name }));
   let format = t?.format || 'biggest';
-  let visibility = t?.visibility || 'public';
+  // Viešus turnyrus kuria tik organizatoriai (0028); seni vieši lieka vieši.
+  const canPublic = can(state, 'publish') || t?.visibility === 'public';
+  let visibility = t?.visibility || (canPublic ? 'public' : 'private');
   const back = t ? `#/t/${t.id}` : '#/';
 
   return {
@@ -117,10 +119,11 @@ export async function createView(ctx, [editId] = []) {
         <fieldset class="field">
           <legend class="small muted strong">Kas gali dalyvauti</legend>
           <div class="seg">
-            <button type="button" data-vis="public" aria-pressed="${visibility === 'public'}">Visi</button>
+            <button type="button" data-vis="public" aria-pressed="${visibility === 'public'}" ${canPublic ? '' : 'disabled'}>Visi</button>
             <button type="button" data-vis="private" aria-pressed="${visibility === 'private'}">Tik su kvietimu</button>
           </div>
           <span class="small muted" data-vis-hint>${visibility === 'private' ? 'Turnyras nerodomas sąraše. Po sukūrimo gausi kvietimo nuorodą.' : 'Turnyras matomas visiems sąraše.'}</span>
+          ${canPublic ? '' : html`<p class="small public-hint" data-public-hint>${icon('lock', 14, 2.6)} Viešus turnyrus (matomus visų sąraše) kuria patvirtinti organizatoriai. <a class="link" href="#/organizatorius">Tapti organizatoriumi</a></p>`}
         </fieldset>
 
         <label class="field" data-not-duels ${format === 'duels' ? 'hidden' : ''}><span class="small muted strong">Registracija po starto</span>

@@ -101,7 +101,7 @@ export async function profileView(ctx) {
   }
   const p = state.profile || (await backend.myProfile());
   const perms = permsOf(p);
-  const [catches, tcount, pendingList, disputes, reports, trips, follow, clubs] = await Promise.all([
+  const [catches, tcount, pendingList, disputes, reports, trips, follow, clubs, orgRequests] = await Promise.all([
     backend.myCatches(),
     backend.userTournamentCount(state.user.id),
     perms.has('review') ? backend.pending().catch(() => []) : [],
@@ -109,7 +109,8 @@ export async function profileView(ctx) {
     perms.has('disputes') ? backend.openReports().catch(() => []) : [],
     backend.blankTrips().catch(() => []),
     backend.followStats ? backend.followStats(state.user.id).catch(() => null) : null,
-    backend.myClubs ? backend.myClubs().catch(() => []) : []
+    backend.myClubs ? backend.myClubs().catch(() => []) : [],
+    perms.has('roles') && backend.organizerRequests ? backend.organizerRequests().catch(() => []) : []
   ]);
   const reportedCatches = new Set(reports.map((r) => r.catch_id)).size;
   // Žvejybos dienos: dienos su laimikiu (bet kokios būsenos, išskyrus atmestus) ir dienos be laimikio.
@@ -171,9 +172,10 @@ export async function profileView(ctx) {
           ${perms.has('disputes') ? html`<a class="list-row" href="#/moderavimas/gincai">${icon('alert', 20)}<span class="grow strong">Ginčai</span>${disputes.length ? html`<span class="chip chip-wait">${disputes.length}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
           ${perms.has('ban') ? html`<a class="list-row" href="#/moderavimas/blokuoti">${icon('lock', 20)}<span class="grow strong">Užblokuoti žvejai</span>${icon('chevron', 18)}</a>` : ''}
           ${perms.has('tournaments') ? html`<a class="list-row" href="#/moderavimas/turnyrai">${icon('trophy', 20)}<span class="grow strong">Turnyrų žurnalas</span>${icon('chevron', 18)}</a>` : ''}
-          ${perms.has('roles') ? html`<a class="list-row" href="#/moderavimas/komanda">${icon('user', 20)}<span class="grow strong">Komanda ir rolės</span>${icon('chevron', 18)}</a>` : ''}
+          ${perms.has('roles') ? html`<a class="list-row" href="#/moderavimas/komanda">${icon('user', 20)}<span class="grow strong">Komanda ir rolės</span>${orgRequests.length ? html`<span class="chip chip-wait" data-org-requests>${orgRequests.length}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
           ${perms.has('roles') ? html`<a class="list-row" href="#/moderavimas/statistika">${icon('bars', 20)}<span class="grow strong">Statistika</span>${icon('chevron', 18)}</a>` : ''}
           <a class="list-row" href="#/naujas">${icon('plus', 20)}<span class="grow strong">Sukurti turnyrą</span>${icon('chevron', 18)}</a>
+          ${perms.has('publish') ? '' : html`<a class="list-row" href="#/organizatorius" data-become-organizer>${icon('trophy', 20)}<span class="grow stack-1"><span class="strong">Tapti organizatoriumi</span><span class="small muted">Vieši turnyrai, matomi visų sąraše</span></span>${icon('chevron', 18)}</a>`}
           <a class="list-row" href="#/sekami">${icon('star', 20)}<span class="grow strong">Sekamų žvejų laimikiai</span>${icon('chevron', 18)}</a>
           <a class="list-row" href="#/klubai">${icon('users', 20)}<span class="grow strong">Klubai</span>${clubs.length ? html`<span class="small muted">${clubs.map((c) => c.name).join(', ')}</span>` : ''}${icon('chevron', 18)}</a>
           <a class="list-row" href="#/zemelapis">${icon('pin', 20)}<span class="grow strong">Mano laimikių žemėlapis</span>${icon('chevron', 18)}</a>
@@ -414,7 +416,7 @@ function mountModCard(root, ctx, p) {
 function roleBadges(p) {
   const roles = rolesOf(p);
   if (!roles.length) return '';
-  return html`<span class="row gap-8 wrap" data-roles>${roles.map((r) => html`<span class="badge badge-role">${icon('shield', 12, 2.6)}${roleLabel(r)}</span>`)}</span>`;
+  return html`<span class="row gap-8 wrap" data-roles>${roles.map((r) => html`<span class="badge badge-role">${icon(r === 'organizer' ? 'trophy' : 'shield', 12, 2.6)}${roleLabel(r)}</span>`)}</span>`;
 }
 
 // Push pranešimų kortelė: būsena šiame telefone, įjungimas, rūšys, bandomasis pranešimas.
