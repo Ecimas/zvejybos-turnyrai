@@ -2,6 +2,7 @@
 //  search  – randa laisvos licencijos žuvų nuotraukas Wikimedia Commons (pavadinimas, licencija, autorius)
 //  upload  – parsisiunčia pasirinktas nuotraukas ir įkelia į catch-photos/<žvejo id>/<vardas>.jpg, grąžina sha256
 //  cleanup – ištrina nurodytų (jau ištrintų) žvejų aplankus saugykloje
+//  logo    – perkelia demo rėmėjų logotipus iš mūsų svetainės į sponsor-logos/<turnyro id>/<vardas>.webp
 // Kviečiama tik iš duomenų bazės (pg_net) su x-push-token antrašte, kaip send-push.
 
 import { Image, decode } from 'https://deno.land/x/imagescript@1.3.0/mod.ts';
@@ -176,6 +177,31 @@ async function preview(titles: string[], width = 220) {
   return out;
 }
 
+const LOGO_SRC = /^https:\/\/(zvejybos-turnyrai\.vercel\.app\/store\/demo-logos\/|raw\.githubusercontent\.com\/Ecimas\/zvejybos-turnyrai\/main\/store\/demo-logos\/)[a-z0-9-]{1,40}\.(webp|png)$/;
+async function putLogos(items: { url: string; path: string }[]) {
+  const out: Record<string, unknown>[] = [];
+  for (const it of items.slice(0, 10)) {
+    try {
+      if (!LOGO_SRC.test(it.url || '')) throw new Error('url');
+      if (!/^[0-9a-f-]{36}\/[A-Za-z0-9_-]{1,64}\.(webp|png)$/.test(it.path || '')) throw new Error('path');
+      const res = await fetch(it.url);
+      if (!res.ok) throw new Error(`download ${res.status}`);
+      const type = (res.headers.get('content-type') || '').split(';')[0];
+      if (!['image/webp', 'image/png'].includes(type)) throw new Error(`type ${type}`);
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.length > 307200) throw new Error('too big');
+      const up = await fetch(`${URL_}/storage/v1/object/sponsor-logos/${it.path}`, {
+        method: 'POST', headers: headers({ 'Content-Type': type, 'x-upsert': 'true', 'cache-control': 'max-age=31536000' }), body: bytes
+      });
+      if (!up.ok) throw new Error(`upload ${up.status} ${await up.text()}`);
+      out.push({ path: it.path, size: bytes.length });
+    } catch (e) {
+      out.push({ path: it.path, error: String((e as Error).message || e) });
+    }
+  }
+  return out;
+}
+
 async function cleanup(prefixes: string[]) {
   const out: Record<string, unknown>[] = [];
   for (const prefix of prefixes) {
@@ -204,6 +230,7 @@ Deno.serve(async (req) => {
     else if (body.action === 'openverse') result = await openverse(body.queries || [], body.limit || 20);
     else if (body.action === 'upload') result = await upload(body.items || []);
     else if (body.action === 'preview') result = await preview(body.titles || [], body.width || 220);
+    else if (body.action === 'logo') result = await putLogos(body.items || []);
     else if (body.action === 'cleanup') result = await cleanup(body.prefixes || []);
     else return new Response('action', { status: 400 });
     return new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json' } });
