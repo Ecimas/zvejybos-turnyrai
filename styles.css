@@ -699,3 +699,4 @@ fieldset[disabled] button { cursor: not-allowed; }
 .seg button:disabled { opacity: .45; cursor: not-allowed; }
 .org-req { border-left: 4px solid var(--wait); }
 .org-req a.link-plain { min-height: 44px; display: inline-flex; align-items: center; }
+.private-note { border-left: 4px solid var(--wait); }

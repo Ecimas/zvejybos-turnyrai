@@ -210,6 +210,12 @@ def more_real_tests(page, base):
     expect(page.get_by_role("button", name="Visi", exact=True)).to_be_disabled()
     expect(page.get_by_role("button", name="Tik su kvietimu")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("[data-public-hint]")).to_contain_text("Tapti organizatoriumi")
+    expect(page.locator("[data-private-note]")).to_contain_text("Turnyras bus tik su kvietimu")
+    expect(page.locator("[data-org-request]")).to_be_visible()
+    box = page.locator("[data-private-note]").bounding_box()
+    assert box["y"] < 700, f"paaiškinimas turi būti viršuje, matomas iškart: {box}"
+    if base_mod.SHOTS:
+        page.screenshot(path=f"{base_mod.SHOTS}/naujas-be-organizatoriaus.png")
     res = page.evaluate("""() => window.__zt.backend.createTournament({ title: 'Viešas be teisės', format: 'biggest', top_n: 3, min_length_mm: 0,
       starts_at: new Date(Date.now() + 864e5).toISOString(), ends_at: new Date(Date.now() + 2 * 864e5).toISOString(), visibility: 'public', species_ids: [] })
       .then(() => 'ok', e => e.message)""")
@@ -222,6 +228,9 @@ def more_real_tests(page, base):
     expect(page.locator("[data-org-pending]")).to_contain_text("Rengiu Kauno marių turnyrus")
     res = page.evaluate("() => window.__zt.backend.requestOrganizer('dar').then(() => 'ok', e => e.message)")
     assert res == "Prašymas jau išsiųstas – laukia patvirtinimo", res
+    go(page, base + "#/naujas")
+    expect(page.locator("[data-org-status]")).to_contain_text("laukia patvirtinimo")
+    expect(page.locator("[data-org-request]")).to_have_count(0)
     # Savininkas: prašymai komandos skiltyje, patvirtinimas
     other = fake(page, "return db.profiles.find(p => p.nickname === 'Kitas_Zvejys').id;")
     fake(page, "db.organizer_requests.push({ user_id: arg, message: 'Klubo turnyrai', status: 'pending', created_at: new Date().toISOString(), decided_at: null }); window.__fakeDb.save(); return 1;", other)

@@ -67,6 +67,9 @@ export async function createView(ctx, [editId] = []) {
   // Viešus turnyrus kuria tik organizatoriai (0028); seni vieši lieka vieši.
   const canPublic = can(state, 'publish') || t?.visibility === 'public';
   let visibility = t?.visibility || (canPublic ? 'public' : 'private');
+  // Ne organizatoriui – iš karto viršuje paaiškinam, kad turnyras bus su kvietimu, ir kaip tapti organizatoriumi.
+  const orgReq = !canPublic && backend.myOrganizerRequest ? await backend.myOrganizerRequest().catch(() => null) : null;
+  const orgCooling = orgReq?.status === 'rejected' && orgReq.decided_at && Date.parse(orgReq.decided_at) + 7 * 24 * 3600e3 > Date.now();
   const back = t ? `#/t/${t.id}` : '#/';
 
   return {
@@ -76,6 +79,15 @@ export async function createView(ctx, [editId] = []) {
       <header class="top-bar">${backButton(back)}<span class="muted strong">${heading}</span><span></span></header>
       <h1 class="display-lg" tabindex="-1">${t ? 'Keisk turnyrą' : 'Sukurk turnyrą'}</h1>
       <p class="muted">${t ? 'Keisti galima iki starto. Dalyviai matys naujas taisykles.' : 'Keturi laukai – ir turnyras paruoštas. Kol kas visi turnyrai nemokami.'}</p>
+      ${canPublic ? '' : html`<div class="card stack-2 private-note" data-private-note>
+        <p class="strong row gap-8">${icon('lock', 18, 2.6)}Turnyras bus tik su kvietimu</p>
+        <p class="small muted">Jis nebus rodomas bendrame turnyrų sąraše. Sukūręs gausi nuorodą ir ja pakviesi draugus, klubo narius ar kitus žvejus.</p>
+        <p class="small muted">Viešus turnyrus, kuriuos mato visi, kuria patvirtinti organizatoriai.</p>
+        ${orgReq?.status === 'pending'
+          ? html`<p class="small row gap-8 strong" data-org-status>${icon('clock', 16)}Tavo prašymas tapti organizatoriumi laukia patvirtinimo. Kai patvirtinsime, šį turnyrą iki starto galėsi padaryti viešą.</p>`
+          : orgCooling ? html`<p class="small muted" data-org-status>Prašymas tapti organizatoriumi kol kas nepatvirtintas – pakartotinai paprašyti galėsi vėliau.</p>`
+          : html`<a class="btn btn-ghost" href="#/organizatorius" data-org-request>${icon('trophy', 18)}Noriu viešo turnyro – tapti organizatoriumi</a>`}
+      </div>`}
       ${t && !asOrganizer ? html`<div class="card stack-1 admin-note" data-admin-note>
         <p class="strong row gap-8">${icon('shield', 18)}Redaguoji kaip administratorius</p>
         <p class="small muted">${locked
