@@ -150,13 +150,17 @@ def community_demo_tests(page, base):
     page.goto(base + "#/")
     page.reload()
     page.wait_for_selector("h1")
-    banner = page.locator(".ann-banner")
+    page.locator("[data-seg=visi]").click()
+    banner = page.locator(".t-card", has=page.locator("[data-ann-dot]"))
+    expect(banner).to_have_count(1)
     expect(banner).to_contain_text("Rudens lydekų taurė")
-    shot(page, "17-pranesimas-juosta")
+    shot(page, "17-pranesimas-varpelis")
     banner.click()
+    expect(page.locator("[data-panel=pranesimai]")).to_be_visible()
     expect(page.locator(".ann-new")).to_contain_text("stiprus vėjas")
     page.goto(base + "#/")
-    expect(page.locator(".ann-banner")).to_have_count(0)  # perskaityta
+    expect(page.locator(".t-card", has_text="Rudens lydekų taurė").first).to_be_visible()
+    expect(page.locator("[data-ann-dot]")).to_have_count(0)  # perskaityta
     step("organizatoriaus pranešimai: rašymas, ištrynimas, „nauja“ žymė dalyviui")
     page.goto(base + "#/profilis")
 

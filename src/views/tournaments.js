@@ -1,84 +1,118 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { phase, timeLabel, describeFormat, cm, longDate, count, gapText, scoreText } from '../lib/format.js';
+import { phase, timeLabel, scoreText, registrationOpen } from '../lib/format.js';
 import { phaseBadge, empty, defaultNickname, banNotice } from '../ui.js';
 import { eur } from '../lib/prizes.js';
 import { hasUnseen } from '../lib/seen.js';
 import { checkBanners } from './check.js';
-import { sponsorMini, trackViews } from '../lib/sponsors.js';
+import { sortSponsors, logoTile, trackViews } from '../lib/sponsors.js';
 
 const SEGMENTS = [
+  ['visi', 'Visi'],
   ['mano', 'Mano'],
   ['live', 'Vyksta'],
   ['soon', 'Artėja'],
   ['done', 'Baigėsi']
 ];
+const SECTION_MAX = { soon: 2, live: 3 };
 
 function segmentOf(list, key) {
+  if (key === 'visi') return list;
   if (key === 'mano') return list.filter((t) => t.joined && phase(t) !== 'done');
   return list.filter((t) => phase(t) === key);
 }
 
-function speciesLine(t, species) {
-  if (!t.species_ids.length) return 'Visos rūšys';
-  return t.species_ids.map((id) => species.find((s) => s.id === id)?.name_lt).filter(Boolean).join(', ');
+const byStart = (a, b) => new Date(a.starts_at) - new Date(b.starts_at);
+const byEnd = (a, b) => new Date(a.ends_at) - new Date(b.ends_at);
+const MONTHS = ['saus.', 'vas.', 'kov.', 'bal.', 'geg.', 'birž.', 'liep.', 'rugp.', 'rugs.', 'spal.', 'lapkr.', 'gruod.'];
+const HOUR = new Intl.DateTimeFormat('lt-LT', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Vilnius' });
+const DM = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'numeric', timeZone: 'Europe/Vilnius' });
+// Diena ir mėnuo Lietuvos laiku: { day: 8, month: 'lapkr.' }
+export function dayMonth(d) {
+  const parts = Object.fromEntries(DM.formatToParts(new Date(d)).map((x) => [x.type, x.value]));
+  return { day: Number(parts.day), month: MONTHS[Number(parts.month) - 1] };
 }
 
-export function card(t, species) {
-  return html`<a class="card card-link t-card" href="#/t/${t.id}">
-    <div class="row-between">
-      ${phaseBadge(t)}
-      <span class="muted small strong">${t.visibility === 'private' ? html`${icon('lock', 13, 2.6)} Privatus · ` : ''}Nemokamas</span>
-    </div>
-    <div class="stack-2">
-      <span class="t-title">${t.title}</span>
-      <span class="muted">${describeFormat(t)} · ${speciesLine(t, species)}</span>
-    </div>
-    <div class="meta">
-      <span>${icon('clock', 16)}${timeLabel(t)}</span>
-      <span>${icon('users', 16)}${t.participants}</span>
-      ${t.min_length_mm ? html`<span>nuo ${cm(t.min_length_mm)}</span>` : ''}
-      ${t.prize_fund_cents ? html`<span class="accent strong">${icon('trophy', 16)}${eur(t.prize_fund_cents)}</span>`
-        : t.prizes ? html`<span>${icon('trophy', 16)}Prizai</span>` : ''}
-    </div>
-    ${sponsorMini(t)}
-    ${t.joined ? html`<span class="accent strong">${phase(t) === 'soon' ? 'Užsiregistravai' : 'Dalyvauji'}</span>` : ''}
-    ${hasUnseen(t) ? html`<span class="chip chip-wait ann-chip">${icon('alert', 13, 2.6)}Naujas organizatoriaus pranešimas</span>` : ''}
+// Rėmėjų logotipai kortelėje (be atskirų nuorodų – visa kortelė veda į turnyrą).
+function logos(t, max = 2, cls = 'logo-xs') {
+  const list = sortSponsors(t.sponsors);
+  if (!list.length) return '';
+  const shown = list.slice(0, max);
+  return html`<span class="t-sponsors l-logos" aria-label="Rėmėjai">${shown.map((s) => logoTile(s, cls))}${list.length > shown.length ? html`<span class="small muted strong">+${list.length - shown.length}</span>` : ''}</span>`;
+}
+
+const liveDot = (t) => {
+  const p = phase(t);
+  return html`<span class="l-phase l-${p}">${p === 'live' ? html`<i></i>` : ''}${{ live: 'Vyksta', soon: 'Artėja', done: 'Baigėsi' }[p]}</span>`;
+};
+const lock = (t) => (t.visibility === 'private' ? html`${icon('lock', 14, 2.6)} ` : '');
+const bell = (t) => (hasUnseen(t) ? html`<span class="l-bell" data-ann-dot role="img" aria-label="Naujas organizatoriaus pranešimas">${icon('bell', 20)}</span>` : '');
+const href = (t) => `#/t/${t.id}${hasUnseen(t) ? '?skiltis=pranesimai' : ''}`;
+const timeShort = (t) => timeLabel(t).replace(/^Liko /, 'liko ').replace(/^Startas po /, 'startas po ');
+
+// „Tavo turnyrai“: didelė vieta kairėje, laikas, rėmėjai, pranešimo varpelis.
+function mineRow(t, rank) {
+  const place = phase(t) === 'soon' ? '–' : rank === null || rank === undefined ? '–' : `#${rank}`;
+  return html`<a class="card-link l-mine t-card" href="${href(t)}">
+    <span class="l-place ${place === '–' ? 'muted' : ''}" aria-label="Tavo vieta">${place}</span>
+    <span class="grow stack-1">
+      <span class="strong l-title">${lock(t)}${t.title}</span>
+      <span class="l-line">${liveDot(t)}<span>${timeShort(t)}</span><span>${icon('users', 15)} ${t.participants}</span></span>
+      ${logos(t)}
+    </span>
+    ${bell(t)}<span class="l-chev">${icon('chevron', 20)}</span>
   </a>`;
 }
 
-async function heroFor(ctx, list) {
+// Artėjantis turnyras – reklaminė kortelė: data, startas, fondas, rėmėjai, kvietimas registruotis.
+function promoCard(t, me) {
+  const d = new Date(t.starts_at);
+  const dm = dayMonth(d);
+  const own = me && t.organizer_id === me;
+  return html`<a class="card-link l-promo t-card" href="${href(t)}">
+    <span class="row gap-12 l-top">
+      <span class="l-date" aria-hidden="true"><b>${dm.day}</b><span>${dm.month}</span></span>
+      <span class="grow stack-1">
+        <span class="l-title-lg">${lock(t)}${t.title}</span>
+        <span class="l-soon">${timeLabel(t)} · ${HOUR.format(d)}</span>
+        <span class="l-line">
+          <span>${icon('users', 15)} ${t.participants} užsiregistravo</span>
+          ${t.prize_fund_cents ? html`<span class="accent strong">${icon('trophy', 15)} ${eur(t.prize_fund_cents)}</span>` : t.prizes ? html`<span>${icon('trophy', 15)} Prizai</span>` : ''}
+        </span>
+      </span>
+    </span>
+    ${t.sponsors?.length ? html`<span class="l-remia"><span class="small muted strong">Remia</span>${logos(t, 3, 'logo-sm')}</span>` : ''}
+    ${t.joined ? html`<span class="l-cta l-cta-done">${icon('check', 18, 2.6)}Užsiregistravai</span>`
+      : own ? html`<span class="l-cta l-cta-done">${icon('edit', 18)}Tavo turnyras</span>`
+      : html`<span class="l-cta">${icon('plus', 18, 2.6)}Registruotis</span>`}
+  </a>`;
+}
+
+// Vykstantis ar pasibaigęs – glausta kortelė.
+function rowCard(t, rank) {
+  const p = phase(t);
+  return html`<a class="card-link l-row t-card" href="${href(t)}">
+    <span class="grow stack-1">
+      <span class="strong l-title">${lock(t)}${t.title}</span>
+      <span class="l-line">${liveDot(t)}<span>${p === 'done' ? timeLabel(t) : timeShort(t)}</span><span>${icon('users', 15)} ${t.participants}</span>
+        ${t.prize_fund_cents ? html`<span class="accent strong">${icon('trophy', 15)} ${eur(t.prize_fund_cents)}</span>` : ''}
+        ${t.joined && rank ? html`<span class="l-rank">#${rank}</span>` : ''}</span>
+      ${logos(t)}
+    </span>
+    ${bell(t)}<span class="l-chev">${icon('chevron', 20)}</span>
+  </a>`;
+}
+
+async function ranksFor(ctx, list) {
   const me = ctx.state.user?.id;
-  const live = list.find((t) => t.joined && phase(t) === 'live');
-  if (!me || !live) return '';
-  const board = await ctx.backend.leaderboard(live.id).catch(() => []);
-  const idx = board.findIndex((r) => r.user_id === me);
-  const mine = board[idx];
-  const above = idx > 0 ? board[idx - 1] : null;
-  const gap = mine && above ? above.score_mm - mine.score_mm : 0;
-  return html`<a class="card card-link hero" href="#/t/${live.id}">
-    <div class="row-between">${phaseBadge(live, 'dalyvauji')}</div>
-    <div class="stack-2">
-      <h2 class="display-md">${live.title}</h2>
-      <span class="muted">${describeFormat(live)}${live.min_length_mm ? ` · nuo ${cm(live.min_length_mm)}` : ''}</span>
-    </div>
-    <div class="grid-3">
-      <div class="stat-box"><span class="stat-label">Tavo vieta</span>
-        <span class="stat-value accent">${mine && mine.rank !== null ? `#${mine.rank}` : '–'}</span>
-        <span class="stat-label">iš ${live.participants}</span></div>
-      <div class="stat-box"><span class="stat-label">Rezultatas</span>
-        <span class="stat-value">${mine ? scoreText(live, mine.score_mm) : '–'}</span>
-        <span class="stat-label">${mine ? count(Number(mine.counted), 'žuvis', 'žuvys', 'žuvų') : 'dar nėra'}</span></div>
-      <div class="stat-box"><span class="stat-label">Liko</span>
-        <span class="stat-value">${timeLabel(live).replace('Liko ', '').split(' ').slice(0, 2).join(' ')}</span>
-        <span class="stat-label">iki ${longDate(live.ends_at)}</span></div>
-    </div>
-    ${mine && above ? html`<div class="stack-2">
-      <div class="row-between small strong"><span>${gapText(above, mine, live)}</span><span class="muted">${above.nickname}</span></div>
-      <div class="progress"><div style="width:${Math.max(4, Math.min(100, Math.round((mine.score_mm / above.score_mm) * 100)))}%"></div></div>
-    </div>` : ''}
-    ${!mine ? html`<span class="small muted">Užregistruok pirmą laimikį – ir atsirasi lentelėje.</span>` : ''}
-  </a>`;
+  const ranks = {};
+  if (!me) return ranks;
+  const mine = list.filter((t) => t.joined && phase(t) !== 'soon').slice(0, 8);
+  await Promise.all(mine.map(async (t) => {
+    const board = await ctx.backend.leaderboard(t.id).catch(() => []);
+    ranks[t.id] = board.find((r) => r.user_id === me)?.rank ?? null;
+  }));
+  return ranks;
 }
 
 export async function tournamentsView(ctx) {
@@ -86,33 +120,60 @@ export async function tournamentsView(ctx) {
     ctx.backend.tournaments(),
     ctx.state.user && ctx.backend.myChecks ? ctx.backend.myChecks().catch(() => []) : []
   ]);
-  const species = ctx.state.species;
-  let seg = sessionStorage.getItem('zt-seg') || (list.some((t) => t.joined && phase(t) !== 'done') ? 'mano' : 'live');
-  const hero = await heroFor(ctx, list);
-  const weekday = new Intl.DateTimeFormat('lt-LT', { weekday: 'long' }).format(new Date());
-  const today = `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}, ${longDate(new Date())}`;
+  const me = ctx.state.user?.id;
+  const savedSeg = sessionStorage.getItem('zt-seg');
+  let seg = SEGMENTS.some(([k]) => k === savedSeg) ? savedSeg : 'visi';
+  const ranks = await ranksFor(ctx, list);
+
+  const mineList = () => list.filter((t) => t.joined && phase(t) !== 'done')
+    .sort((a, b) => (phase(a) === 'live' ? 0 : 1) - (phase(b) === 'live' ? 0 : 1) || byEnd(a, b));
+  const soonOpen = () => list.filter((t) => phase(t) === 'soon' && !t.joined).sort(byStart);
+  const liveOpen = () => list.filter((t) => phase(t) === 'live' && !t.joined && registrationOpen(t)).sort(byEnd);
+  const sectionHead = (title, key, n) => html`<div class="l-sec"><h2 class="h2">${title}</h2>${n > SECTION_MAX[key] ? html`<button type="button" class="link-btn accent strong" data-seg-go="${key}">Visi (${n})</button>` : ''}</div>`;
+
+  const homeHtml = () => {
+    const mine = mineList();
+    const soon = soonOpen();
+    const live = liveOpen();
+    const done = segmentOf(list, 'done');
+    if (!mine.length && !soon.length && !live.length) {
+      return html`${empty('Šiuo metu turnyrų nėra', 'Sukurk savo ir pakviesk draugus.')}
+        ${done.length ? html`<button type="button" class="l-more" data-seg-go="done"><span>Pasibaigę turnyrai ir nugalėtojai</span>${icon('chevron', 18)}</button>` : ''}`;
+    }
+    return html`
+      ${mine.length ? html`<section class="stack-2" data-sec="mano"><div class="l-sec"><h2 class="h2">Tavo turnyrai</h2></div>
+        <div class="l-list">${mine.map((t) => mineRow(t, ranks[t.id]))}</div></section>` : ''}
+      ${soon.length ? html`<section class="stack-2" data-sec="soon">${sectionHead('Artėja – registruokis', 'soon', soon.length)}
+        <div class="l-list">${soon.slice(0, SECTION_MAX.soon).map((t) => promoCard(t, me))}</div></section>` : ''}
+      ${live.length ? html`<section class="stack-2" data-sec="live">${sectionHead('Vyksta – dar gali prisijungti', 'live', live.length)}
+        <div class="l-list">${live.slice(0, SECTION_MAX.live).map((t) => rowCard(t, ranks[t.id]))}</div></section>` : ''}
+      ${done.length ? html`<button type="button" class="l-more" data-seg-go="done"><span>Pasibaigę turnyrai ir nugalėtojai</span>${icon('chevron', 18)}</button>` : ''}`;
+  };
 
   const listHtml = (key) => {
-    const items = segmentOf(list, key).sort((a, b) => key === 'done'
-      ? new Date(b.ends_at) - new Date(a.ends_at)
-      : new Date(a.ends_at) - new Date(b.ends_at));
-    if (!items.length) {
-      return key === 'mano'
-        ? empty('Dar nedalyvauji jokiame turnyre', 'Pasirink vykstantį arba artėjantį turnyrą.')
-        : empty('Čia kol kas tuščia', key === 'soon' ? 'Gal sukurk savo turnyrą?' : '');
+    if (key === 'visi') return homeHtml();
+    if (key === 'mano') {
+      const items = mineList();
+      return items.length ? html`<div class="l-list">${items.map((t) => mineRow(t, ranks[t.id]))}</div>`
+        : empty('Dar nedalyvauji jokiame turnyre', 'Pasirink vykstantį arba artėjantį turnyrą.');
     }
-    return items.map((t) => card(t, species));
+    const items = segmentOf(list, key).sort(key === 'done' ? (a, b) => byEnd(b, a) : key === 'soon' ? byStart : byEnd);
+    if (!items.length) return empty('Čia kol kas tuščia', key === 'soon' ? 'Gal sukurk savo turnyrą?' : '');
+    return html`<div class="l-list">${items.map((t) => (key === 'soon' ? promoCard(t, me) : rowCard(t, ranks[t.id])))}</div>`;
+  };
+  // Kurių turnyrų rėmėjai matomi ekrane – parodymams skaičiuoti.
+  const shownFor = (key) => {
+    if (key !== 'visi') return segmentOf(list, key);
+    return [...mineList(), ...soonOpen().slice(0, SECTION_MAX.soon), ...liveOpen().slice(0, SECTION_MAX.live)];
   };
 
   return {
     nav: 'turnyrai',
     title: 'Turnyrai',
     html: html`<div class="screen">
-      <header class="page-head">
-        <div class="stack-2">
-          <p class="muted strong small">${today}</p>
-          <h1 class="display-lg" tabindex="-1">Turnyrai</h1>
-        </div>
+      <header class="page-head l-head">
+        <h1 class="display-lg" tabindex="-1">Turnyrai</h1>
+        <a class="l-new" href="${ctx.state.user ? '#/naujas' : '#/prisijungti'}" aria-label="Sukurti naują turnyrą">${icon('plus', 18, 2.6)}Naujas</a>
       </header>
       ${ctx.backend.mode === 'demo' ? html`<p class="demo-note">${icon('alert', 16)}Demonstracinis režimas: pavyzdiniai duomenys, saugomi tik šiame telefone.</p>` : ''}
       ${banNotice(ctx.state.ban)}
@@ -120,29 +181,26 @@ export async function tournamentsView(ctx) {
       ${ctx.state.user && !ctx.state.ban && defaultNickname(ctx.state.profile?.nickname) ? html`<a class="card card-link row ann-banner" href="#/profilis" data-nick-banner>
         ${icon('user', 22)}<span class="grow stack-1"><span class="strong">Pasirink slapyvardį</span><span class="small muted">Jį matys kiti žvejai lentelėse</span></span>${icon('chevron', 18)}
       </a>` : ''}
-      ${list.filter(hasUnseen).slice(0, 2).map((t) => html`<a class="card card-link row ann-banner" href="#/t/${t.id}?skiltis=pranesimai">
-        ${icon('alert', 22)}<span class="grow stack-1"><span class="strong">Naujas organizatoriaus pranešimas</span><span class="small muted ellipsis">${t.title}</span></span>${icon('chevron', 18)}
-      </a>`)}
-      ${hero}
-      <section class="stack">
-        <h2 class="h2">Visi turnyrai</h2>
-        <div class="seg" role="group" aria-label="Turnyrų filtras">
-          ${SEGMENTS.map(([key, label]) => html`<button type="button" data-seg="${key}" aria-pressed="${key === seg}">${label}<span>${segmentOf(list, key).length}</span></button>`)}
-        </div>
-        <div class="stack" data-list>${listHtml(seg)}</div>
-        <a class="btn btn-dashed" href="${ctx.state.user ? '#/naujas' : '#/prisijungti'}">${icon('plus', 20)}Sukurti savo turnyrą</a>
-      </section>
+      <div class="l-seg" role="group" aria-label="Turnyrų filtras">
+        ${SEGMENTS.map(([key, label]) => html`<button type="button" data-seg="${key}" aria-pressed="${key === seg}">${label}</button>`)}
+      </div>
+      <div class="stack-lg" data-list>${listHtml(seg)}</div>
     </div>`,
     mount(root) {
-      const seen = (key) => trackViews(ctx.backend, segmentOf(list, key).flatMap((t) => t.sponsors || []));
-      seen(seg);
-      root.querySelectorAll('[data-seg]').forEach((b) => b.addEventListener('click', () => {
-        seg = b.dataset.seg;
-        seen(seg);
+      const listEl = root.querySelector('[data-list]');
+      const pick = (key, scroll) => {
+        seg = key;
         sessionStorage.setItem('zt-seg', seg);
-        root.querySelectorAll('[data-seg]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-        root.querySelector('[data-list]').innerHTML = String(html`${listHtml(seg)}`);
-      }));
+        root.querySelectorAll('[data-seg]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.seg === key)));
+        listEl.innerHTML = String(html`${listHtml(seg)}`);
+        bindGo();
+        trackViews(ctx.backend, shownFor(seg).flatMap((t) => t.sponsors || []));
+        if (scroll) root.querySelector('.l-seg')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      };
+      const bindGo = () => listEl.querySelectorAll('[data-seg-go]').forEach((b) => b.addEventListener('click', () => pick(b.dataset.segGo, true)));
+      root.querySelectorAll('[data-seg]').forEach((b) => b.addEventListener('click', () => pick(b.dataset.seg, false)));
+      bindGo();
+      trackViews(ctx.backend, shownFor(seg).flatMap((t) => t.sponsors || []));
     }
   };
 }
