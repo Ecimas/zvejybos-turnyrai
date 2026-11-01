@@ -28,17 +28,6 @@ async function maplibreEngine(box, { onPick }) {
   } catch (e) {
     throw new Error(`stilius: ${e?.message || e}`);
   }
-  // Pirmos nepavykusios užklausos adresas – kad būtų aišku, ko trūksta.
-  const realFetch = window.fetch;
-  let failedUrl = '';
-  window.fetch = function (input, init) {
-    return realFetch.call(this, input, init).catch((err) => {
-      if (!failedUrl) failedUrl = String(input?.url || input).slice(0, 90);
-      throw err;
-    });
-  };
-  const restoreFetch = () => { if (window.fetch !== realFetch) window.fetch = realFetch; };
-  setTimeout(restoreFetch, 25000);
   const map = new ml.Map({
     container: box,
     style,
@@ -59,11 +48,10 @@ async function maplibreEngine(box, { onPick }) {
       if (!e?.sourceId && !e?.tile && !map.isStyleLoaded() && !map.loaded()) {
         clearTimeout(t);
         const m = e?.error?.message || 'style error';
-        reject(new Error(failedUrl ? `${m}: ${failedUrl}` : m));
+        reject(new Error(m));
       }
     });
-  }).catch((e) => { restoreFetch(); map.remove(); throw e; });
-  restoreFetch();
+  }).catch((e) => { map.remove(); throw e; });
 
   const empty = toGeoJSON([]);
   // Burbulai: kiek laimikių – suma per visas sugrupuotas vietas.
@@ -394,7 +382,7 @@ export async function mapView(ctx) {
         current = filtered();
         engine?.setPoints(current);
         if (fit) engine?.fit(current);
-        root.querySelector('[data-map-count]').textContent = `Rodoma: ${count(current.length, 'laimikis', 'laimikiai', 'laimikių')}, ${count(groupSpots(current).length, 'vieta', 'vietos', 'vietų')}. Žemėlapis: ${engine?.kind === 'maplibre' ? 'naujas' : 'paprastas'}.`;
+        root.querySelector('[data-map-count]').textContent = `Rodoma: ${count(current.length, 'laimikis', 'laimikiai', 'laimikių')}, ${count(groupSpots(current).length, 'vieta', 'vietos', 'vietų')}.`;
         showSpots();
       };
 
@@ -409,13 +397,10 @@ export async function mapView(ctx) {
       }
       if (dead || !box.isConnected) { engine.destroy(); return undefined; }
       root.querySelector('[data-map-wrap]').dataset.engine = engine.kind;
-      // Laikinai: jei naujas žemėlapis neįsikėlė – priežastis matoma iškart virš žemėlapio.
+      // Kodėl neįsikėlė naujas žemėlapis – tik konsolėje ir atribute (vartotojui nerodoma).
       if (engine.kind !== 'maplibre' && mapFailReason) {
-        const why = document.createElement('p');
-        why.className = 'small muted mp-why';
-        why.dataset.mapWhy = '';
-        why.textContent = `Naujas žemėlapis neįsikėlė: ${mapFailReason}`;
-        root.querySelector('[data-map-wrap]').before(why);
+        root.querySelector('[data-map-wrap]').dataset.mapWhy = mapFailReason;
+        console.warn('Vektorinis žemėlapis neįsikėlė:', mapFailReason);
       }
       root.querySelector('[data-mode-seg]').hidden = !engine.heat;
       const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => engine?.resize()) : null;

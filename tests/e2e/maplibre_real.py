@@ -63,7 +63,7 @@ def main():
         pg.goto(base + "#/zemelapis")
         pg.wait_for_selector("[data-map-wrap][data-engine]", timeout=20000)
         engine = pg.get_attribute("[data-map-wrap]", "data-engine")
-        why = pg.evaluate("() => document.querySelector('[data-map-why]')?.textContent || ''")
+        why = pg.evaluate("() => document.querySelector('[data-map-wrap]')?.dataset.mapWhy || ''")
         assert engine == "maplibre", f"turėjo įsikelti MapLibre, o įsikėlė {engine}: {why}"
         pg.wait_for_function("() => window.__map && window.__map.loaded()", timeout=20000)
         pg.wait_for_timeout(1500)
