@@ -9,7 +9,7 @@ import { weatherLine } from '../lib/weather.js';
 import { feat } from '../lib/clubs.js';
 import {
   loadLeaflet, TILES, CARTO_DARK, CARTO_LIGHT, colorFor, groupSpots, loadMapLibre, STYLE_DARK, STYLE_LIGHT, LT_CENTER,
-  DAYPARTS, daypartOf, daypartLabel, inPeriod, bestSpots, toGeoJSON
+  DAYPARTS, daypartOf, daypartLabel, inPeriod, bestSpots, toGeoJSON, spotsGeoJSON
 } from '../lib/map.js';
 
 const kg = (g) => `${String(Math.round(g / 10) / 100).replace('.', ',')} kg`;
@@ -38,7 +38,9 @@ async function maplibreEngine(box, { onPick }) {
   }).catch((e) => { map.remove(); throw e; });
 
   const empty = toGeoJSON([]);
-  map.addSource('catches', { type: 'geojson', data: empty, cluster: true, clusterRadius: 48, clusterMaxZoom: 14 });
+  // Burbulai: kiek laimikių – suma per visas sugrupuotas vietas.
+  map.addSource('catches', { type: 'geojson', data: empty, cluster: true, clusterRadius: 48, clusterMaxZoom: 14,
+    clusterProperties: { total: ['+', ['get', 'count']] } });
   map.addSource('heat', { type: 'geojson', data: empty });
   map.addLayer({
     id: 'heat', type: 'heatmap', source: 'heat', layout: { visibility: 'none' },
@@ -55,7 +57,7 @@ async function maplibreEngine(box, { onPick }) {
     id: 'clusters', type: 'circle', source: 'catches', filter: ['has', 'point_count'],
     paint: {
       'circle-color': '#FFA62B',
-      'circle-radius': ['step', ['get', 'point_count'], 18, 5, 22, 15, 28, 40, 34],
+      'circle-radius': ['step', ['get', 'total'], 18, 5, 22, 15, 28, 40, 34],
       'circle-stroke-width': 5,
       'circle-stroke-color': 'rgba(255,166,43,0.28)',
       'circle-radius-transition': { duration: 400 }
@@ -63,17 +65,23 @@ async function maplibreEngine(box, { onPick }) {
   });
   map.addLayer({
     id: 'cluster-count', type: 'symbol', source: 'catches', filter: ['has', 'point_count'],
-    layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Bold'], 'text-size': 14, 'text-allow-overlap': true },
+    layout: { 'text-field': ['to-string', ['get', 'total']], 'text-font': ['Noto Sans Bold'], 'text-size': 14, 'text-allow-overlap': true },
     paint: { 'text-color': '#1A1206' }
   });
   map.addLayer({
     id: 'points', type: 'circle', source: 'catches', filter: ['!', ['has', 'point_count']],
     paint: {
       'circle-color': ['get', 'color'],
-      'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 6, 14, 9],
+      'circle-radius': ['case', ['>', ['get', 'count'], 1], ['interpolate', ['linear'], ['zoom'], 6, 12, 14, 15],
+        ['interpolate', ['linear'], ['zoom'], 6, 6, 14, 9]],
       'circle-stroke-width': 2.5,
       'circle-stroke-color': light ? '#ffffff' : '#0A1822'
     }
+  });
+  map.addLayer({
+    id: 'point-count', type: 'symbol', source: 'catches', filter: ['all', ['!', ['has', 'point_count']], ['>', ['get', 'count'], 1]],
+    layout: { 'text-field': ['to-string', ['get', 'count']], 'text-font': ['Noto Sans Bold'], 'text-size': 13, 'text-allow-overlap': true },
+    paint: { 'text-color': '#0A1822' }
   });
 
   const layers = ['clusters', 'points'];
@@ -105,14 +113,13 @@ async function maplibreEngine(box, { onPick }) {
     kind: 'maplibre',
     heat: true,
     setPoints(points) {
-      const data = toGeoJSON(points);
-      map.getSource('catches').setData(data);
-      map.getSource('heat').setData(data);
+      map.getSource('catches').setData(spotsGeoJSON(points));
+      map.getSource('heat').setData(toGeoJSON(points));
     },
     setMode(mode) {
       const heat = mode === 'heat';
       map.setLayoutProperty('heat', 'visibility', heat ? 'visible' : 'none');
-      ['clusters', 'cluster-count', 'points'].forEach((l) => map.setLayoutProperty(l, 'visibility', heat ? 'none' : 'visible'));
+      ['clusters', 'cluster-count', 'points', 'point-count'].forEach((l) => map.setLayoutProperty(l, 'visibility', heat ? 'none' : 'visible'));
     },
     fit(points, animate = true) {
       if (!points.length) return;
@@ -164,9 +171,11 @@ async function leafletEngine(box, { onPick }) {
       layer.clearLayers();
       for (const g of groupSpots(points)) {
         const best = g.items.slice().sort((a, b) => b.length_mm - a.length_mm)[0];
-        const m = L.circleMarker([g.lat, g.lng], {
-          radius: Math.min(16, 7 + g.items.length * 2), color: '#0A1822', weight: 2, fillColor: colorFor(best.species_id), fillOpacity: 0.9
-        });
+        // Kelios žuvys vienoje vietoje – burbulas su skaičiumi.
+        const m = g.items.length > 1 && L.divIcon && L.marker
+          ? L.marker([g.lat, g.lng], { icon: L.divIcon({ className: 'mp-lf-bubble', iconSize: [32, 32],
+            html: `<span style="background:${colorFor(best.species_id)}">${g.items.length}</span>` }) })
+          : L.circleMarker([g.lat, g.lng], { radius: 8, color: '#0A1822', weight: 2, fillColor: colorFor(best.species_id), fillOpacity: 0.95 });
         m.on?.('click', () => onPick(best.id));
         m.addTo(layer);
       }

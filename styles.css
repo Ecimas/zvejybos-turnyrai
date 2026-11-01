@@ -985,3 +985,7 @@ input.switch:focus-visible { outline: 3px solid var(--accent); outline-offset: 2
 .btn-text.small, .link-btn.small { font-size: 13px; }
 @media (prefers-reduced-motion: reduce) { .cl-chip.pop { animation: none; } }
 [data-join-request] > summary, [data-post-new] > summary, [data-trip-new] > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+
+.mp-lf-bubble { background: none; border: 0; }
+.mp-lf-bubble span { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 16px; border: 2.5px solid #0A1822;
+  color: #0A1822; font-weight: 800; font-size: 14px; box-shadow: 0 0 0 4px rgba(255,255,255,.35), 0 3px 8px rgba(0,0,0,.4); }

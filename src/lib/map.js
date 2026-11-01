@@ -171,3 +171,18 @@ export function toGeoJSON(points) {
     }))
   };
 }
+
+// Toje pačioje vietoje (~50 m) pagautos žuvys – vienas burbulas su skaičiumi; spalva – didžiausios žuvies rūšies.
+export function spotsGeoJSON(points) {
+  return {
+    type: 'FeatureCollection',
+    features: groupSpots(points).map((g) => {
+      const best = g.items.reduce((m, c) => (c.length_mm > m.length_mm ? c : m), g.items[0]);
+      return {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [g.lng, g.lat] },
+        properties: { id: best.id, color: colorFor(best.species_id), len: best.length_mm, count: g.items.length }
+      };
+    })
+  };
+}

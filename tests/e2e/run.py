@@ -181,7 +181,9 @@ function tileLayer(url, o) { log.tiles.push(url); log.attribution = o && o.attri
 function layerGroup() { const g = { addTo() { return g; }, clearLayers() { log.markers = []; log.popups = []; } }; return g; }
 function circleMarker(ll, o) { const m = { bindPopup(h) { log.popups.push(h); return m; },
   addTo() { log.markers.push({ ll, color: o.fillColor, radius: o.radius }); return m; } }; return m; }
-export default { map, tileLayer, layerGroup, circleMarker };"""
+function divIcon(o) { return o; }
+function marker(ll, o) { const m = { on() { return m; }, addTo() { log.markers.push({ ll, bubble: o.icon.html }); return m; } }; return m; }
+export default { map, tileLayer, layerGroup, circleMarker, divIcon, marker };"""
 
 
 MAPLIBRE_STUB = """(function () {
@@ -773,6 +775,7 @@ def map_demo_test(page, base):
     page.reload()
     page.wait_for_function("() => window.__leafletLog && window.__leafletLog.markers.length > 0")
     expect(page.locator("[data-map-wrap]")).to_have_attribute("data-engine", "leaflet")
+    assert any(">2<" in (m.get("bubble") or "") or ">3<" in (m.get("bubble") or "") for m in page.evaluate("() => window.__leafletLog.markers")), "kelios žuvys vienoje vietoje – burbulas su skaičiumi"
     expect(page.locator("[data-mode-seg]")).to_be_hidden()
     expect(page.locator("[data-sheet]")).to_contain_text("Mano geriausios vietos")
     page.goto(base + "#/")
