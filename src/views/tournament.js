@@ -75,6 +75,27 @@ export function sponsorStrip(t, label = 'Remia') {
     ${list.map((s) => sponsorLink(s, logoTile(s, s.tier === 'main' ? 'logo-md' : 'logo-sm'), 'sponsor-tile-link'))}</div>`;
 }
 
+// Glausta rėmėjų juosta turnyro viršuje: generalinis – logotipas, vardas ir pasiūlymas vienoje eilutėje,
+// kiti – mažų logotipų juosta. Visa informacija – skiltyje „Prizai“.
+export function sponsorBar(t) {
+  const list = sortSponsors(t.sponsors);
+  if (!list.length) return '';
+  const main = mainSponsor(list);
+  const rest = list.filter((s) => s !== main);
+  return html`<section class="sponsor-bar stack-2" aria-label="Rėmėjai" data-sponsors>
+    ${main ? html`<div class="card sponsor-main-row row gap-10" data-sponsor-main>
+      ${sponsorLink(main, logoTile(main, 'logo-md'), 'sponsor-tile-link')}
+      <span class="grow stack-1 min0">
+        <span class="t-stat-l">Generalinis rėmėjas</span>
+        <span class="strong clamp-2">${sponsorName(main)}</span>
+        ${main.blurb ? html`<span class="small sponsor-blurb clamp-2">${icon('star', 14)}${main.blurb}</span>` : ''}
+      </span>
+    </div>` : ''}
+    ${rest.length ? html`<div class="sponsor-strip"><span class="small muted strong">${main ? 'Taip pat remia' : 'Remia'}</span>
+      ${rest.map((s) => sponsorLink(s, logoTile(s, 'logo-sm'), 'sponsor-tile-link'))}</div>` : ''}
+  </section>`;
+}
+
 // Rėmėjų vitrina turnyro viršuje (0027): generalinis – didelis, kiti – logotipų tinklelis.
 export function sponsorShowcase(t) {
   const list = sortSponsors(t.sponsors);
@@ -82,7 +103,7 @@ export function sponsorShowcase(t) {
   const main = mainSponsor(list);
   const rest = list.filter((s) => s !== main);
   return html`<section class="stack-2 sponsor-showcase" aria-label="Rėmėjai" data-sponsors>
-    ${main ? html`<div class="card sponsor-main stack-2" data-sponsor-main>
+    ${main ? html`<div class="card sponsor-main stack-2" data-sponsor-main-full>
       <span class="small muted strong">Generalinis rėmėjas</span>
       ${sponsorLink(main, logoTile(main, 'logo-lg'), 'sponsor-tile-link')}
       <span class="strong">${sponsorName(main)}</span>
@@ -129,10 +150,11 @@ function countdown(t) {
   const target = p === 'soon' ? t.starts_at : t.ends_at;
   const ms = new Date(target) - Date.now();
   if (p === 'done') return { label: 'Baigėsi', value: dateTime(t.ends_at) };
-  return { label: p === 'soon' ? 'Iki starto' : 'Iki pabaigos', value: duration(ms) };
+  // Skaičius ir vienetas nelaužomi – siaurame langelyje eilutė lūžta tik tarp „2 d.“ ir „13 val.“
+  return { label: p === 'soon' ? 'Iki starto' : 'Iki pabaigos', value: duration(ms).replace(/(\d) /g, '$1\u00a0') };
 }
 
-export async function tournamentView(ctx, [id]) {
+export async function tournamentView(ctx, [id], query) {
   const { backend, state } = ctx;
   const t = await backend.tournament(id);
   if (!t) {
@@ -196,43 +218,69 @@ export async function tournamentView(ctx, [id]) {
   else if (me && !t.joined && p !== 'done') cta = html`<button class="btn btn-primary btn-lg" data-join>${icon('plus', 22, 2.6)}Dalyvauti</button>`;
   // Dalyvaujant laimikis registruojamas apatinio meniu „+“ mygtuku – atskiro mygtuko nebereikia.
 
-  return {
-    nav: 'turnyrai',
-    title: t.title,
-    html: html`<div class="screen ${cta ? 'has-cta' : ''}">
-      <header class="top-bar">
-        ${backButton('#/')}
-        <span class="muted strong">Turnyras</span>
-        <button class="icon-btn" data-share aria-label="Dalintis turnyru">${icon('share', 20)}</button>
-      </header>
+  // --- Puslapio sandara: viršuje – santrauka (laikas, dalyviai, fondas, tavo vieta) ir rėmėjai,
+  // toliau – skiltys (Apžvalga, Lentelė, Prizai, Taisyklės, Pranešimai), kad nereikėtų slinkti per viską.
+  const fund = t.prize_fund_cents || 0;
+  const newAnns = organizer ? 0 : anns.filter((a) => a.created_at > seenBefore).length;
+  const showMine = t.joined && p !== 'soon' && !duels;
+  const stats = [
+    [cd.label, cd.value, 'countdown'],
+    ['Dalyviai', String(t.participants), 'participants'],
+    fund ? ['Prizų fondas', eur(fund), 'fund'] : t.prizes ? ['Prizai', 'Yra', 'fund'] : null,
+    showMine && myRow && !hidden && myRow.rank !== null ? ['Tavo vieta', `#${myRow.rank}`, 'rank'] : null
+  ].filter(Boolean);
+  const hasPrizes = !!(fund || t.prizes || (t.sponsors || []).length);
+  const TABS = [
+    ['apzvalga', 'Apžvalga'],
+    ['lentele', 'Lentelė'],
+    ...(hasPrizes ? [['prizai', 'Prizai']] : []),
+    ['taisykles', 'Taisyklės'],
+    ...(anns.length || organizer ? [['pranesimai', 'Pranešimai', newAnns]] : [])
+  ];
+  const wanted = query?.get?.('skiltis');
+  let saved = null;
+  try { saved = sessionStorage.getItem(`zt-ttab-${t.id}`); } catch { /* nėra */ }
+  const tab = TABS.some(([k]) => k === wanted) ? wanted : TABS.some(([k]) => k === saved) ? saved : 'apzvalga';
+  const go = (key, label) => html`<button type="button" class="link link-btn" data-tab-go="${key}">${label}${icon('chevron', 16)}</button>`;
 
-      <section class="stack-2">
-        <div class="row gap-8 wrap">${phaseBadge(t)}${t.joined ? html`<span class="badge badge-mine">Dalyvauji</span>` : ''}${t.visibility === 'private' ? html`<span class="badge">${icon('lock', 12, 2.6)}Privatus</span>` : ''}${organizer ? html`<span class="badge">Organizuoji</span>` : ''}</div>
-        <h1 class="display-lg" tabindex="-1">${t.title}</h1>
-        <p class="muted">${describeFormat(t)} · ${speciesNames}${t.min_length_mm ? ` · nuo ${cm(t.min_length_mm)}` : ''}</p>
-        ${t.description ? html`<p>${t.description}</p>` : ''}
-      </section>
+  const leaders = (n) => (hidden ? html`<p class="muted">${icon('lock', 14)} Lentelė paslėpta iki turnyro pabaigos.</p>`
+    : board.length ? html`<div class="list">${board.slice(0, n).map((r) => html`
+      <a class="list-row" href="#/zvejys/${r.user_id}">
+        <span class="rank r${r.rank}">${r.rank}</span>
+        <span class="grow strong">${r.nickname}${r.user_id === me ? ' (tu)' : ''}</span>
+        <span class="num-sm">${scoreText(t, r.score_mm)}</span>
+      </a>`)}</div>` : html`<p class="muted">Patvirtintų laimikių dar nėra.</p>`);
 
-      ${sponsorShowcase(t)}
+  const panel = (key, body) => html`<section class="stack-lg t-panel" data-panel="${key}" role="tabpanel" id="tp-${key}" aria-labelledby="tt-${key}" ${key === tab ? '' : 'hidden'}>${body}</section>`;
 
+  const overview = html`
       ${p === 'done' && !hidden ? winners(t, board, me) : ''}
 
-      ${organizer || (t.visibility === 'private' && t.joined) || tAdmin ? html`<section class="row gap-10 wrap">
+      ${organizer || (t.visibility === 'private' && t.joined) || tAdmin ? html`<section class="row gap-8 wrap t-actions">
         ${t.invite_code && p !== 'done' && (organizer || (t.visibility === 'private' && t.joined)) ? html`<button class="btn" data-invite>${icon('users', 18)}Kviesti draugus</button>` : ''}
         ${organizer && p === 'soon' ? html`<a class="btn" href="#/t/${t.id}/redaguoti">${icon('edit', 18)}Redaguoti</a>`
-          : tAdmin ? html`<a class="btn" href="#/t/${t.id}/redaguoti" data-admin-edit>${icon('shield', 18)}Tvarkyti (administratorius)</a>` : ''}
+          : tAdmin ? html`<a class="btn" href="#/t/${t.id}/redaguoti" data-admin-edit>${icon('shield', 18)}Tvarkyti</a>` : ''}
         ${organizer || tAdmin ? html`<a class="btn" href="#/t/${t.id}/remejai" data-sponsors-manage>${icon('star', 18)}Rėmėjai</a>` : ''}
       </section>` : ''}
 
-      ${announcementsBlock(t, anns, organizer, seenBefore)}
-
-      <section class="card row-between" aria-label="${cd.label}">
-        <div class="stack-1">
-          <span class="small muted strong">${cd.label}</span>
-          <span class="display-md" data-countdown>${cd.value}</span>
+      ${showMine ? html`<section class="card hero stack">
+        <div class="row-between">
+          <div class="row gap-8 baseline">
+            <span class="rank-huge accent">${myRow && myRow.rank !== null ? `#${myRow.rank}` : '–'}</span>
+            <span class="muted">${hidden ? 'vieta paslėpta' : `iš ${board.length || t.participants}`}</span>
+          </div>
+          <div class="stack-1 right">
+            <span class="small muted strong">Tavo rezultatas</span>
+            <span class="display-md">${scoreText(t, myRow ? myRow.score_mm : 0)}</span>
+          </div>
         </div>
-        <span class="small muted right">${count(t.participants, 'dalyvis', 'dalyviai', 'dalyvių')}</span>
-      </section>
+        ${myRow && above ? html`<div class="stack-2">
+          <div class="row-between small strong"><span>${gapText(above, myRow, t)}</span><span class="muted">${above.nickname}</span></div>
+          <div class="progress"><div style="width:${Math.max(4, Math.round((myRow.score_mm / above.score_mm) * 100))}%"></div></div>
+        </div>` : ''}
+        ${!myRow ? html`<span class="small muted">Įskaityti bus tik moderatoriaus patvirtinti laimikiai. Laimikį registruok apačioje esančiu „+“.</span>` : ''}
+        ${hidden ? html`<span class="small muted">${icon('lock', 14)} Organizatorius paslėpė lentelę iki pabaigos – vietas sužinosi ${dateTime(t.ends_at)}.</span>` : ''}
+      </section>` : ''}
 
       ${duels ? duelCard(t, bracket, me, p) : ''}
 
@@ -248,28 +296,24 @@ export async function tournamentView(ctx, [id]) {
           <select data-team-club><option value="">Be klubo</option>${myClubs.map((c) => html`<option value="${c.id}" ${t.my_club_id === c.id ? 'selected' : ''}>${c.name}</option>`)}</select></label>`
           : html`<p class="small muted">Prisijunk prie klubo arba sukurk savo – tada galėsi atstovauti jam šiame turnyre. <a class="link" href="#/klubai">Klubai</a></p>`}
       </section>` : ''}
-      ${t.joined && p !== 'soon' && !duels ? html`<section class="card hero stack">
-        <div class="row-between">
-          <div class="row gap-8 baseline">
-            <span class="rank-huge accent">${myRow && myRow.rank !== null ? `#${myRow.rank}` : '–'}</span>
-            <span class="muted">${hidden ? 'vieta paslėpta' : `iš ${board.length || t.participants}`}</span>
-          </div>
-          <div class="stack-1 right">
-            <span class="small muted strong">Tavo rezultatas</span>
-            <span class="display-md">${scoreText(t, myRow ? myRow.score_mm : 0)}</span>
-          </div>
-        </div>
-        ${myRow && above ? html`<div class="stack-2">
-          <div class="row-between small strong"><span>${gapText(above, myRow, t)}</span><span class="muted">${above.nickname}</span></div>
-          <div class="progress"><div style="width:${Math.max(4, Math.round((myRow.score_mm / above.score_mm) * 100))}%"></div></div>
-        </div>` : ''}
-        ${!myRow ? html`<span class="small muted">Įskaityti bus tik moderatoriaus patvirtinti laimikiai.</span>` : ''}
-        ${hidden ? html`<span class="small muted">${icon('lock', 14)} Organizatorius paslėpė lentelę iki pabaigos – vietas sužinosi ${dateTime(t.ends_at)}.</span>` : ''}
+
+      ${anns.length ? html`<section class="card stack-2 ann-teaser ${newAnns ? 'ann-fresh' : ''}" data-ann-teaser>
+        <div class="row-between"><span class="small muted strong">${icon('bell', 14)} Organizatoriaus pranešimas · ${dateTime(anns[0].created_at)}${newAnns ? html` · <span class="accent">Nauja</span>` : ''}</span></div>
+        <p class="clamp-3">${anns[0].message}</p>
+        ${anns.length > 1 ? go('pranesimai', `Visi pranešimai (${anns.length})`) : ''}
       </section>` : ''}
 
-      ${t.joined && myCatches.length ? html`<section class="stack">
+      <section class="stack-2">
+        <div class="row-between">
+          <h2 class="h2">${duels ? 'Bendra lentelė' : 'Lyderiai'}</h2>
+          ${hidden ? '' : go('lentele', 'Lentelė')}
+        </div>
+        ${leaders(3)}
+      </section>
+
+      ${t.joined && myCatches.length ? html`<section class="stack-2">
         <h2 class="h2">Tavo laimikiai</h2>
-        ${myCatches.map((c) => {
+        ${myCatches.slice(0, 4).map((c) => {
           const reason = fitReason(t, t.species_ids, t.joined_at || true, c);
           return html`<a class="card card-link row tight" href="#/l/${c.id}">
             ${thumb(c.photo_path)}
@@ -281,39 +325,80 @@ export async function tournamentView(ctx, [id]) {
             ${statusChip(c.status)}
           </a>`;
         })}
+        ${myCatches.length > 4 ? html`<a class="link" href="#/dienorastis">Visi mano laimikiai${icon('chevron', 16)}</a>` : ''}
       </section>` : ''}
 
-      <section class="stack">
-        <div class="row-between">
-          <h2 class="h2">${duels ? 'Bendra lentelė' : 'Lyderiai'}</h2>
-          ${hidden ? '' : html`<a class="link" href="#/t/${t.id}/lentele">Visa lentelė${icon('chevron', 18)}</a>`}
-        </div>
-        ${hidden ? html`<p class="muted">${icon('lock', 14)} Lentelė paslėpta iki turnyro pabaigos.</p>`
-        : board.length ? html`<div class="list">${board.slice(0, 3).map((r) => html`
-          <a class="list-row" href="#/zvejys/${r.user_id}">
-            <span class="rank r${r.rank}">${r.rank}</span>
-            <span class="grow strong">${r.nickname}${r.user_id === me ? ' (tu)' : ''}</span>
-            <span class="num-sm">${scoreText(t, r.score_mm)}</span>
-          </a>`)}</div>` : html`<p class="muted">Patvirtintų laimikių dar nėra.</p>`}
-        ${!hidden && t.leaderboard_hidden && p !== 'done' ? html`<p class="small muted">Dalyviams lentelė paslėpta iki pabaigos – tu ją matai kaip ${organizer ? 'organizatorius' : 'moderatorius'}.</p>` : ''}
-        ${!hidden && board.length ? html`<a class="btn btn-ghost" href="#/t/${t.id}/tv">${icon('bars', 18)}Rodyti dideliame ekrane</a>` : ''}
-      </section>
+      ${t.description ? html`<section class="stack-2"><p class="clamp-3 muted">${t.description}</p>${go('taisykles', 'Taisyklės ir aprašymas')}</section>` : ''}
 
-      ${prizesBlock(t)}
+      ${!me && p !== 'done' ? loginPrompt() : ''}`;
 
+  const boardPanel = html`
+      <div class="row-between"><h2 class="h2">${duels ? 'Bendra lentelė' : 'Lentelė'}</h2>${hidden ? '' : html`<a class="link" href="#/t/${t.id}/lentele">Visa lentelė${icon('chevron', 18)}</a>`}</div>
+      ${duels ? html`<a class="btn btn-ghost" href="#/t/${t.id}/dvikovos">${icon('users', 18)}Dvikovų poros</a>` : ''}
+      ${leaders(10)}
+      ${!hidden && t.leaderboard_hidden && p !== 'done' ? html`<p class="small muted">Dalyviams lentelė paslėpta iki pabaigos – tu ją matai kaip ${organizer ? 'organizatorius' : 'moderatorius'}.</p>` : ''}
+      ${!hidden && board.length > 10 ? html`<a class="btn" href="#/t/${t.id}/lentele">Visi ${board.length} dalyviai${icon('chevron', 18)}</a>` : ''}
+      ${!hidden && board.length ? html`<a class="btn btn-ghost" href="#/t/${t.id}/tv">${icon('bars', 18)}Rodyti dideliame ekrane</a>` : ''}`;
+
+  const rulesPanel = html`
+      ${t.description ? html`<section class="stack-2"><h2 class="h2">Aprašymas</h2><p class="desc-text">${t.description}</p></section>` : ''}
       <section class="stack">
         <h2 class="h2">Taisyklės</h2>
         <dl class="list">${rules.map(([k, v]) => html`<div class="list-row"><dt class="muted">${k}</dt><dd class="strong right">${v}</dd></div>`)}</dl>
         ${t.joined && p === 'soon' && me ? html`<button class="btn btn-ghost" data-leave>Atšaukti registraciją</button>` : ''}
+      </section>`;
+
+  return {
+    nav: 'turnyrai',
+    title: t.title,
+    html: html`<div class="screen t-screen ${cta ? 'has-cta' : ''}">
+      <header class="top-bar">
+        ${backButton('#/')}
+        <span class="muted strong">Turnyras</span>
+        <button class="icon-btn" data-share aria-label="Dalintis turnyru">${icon('share', 20)}</button>
+      </header>
+
+      <section class="stack-2 t-head">
+        <div class="row gap-8 wrap">${phaseBadge(t)}${t.joined ? html`<span class="badge badge-mine">Dalyvauji</span>` : ''}${t.visibility === 'private' ? html`<span class="badge">${icon('lock', 12, 2.6)}Privatus</span>` : ''}${organizer ? html`<span class="badge">Organizuoji</span>` : ''}</div>
+        <h1 class="display-md t-title-lg" tabindex="-1">${t.title}</h1>
+        <p class="muted small">${describeFormat(t)} · ${speciesNames}${t.min_length_mm ? ` · nuo ${cm(t.min_length_mm)}` : ''}</p>
       </section>
 
-      ${!me && p !== 'done' ? loginPrompt() : ''}
+      <section class="t-stats" aria-label="Turnyro santrauka">${stats.map(([label, value, key]) => html`<div class="t-stat" data-stat="${key}">
+        <span class="t-stat-l">${label}</span><span class="t-stat-v" ${key === 'countdown' ? html`data-countdown` : ''}>${value}</span></div>`)}</section>
+
+      ${sponsorBar(t)}
+
+      <nav class="seg seg-tabs t-tabs" role="tablist" aria-label="Turnyro skiltys">${TABS.map(([key, label, badge]) => html`<button type="button" role="tab" id="tt-${key}" aria-controls="tp-${key}"
+        data-tab="${key}" aria-selected="${key === tab}" aria-pressed="${key === tab}">${label}${badge ? html` <span class="tab-badge">${badge}</span>` : ''}</button>`)}</nav>
+
+      ${panel('apzvalga', overview)}
+      ${panel('lentele', boardPanel)}
+      ${hasPrizes ? panel('prizai', html`${prizesBlock(t)}${sponsorShowcase(t)}`) : ''}
+      ${panel('taisykles', rulesPanel)}
+      ${anns.length || organizer ? panel('pranesimai', announcementsBlock(t, anns, organizer, seenBefore)) : ''}
     </div>
     ${cta ? html`<div class="cta-bar">${cta}</div>` : ''}`,
     mount(root) {
       hydratePhotos(root, backend);
       trackViews(backend, t.sponsors);
       bindSponsorClicks(root, backend);
+      // Skiltys: perjungiama be perkrovimo; pasirinkimas prisimenamas šiam turnyrui (sesijai).
+      const show = (key, focus = false) => {
+        root.querySelectorAll('[data-tab]').forEach((b) => {
+          const on = b.dataset.tab === key;
+          b.setAttribute('aria-selected', String(on));
+          b.setAttribute('aria-pressed', String(on));
+          if (on) b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        });
+        root.querySelectorAll('[data-panel]').forEach((el) => { el.hidden = el.dataset.panel !== key; });
+        try { sessionStorage.setItem(`zt-ttab-${t.id}`, key); } catch { /* nėra */ }
+        if (key === 'pranesimai' && anns.length) root.querySelector('.tab-badge')?.remove();
+        const nav = root.querySelector('.t-tabs');
+        if (focus && nav && nav.getBoundingClientRect().top < 0) nav.scrollIntoView({ block: 'start' });
+      };
+      root.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => show(b.dataset.tab, true)));
+      root.querySelectorAll('[data-tab-go]').forEach((b) => b.addEventListener('click', () => show(b.dataset.tabGo, true)));
       root.querySelector('[data-division]')?.addEventListener('change', async (e) => {
         const sel = e.currentTarget;
         sel.disabled = true;

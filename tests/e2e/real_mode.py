@@ -416,6 +416,7 @@ def more_real_tests(page, base):
         min_length_mm: 0, starts_at: new Date(Date.now() + 864e5).toISOString(), ends_at: new Date(Date.now() + 2 * 864e5).toISOString(),
         species_ids: [], visibility: 'public', leaderboard_hidden: false, prize_fund_cents: 0, prize_split: null, sponsors: [] })""")
     go(page, base + f"#/t/{nt}")
+    page.locator("[data-tab=pranesimai]").click()
     page.get_by_label("Naujas pranešimas visiems dalyviams").fill("Startas rytoj 6 val.")
     page.get_by_role("button", name="Siųsti dalyviams").click()
     expect(page.locator(".ann")).to_contain_text("Startas rytoj 6 val.")
@@ -483,7 +484,7 @@ def more_real_tests(page, base):
     fake(page, "const p = db.profiles.find(p => p.id === arg); p.is_admin = true; p.roles = ['admin']; window.__fakeDb.save();", me)
     page.evaluate("async () => { window.__zt.state.profile = await window.__zt.backend.myProfile(); }")
     go(page, base + f"#/t/{T1}")
-    expect(page.get_by_role("link", name="Tvarkyti (administratorius)")).to_be_visible()
+    expect(page.get_by_role("link", name="Tvarkyti")).to_be_visible()
     res = page.evaluate("(id) => window.__zt.backend.updateTournament(id, { title: 'Testo lydekų taurė (pataisyta)' }).then(() => 'ok', e => e.message)", T1)
     assert res == "ok", res
     res = page.evaluate("(id) => window.__zt.backend.updateTournament(id, { format: 'biggest' }).then(() => 'ok', e => e.message)", T1)
@@ -526,7 +527,7 @@ def more_real_tests(page, base):
     page.get_by_role("button", name="Dalyvauti").click()
     expect(page.locator("#toast")).to_have_text("Užsiregistravai į turnyrą")
     expect(page.get_by_role("heading", name="Slaptas klubo turnyras")).to_be_visible()
-    expect(page.get_by_text("Lentelė paslėpta iki turnyro pabaigos.")).to_be_visible()
+    expect(page.locator("[data-panel=apzvalga]").get_by_text("Lentelė paslėpta iki turnyro pabaigos.")).to_be_visible()
     expect(page.locator(".list-row", has_text="Kitas_Zvejys")).to_have_count(0)
     go(page, base + f"#/t/{T2}/lentele")
     expect(page.get_by_text("Paslėpta iki pabaigos")).to_be_visible()
@@ -551,6 +552,7 @@ def more_real_tests(page, base):
     expect(page.get_by_role("heading", name="Uždaros registracijos turnyras")).to_be_visible()
     expect(page.locator(".reg-closed")).to_have_text("Registracija baigėsi")
     expect(page.get_by_role("button", name="Dalyvauti")).to_have_count(0)
+    page.locator("[data-tab=taisykles]").click()
     expect(page.locator(".list-row", has_text="Registracija")).to_contain_text("Iki ")
     res = page.evaluate("(id) => window.__zt.backend.join(id).then(() => 'ok', e => e.code)", T3)
     assert res == "42501", f"registracijai pasibaigus prisijungti neturėtų pavykti: {res}"
@@ -558,7 +560,7 @@ def more_real_tests(page, base):
     expect(page.get_by_text("Kvietimas negalioja")).to_be_visible()
     res = page.evaluate("() => window.__zt.backend.joinWithInvite('c1c2c3c4c5').then(() => 'ok', e => e.message)")
     assert res == "Registracija į šį turnyrą jau baigėsi", res
-    go(page, base + f"#/t/{T2}")
+    go(page, base + f"#/t/{T2}?skiltis=taisykles")
     expect(page.locator(".list-row", has_text="Registracija")).to_contain_text("Iki pabaigos")
     step("vėlyva registracija: pasibaigus – mygtuko nėra, serveris ir kvietimas atmeta")
 
@@ -1043,7 +1045,7 @@ def main():
         expect(page.locator(".t-card", has_text="Testo lydekų taurė")).to_contain_text("2")  # dalyviai
         page.locator(".t-card", has_text="Testo lydekų taurė").click()
         expect(page.get_by_role("link", name="Prisijungti ir dalyvauti")).to_be_visible()
-        expect(page.locator(".list-row", has_text="Kitas_Zvejys")).to_contain_text("70 cm")
+        expect(page.locator("[data-panel=apzvalga] .list-row", has_text="Kitas_Zvejys")).to_contain_text("70 cm")
         step("neprisijungęs mato turnyrą ir lentelę")
 
         # 2. Prisijungimas kodu

@@ -135,6 +135,7 @@ def community_demo_tests(page, base):
 
     # Organizatoriaus pranešimai
     page.goto(base + "#/t/t-slaptas")
+    page.locator("[data-tab=pranesimai]").click()
     page.get_by_label("Naujas pranešimas visiems dalyviams").fill("Startas 6 val. <script>window.__xss=1</script>")
     page.get_by_role("button", name="Siųsti dalyviams").click()
     expect(page.locator("#toast")).to_have_text("Pranešimas išsiųstas dalyviams")
@@ -232,7 +233,7 @@ def social_demo_test(page, base):
     step("sekimas: sekti, sekėjų skaičius, sekamų laimikių srautas, nebesekti")
 
     # Komandinė įskaita: dalyvauji ir atstovauji klubui; klubų lentelė
-    page.goto(base + "#/t/t-sezonas")
+    page.goto(base + "#/t/t-sezonas?skiltis=apzvalga")
     page.get_by_role("button", name="Dalyvauti").click()
     expect(page.locator("#toast")).to_have_text("Užsiregistravai į turnyrą")
     page.get_by_label("Atstovauju klubui").select_option(label="Kauno lydekininkai")
@@ -287,7 +288,9 @@ def formats_demo_test(page, base):
     expect(rules).to_contain_text("Taškai už rūšį · TOP-3")
     expect(rules).to_contain_text("Lydeka ×1, Starkis ×2")
     expect(rules).to_contain_text("Jaunimas, Moterys")
+    page.locator("[data-tab=taisykles]").click()
     expect(page.get_by_role("link", name=re.compile("Mano sezono lyga"))).to_be_visible()
+    page.locator("[data-tab=apzvalga]").click()
     page.get_by_label("Mano divizionas").select_option(label="Moterys")
     expect(page.locator("#toast")).to_have_text("Divizionas: Moterys")
     tid = page.evaluate("() => location.hash.split('/')[2]")
@@ -325,7 +328,7 @@ def formats_demo_test(page, base):
     step("taškų lentelė ir divizionų lentelės (vietos perskaičiuojamos, be prizų)")
 
     # Dvikovos
-    page.goto(base + "#/t/t-dvikovos")
+    page.goto(base + "#/t/t-dvikovos?skiltis=apzvalga")
     card = page.locator("[data-duel-card]")
     expect(card).to_contain_text("Finalas")
     card.get_by_role("link", name="Visas tinklelis").click()
@@ -386,7 +389,7 @@ def sponsors_demo_test(page, base):
     # Turnyro puslapis: generalinis rėmėjas su logotipu ir pasiūlymu, kiti – tinklelyje
     page.goto(base + "#/")
     page.evaluate("() => localStorage.removeItem('zt-sponsor-seen')")  # ankstesni testai jau „matė“ šiandien
-    page.goto(base + "#/t/t-taure")
+    page.goto(base + "#/t/t-taure?skiltis=apzvalga")
     main = page.locator("[data-sponsor-main]")
     expect(main).to_contain_text("Generalinis rėmėjas")
     expect(main).to_contain_text("Ežero žvejybos parduotuvė")
@@ -426,7 +429,7 @@ def sponsors_demo_test(page, base):
     step("rėmėjų logotipai sąraše, lentelėje ir didžiajame ekrane")
 
     # Tvarkymas: naujas generalinis rėmėjas su įkeltu logotipu
-    page.goto(base + "#/t/t-taure")
+    page.goto(base + "#/t/t-taure?skiltis=apzvalga")
     page.locator("[data-sponsors-manage]").click()
     expect(page.locator("[data-sponsor-stats]")).to_contain_text("Ežero žvejybos parduotuvė")
     expect(page.locator("[data-stat-sponsor=s1] [data-clicks]")).not_to_have_text("0")
@@ -479,8 +482,8 @@ def organizer_demo_test(page, base):
 
 def admin_demo_test(page, base):
     # Demo žvejys – savininkas, todėl turi teisę tvarkyti bet kurį turnyrą (0026)
-    page.goto(base + "#/t/t-sezonas")
-    page.get_by_role("link", name="Tvarkyti (administratorius)").click()
+    page.goto(base + "#/t/t-sezonas?skiltis=apzvalga")
+    page.get_by_role("link", name="Tvarkyti").click()
     expect(page.locator("[data-admin-note]")).to_contain_text("Turnyras jau prasidėjo")
     expect(page.get_by_role("button", name="Dvikovos")).to_be_disabled()
     expect(page.get_by_role("button", name="Pridėti divizioną")).to_be_disabled()
@@ -497,8 +500,8 @@ def admin_demo_test(page, base):
     assert t["format"] == "biggest" and t["team_mode"] is True, f"užrakintos taisyklės pasikeitė: {t}"
     step("administratorius taiso vykstantį turnyrą – taisyklės užrakintos")
 
-    page.goto(base + "#/t/t-plesrunai")
-    page.get_by_role("link", name="Tvarkyti (administratorius)").click()
+    page.goto(base + "#/t/t-plesrunai?skiltis=apzvalga")
+    page.get_by_role("link", name="Tvarkyti").click()
     page.get_by_role("button", name="Pašalinti turnyrą").click()
     page.locator("[data-del-reason]").fill("abc")
     page.get_by_role("button", name="Pašalinti galutinai").click()
@@ -656,12 +659,14 @@ def extra_demo_tests(page, base, meteo_calls):
     expect(prize_rows.nth(0)).to_contain_text("50 %")
     expect(prize_rows.nth(0)).to_contain_text("500 €")
     expect(prize_rows.nth(2)).to_contain_text("200 €")
+    page.locator("[data-tab=prizai]").click()  # prizai ir rėmėjai – savo skiltyje
     sponsor = page.locator(".sponsor-list").get_by_role("link", name="Ežero parduotuvė")
     expect(sponsor).to_have_attribute("href", "https://example.com/zvejyba")
     expect(sponsor).to_have_attribute("rel", "noopener noreferrer sponsored")
     expect(page.locator(".sponsor-list .list-row").nth(1)).to_contain_text('<b onmouseover="window.__xss=1">Klubas</b>')
     expect(page.locator("dl", has_text="Lentelė")).to_contain_text("Paslėpta iki pabaigos")
     expect(page.locator(".list-row", has_text="Registracija")).to_contain_text("Iki ")
+    page.locator("[data-tab=apzvalga]").click()
     expect(page.get_by_role("button", name="Kviesti draugus")).to_be_visible()
     shot(page, "13-privatus")
     tid = page.evaluate("() => location.hash.split('/')[2]")
@@ -721,7 +726,7 @@ def extra_demo_tests(page, base, meteo_calls):
     step("kvietimo nuoroda: galiojanti ir negaliojanti")
 
     # Baigęsis turnyras: nugalėtojai, ekrano režimas
-    page.goto(base + "#/t/t-plesrunai")
+    page.goto(base + "#/t/t-plesrunai?skiltis=apzvalga")
     expect(page.locator(".winners li")).to_have_count(3)
     expect(page.locator(".winners li").nth(0)).to_contain_text("60 €")
     expect(page.locator(".winners li").nth(1)).to_contain_text("40 €")
@@ -729,6 +734,7 @@ def extra_demo_tests(page, base, meteo_calls):
     expect(page.locator(".winners")).to_contain_text("🥇")
     page.goto(base + "#/t/t-taure")
     expect(page.locator(".winners")).to_have_count(0)
+    page.locator("[data-tab=lentele]").click()
     page.get_by_role("link", name="Rodyti dideliame ekrane").click()
     expect(page.locator(".tv-row")).to_have_count(10)
     expect(page.locator(".tv-row.r1")).to_contain_text("Ąžuolas_K")
