@@ -109,6 +109,7 @@ async function main() {
   let store;
   try { store = typeof indexedDB !== 'undefined' ? idbStore() : memoryStore(); } catch { store = memoryStore(); }
   ctx.outbox = new Outbox(store, { onChange: refreshStatus });
+  backend.offline?.onChange(() => refreshStatus());
   ctx.flush = async () => {
     if (!ctx.state.user) return;
     const r = await ctx.outbox.flush((item) => backend.submitCatch(item));
@@ -141,16 +142,24 @@ async function main() {
     ctx.state.outboxFailed = items.filter((x) => x.state === 'failed').length;
     const el = $('#status');
     const { outboxPending: p, outboxFailed: f } = ctx.state;
-    if (!p && !f) {
+    // Be ryšio arba rodomi telefone išsaugoti duomenys – juosta su laiku.
+    const staleAt = backend.offline?.staleAt ?? null;
+    const off = !navigator.onLine || staleAt !== null;
+    if (!p && !f && !off) {
       el.hidden = true;
       el.innerHTML = '';
       return;
     }
     el.hidden = false;
-    el.innerHTML = String(html`<a href="#/dienorastis" class="status-bar ${f ? 'status-bad' : ''}">
+    const at = staleAt ? new Intl.DateTimeFormat('lt-LT', { hour: '2-digit', minute: '2-digit' }).format(new Date(staleAt)) : '';
+    el.innerHTML = String(html`${off ? html`<div class="status-bar off-bar" role="status" data-offline>
+      ${icon('cloudOff', 20)}
+      <span class="stack-1"><strong>${navigator.onLine ? 'Silpnas ryšys' : 'Nėra ryšio'}</strong>
+        <span class="small">${at ? `Rodoma, kas įkelta ${at}. ` : ''}Laimikius registruok – išsiųsime, kai atsiras ryšys.</span></span>
+    </div>` : ''}${p || f ? html`<a href="#/dienorastis" class="status-bar ${f ? 'status-bad' : ''}">
       ${icon(f ? 'alert' : 'cloudOff', 18)}
       <span>${p ? `${count(p, 'laimikis laukia', 'laimikiai laukia', 'laimikių laukia')} išsiuntimo` : ''}${p && f ? ' · ' : ''}${f ? `${f} neišsiųsta` : ''}</span>
-    </a>`);
+    </a>` : ''}`);
   }
 
   let toastTimer;
@@ -179,17 +188,19 @@ async function main() {
 
     const main = $('#view');
     main.setAttribute('aria-busy', 'true');
+    backend.offline?.reset();
     let result;
     try {
       result = await view(ctx, match.slice(1), query);
     } catch (err) {
-      console.error(err);
+      const offline = !!err?.offline || !navigator.onLine;
+      if (!offline) console.error(err);
       result = {
         nav: 'turnyrai',
         html: html`<div class="screen"><div class="empty">
-          <div class="empty-icon">${icon('alert', 32)}</div>
-          <h1 class="empty-title" tabindex="-1">Nepavyko įkelti</h1>
-          <p class="muted">${navigator.onLine ? 'Bandyk dar kartą po akimirkos.' : 'Nėra interneto ryšio.'}</p>
+          <div class="empty-icon">${icon(offline ? 'cloudOff' : 'alert', 32)}</div>
+          <h1 class="empty-title" tabindex="-1">${offline ? 'Nėra ryšio' : 'Nepavyko įkelti'}</h1>
+          <p class="muted">${offline ? 'Šio puslapio telefone dar nėra – jis bus pasiekiamas, kai atsiras ryšys. Laimikius registruoti gali ir dabar.' : 'Bandyk dar kartą po akimirkos.'}</p>
           <button class="btn" data-retry>${icon('refresh', 18)}Bandyti dar kartą</button>
         </div></div>`,
         mount: (root) => root.querySelector('[data-retry]').addEventListener('click', () => render(true))
@@ -217,6 +228,7 @@ async function main() {
       }
     }
     if (!keepScroll) main.querySelector('h1')?.focus({ preventScroll: true });
+    refreshStatus();
   }
 
   function renderNav(active) {
@@ -230,7 +242,9 @@ async function main() {
   }
 
   window.addEventListener('hashchange', () => render());
-  window.addEventListener('online', () => ctx.flush());
+  // Ryšys grįžo – išsiunčiam laukiančius laimikius ir atnaujinam ekraną; dingo – parodom juostą.
+  window.addEventListener('online', () => { ctx.flush(); refreshStatus(); render(true); });
+  window.addEventListener('offline', () => refreshStatus());
   setInterval(() => { if (ctx.state.outboxPending && navigator.onLine) ctx.flush(); }, 60000);
 
   await refreshStatus();

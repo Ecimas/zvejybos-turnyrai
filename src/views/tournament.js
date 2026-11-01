@@ -1,4 +1,5 @@
 import { html } from '../lib/html.js';
+import { cachedAt } from '../lib/offline.js';
 import { icon } from '../icons.js';
 import { phase, timeLabel, describeFormat, cm, dateTime, duration, count, gapText, registrationOpen, registrationLabel, scoreText, coefText, isPoints } from '../lib/format.js';
 import { fitReason, REASON_LT, rerank } from '../lib/scoring.js';
@@ -77,6 +78,14 @@ export function sponsorStrip(t, label = 'Remia') {
 
 // Glausta rėmėjų juosta turnyro viršuje: generalinis – logotipas, vardas ir pasiūlymas vienoje eilutėje,
 // kiti – mažų logotipų juosta. Visa informacija – skiltyje „Prizai“.
+// Be ryšio: lentelė rodoma iš telefono atminties – pasakom, kada ji buvo atnaujinta.
+export function staleNote(value, what = 'Lentelė') {
+  const at = cachedAt(value);
+  if (!at) return '';
+  const hm = new Intl.DateTimeFormat('lt-LT', { hour: '2-digit', minute: '2-digit' }).format(new Date(at));
+  return html`<p class="off-note" data-stale>${icon('clock', 14)}${what} atnaujinta ${hm} – gali būti pasikeitusi</p>`;
+}
+
 export function sponsorBar(t) {
   const list = sortSponsors(t.sponsors);
   if (!list.length) return '';
@@ -334,6 +343,7 @@ export async function tournamentView(ctx, [id], query) {
 
   const boardPanel = html`
       <div class="row-between"><h2 class="h2">${duels ? 'Bendra lentelė' : 'Lentelė'}</h2>${hidden ? '' : html`<a class="link" href="#/t/${t.id}/lentele">Visa lentelė${icon('chevron', 18)}</a>`}</div>
+      ${staleNote(board)}
       ${duels ? html`<a class="btn btn-ghost" href="#/t/${t.id}/dvikovos">${icon('users', 18)}Dvikovų poros</a>` : ''}
       ${leaders(10)}
       ${!hidden && t.leaderboard_hidden && p !== 'done' ? html`<p class="small muted">Dalyviams lentelė paslėpta iki pabaigos – tu ją matai kaip ${organizer ? 'organizatorius' : 'moderatorius'}.</p>` : ''}
@@ -564,6 +574,7 @@ export async function boardView(ctx, [id], query) {
         </div>
         ${phaseBadge(t)}
       </header>
+      ${staleNote(full)}
       ${hasTabs(t) ? boardTabs(t, div ? div.id : 'people') : ''}
       ${sponsorStrip(t, 'Lentelę remia')}
 

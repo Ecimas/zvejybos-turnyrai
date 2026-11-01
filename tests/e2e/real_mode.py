@@ -585,6 +585,7 @@ def more_real_tests(page, base):
     social_real_test(page, base, me)
     formats_real_test(page, base, me)
     stats_real_test(page, base, me)
+    offline_real_test(page, base, me)
 
     # Duomenų eksportas
     go(page, base + "#/profilis?skiltis=nustatymai")
@@ -843,6 +844,48 @@ def formats_real_test(page, base, me):
     assert "Dvikov_C" in finalists, finalists
     assert calls(page, "rpc", name="duel_bracket")
     step("dvikovos (tikras režimas): tinklelis iš serverio funkcijos, nugalėtojai pereina į finalą")
+
+
+def offline_real_test(page, base, me):
+    """Be ryšio: rodomi paskutiniai matyti duomenys, juosta su laiku, aiški žinutė veiksmams."""
+    # Su ryšiu aplankom ekranus – jie išsisaugo telefone
+    go(page, base + "#/")
+    expect(page.locator(".t-card").first).to_be_visible()
+    expect(page.locator("[data-offline]")).to_have_count(0)
+    go(page, base + f"#/t/{T1}?skiltis=lentele")
+    expect(page.locator("[data-panel=lentele]")).to_be_visible()
+    go(page, base + "#/dienorastis")
+    expect(page.locator("[data-catch]").first).to_be_visible()
+    rows_online = page.locator("[data-catch]").count()
+    keys = page.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('zt-cache:'))")
+    assert any(f"zt-cache:{me}:" in k for k in keys), keys
+
+    # Ryšys dingsta
+    page.evaluate("() => { window.__sbOffline = true; }")
+    page.context.set_offline(True)
+    expect(page.locator("[data-offline]")).to_contain_text("Nėra ryšio")
+    go(page, base + "#/")
+    expect(page.locator(".t-card").first).to_be_visible()
+    expect(page.locator("[data-offline]")).to_contain_text("Rodoma, kas įkelta")
+    go(page, base + f"#/t/{T1}?skiltis=lentele")
+    expect(page.locator("[data-panel=lentele] [data-stale]")).to_contain_text("atnaujinta")
+    go(page, base + "#/dienorastis")
+    expect(page.locator("[data-catch]")).to_have_count(rows_online)
+    res = page.evaluate(f"() => window.__zt.backend.join('{T1}').then(() => 'ok', e => e.message)")
+    assert res == "Reikia interneto ryšio – pabandyk, kai atsiras", res
+    # Neaplankytas ekranas – aiškus pranešimas, ne lūžis
+    go(page, base + "#/zvejys/00000000-0000-4000-8000-0000000000ff")
+    expect(page.get_by_role("heading", level=1)).to_be_visible()
+    if base_mod.SHOTS:
+        go(page, base + "#/")
+        page.screenshot(path=f"{base_mod.SHOTS}/be-rysio.png")
+
+    # Ryšys grįžta – juosta dingsta, duomenys atsinaujina
+    page.evaluate("() => { window.__sbOffline = false; }")
+    page.context.set_offline(False)
+    go(page, base + "#/")
+    expect(page.locator("[data-offline]")).to_have_count(0)
+    step("be ryšio: paskutiniai duomenys, juosta su laiku, aiški žinutė veiksmams; ryšiui grįžus – atnaujinama")
 
 
 def stats_real_test(page, base, me):

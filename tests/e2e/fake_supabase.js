@@ -316,7 +316,11 @@ class Query {
   limit(n) { this.max = n; return this; }
   single() { this.mode = 'single'; return this; }
   maybeSingle() { this.mode = 'maybe'; return this; }
-  then(res, rej) { return Promise.resolve().then(() => this.run()).then(res, rej); }
+  then(res, rej) {
+    // Testams: „dingęs ryšys“ – kaip supabase-js, kai fetch nepavyksta.
+    if (window.__sbOffline) return Promise.resolve({ data: null, error: { message: 'TypeError: Failed to fetch', code: '' } }).then(res, rej);
+    return Promise.resolve().then(() => this.run()).then(res, rej);
+  }
 
   matches(row) {
     return this.filters.every(([c, v]) => (v && typeof v === 'object' && Array.isArray(v.in) ? v.in.includes(row[c])
@@ -660,6 +664,7 @@ export function createClient(url, key) {
     from: (table) => new Query(table),
     async rpc(name, args) {
       log('rpc', { name, args });
+      if (window.__sbOffline) return { data: null, error: { message: 'TypeError: Failed to fetch', code: '' } };
       if (name === 'review_catch') {
         if (!hasPerm('review')) return { data: null, error: err('P0001', 'not allowed') };
         const c = db.catches.find((x) => x.id === args.p_catch_id);
