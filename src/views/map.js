@@ -210,7 +210,7 @@ export async function mapEngine(box, { onPick, state }) {
     try {
       return await maplibreEngine(box, { onPick });
     } catch (err) {
-      mapFailReason = [String(err?.message || err || 'klaida').slice(0, 80), ...csp.slice(0, 2)].join(' · ');
+      mapFailReason = [String(err?.message || err?.type || err || 'klaida').slice(0, 140), ...csp.slice(0, 2)].join(' · ');
       box.innerHTML = '';
     } finally {
       document.removeEventListener('securitypolicyviolation', onCsp);
@@ -359,7 +359,7 @@ export async function mapView(ctx) {
         current = filtered();
         engine?.setPoints(current);
         if (fit) engine?.fit(current);
-        root.querySelector('[data-map-count]').textContent = `Rodoma: ${count(current.length, 'laimikis', 'laimikiai', 'laimikių')}, ${count(groupSpots(current).length, 'vieta', 'vietos', 'vietų')}. Žemėlapis: ${engine?.kind === 'maplibre' ? 'naujas' : `paprastas${mapFailReason ? ` (${mapFailReason})` : ''}`}.`;
+        root.querySelector('[data-map-count]').textContent = `Rodoma: ${count(current.length, 'laimikis', 'laimikiai', 'laimikių')}, ${count(groupSpots(current).length, 'vieta', 'vietos', 'vietų')}. Žemėlapis: ${engine?.kind === 'maplibre' ? 'naujas' : 'paprastas'}.`;
         showSpots();
       };
 
@@ -374,6 +374,14 @@ export async function mapView(ctx) {
       }
       if (dead || !box.isConnected) { engine.destroy(); return undefined; }
       root.querySelector('[data-map-wrap]').dataset.engine = engine.kind;
+      // Laikinai: jei naujas žemėlapis neįsikėlė – priežastis matoma iškart virš žemėlapio.
+      if (engine.kind !== 'maplibre' && mapFailReason) {
+        const why = document.createElement('p');
+        why.className = 'small muted mp-why';
+        why.dataset.mapWhy = '';
+        why.textContent = `Naujas žemėlapis neįsikėlė: ${mapFailReason}`;
+        root.querySelector('[data-map-wrap]').before(why);
+      }
       root.querySelector('[data-mode-seg]').hidden = !engine.heat;
       const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => engine?.resize()) : null;
       ro?.observe(box);
