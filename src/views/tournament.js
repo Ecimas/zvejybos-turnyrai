@@ -91,8 +91,8 @@ export function sponsorBar(t) {
         ${main.blurb ? html`<span class="small sponsor-blurb clamp-2">${icon('star', 14)}${main.blurb}</span>` : ''}
       </span>
     </div>` : ''}
-    ${rest.length ? html`<div class="sponsor-strip"><span class="small muted strong">${main ? 'Taip pat remia' : 'Remia'}</span>
-      ${rest.map((s) => sponsorLink(s, logoTile(s, 'logo-sm'), 'sponsor-tile-link'))}</div>` : ''}
+    ${rest.length ? html`<div class="stack-1"><span class="small muted strong">${main ? 'Taip pat remia' : 'Remia'}</span>
+      <div class="sponsor-logos-row" data-sponsor-row>${rest.map((s) => sponsorLink(s, logoTile(s, 'logo-sm'), 'sponsor-tile-link'))}</div></div>` : ''}
   </section>`;
 }
 
@@ -231,11 +231,11 @@ export async function tournamentView(ctx, [id], query) {
   ].filter(Boolean);
   const hasPrizes = !!(fund || t.prizes || (t.sponsors || []).length);
   const TABS = [
-    ['apzvalga', 'Apžvalga'],
-    ['lentele', 'Lentelė'],
-    ...(hasPrizes ? [['prizai', 'Prizai']] : []),
-    ['taisykles', 'Taisyklės'],
-    ...(anns.length || organizer ? [['pranesimai', 'Pranešimai', newAnns]] : [])
+    ['apzvalga', 'Apžvalga', 0, 'fish'],
+    ['lentele', 'Lentelė', 0, 'bars'],
+    ...(hasPrizes ? [['prizai', 'Prizai', 0, 'trophy']] : []),
+    ['taisykles', 'Taisyklės', 0, 'book'],
+    ...(anns.length || organizer ? [['pranesimai', 'Pranešimai', newAnns, 'bell']] : [])
   ];
   const wanted = query?.get?.('skiltis');
   let saved = null;
@@ -369,8 +369,8 @@ export async function tournamentView(ctx, [id], query) {
 
       ${sponsorBar(t)}
 
-      <nav class="seg seg-tabs t-tabs" role="tablist" aria-label="Turnyro skiltys">${TABS.map(([key, label, badge]) => html`<button type="button" role="tab" id="tt-${key}" aria-controls="tp-${key}"
-        data-tab="${key}" aria-selected="${key === tab}" aria-pressed="${key === tab}">${label}${badge ? html` <span class="tab-badge">${badge}</span>` : ''}</button>`)}</nav>
+      <nav class="t-tabs" role="tablist" aria-label="Turnyro skiltys">${TABS.map(([key, label, badge, ic]) => html`<button type="button" role="tab" id="tt-${key}" aria-controls="tp-${key}"
+        data-tab="${key}" aria-selected="${key === tab}" aria-pressed="${key === tab}"><span class="t-tab-ic">${icon(ic, 20)}${badge ? html`<span class="tab-badge">${badge}</span>` : ''}</span><span class="t-tab-l">${label}</span></button>`)}</nav>
 
       ${panel('apzvalga', overview)}
       ${panel('lentele', boardPanel)}

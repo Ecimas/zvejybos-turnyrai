@@ -681,7 +681,7 @@ fieldset[disabled] button { cursor: not-allowed; }
 .sponsor-blurb-sm { color: var(--muted); }
 .sponsor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
 .sponsor-grid .sponsor-logo { width: 100%; }
-.sponsor-strip { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding: 4px 0; scrollbar-width: none; }
+.sponsor-strip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 0; }
 .sponsor-strip .sponsor-tile-link { flex: none; }
 .t-sponsors { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .chip-main { background: var(--wait-bg); color: var(--wait); }
@@ -717,9 +717,18 @@ fieldset[disabled] button { cursor: not-allowed; }
 .clamp-2 { -webkit-line-clamp: 2; }
 .clamp-3 { -webkit-line-clamp: 3; }
 .t-actions .btn { min-height: 44px; padding: 0 14px; font-size: 15px; }
-.t-tabs { position: sticky; top: 0; z-index: 5; background: var(--bg); box-shadow: 0 6px 12px -8px rgba(0,0,0,.5); }
-.t-tabs button { flex: 1 0 auto; padding: 0 14px; white-space: nowrap; }
+.t-tabs { position: sticky; top: 0; z-index: 5; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; padding: 4px;
+  border-radius: 16px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 8px 14px -10px rgba(0,0,0,.6); }
+.t-tabs button { position: relative; min-width: 0; min-height: 54px; padding: 6px 2px; border: 0; border-radius: 12px; background: transparent; color: var(--muted);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; }
 .t-tabs button[aria-selected="true"] { background: var(--accent); color: var(--on-accent); }
+.t-tab-l { font-size: clamp(10.5px, 3.1vw, 13px); font-weight: 700; line-height: 1.1; white-space: nowrap; letter-spacing: -0.01em; }
+@media (max-width: 359px) { .t-tabs { padding: 3px; gap: 1px; } .t-tab-l { font-size: 10px; letter-spacing: -0.03em; } }
+.t-tab-ic { position: relative; display: inline-flex; }
+.t-tab-ic .tab-badge { position: absolute; top: -6px; left: 13px; }
+.t-tabs button[aria-selected="true"] .tab-badge { background: var(--on-accent); color: var(--accent); }
+.sponsor-logos-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 6px; }
+.sponsor-logos-row .sponsor-logo { width: 100%; min-width: 0; height: 44px; }
 .tab-badge { display: inline-flex; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--on-accent);
   font-size: 11px; font-weight: 800; align-items: center; justify-content: center; opacity: 1 !important; box-shadow: 0 0 0 2px var(--bg, #000); }
 .link-btn { background: none; border: 0; padding: 0; font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; min-height: 44px; }
