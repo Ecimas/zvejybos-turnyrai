@@ -100,8 +100,10 @@ async function maplibreEngine(box, { onPick }) {
     id: 'points', type: 'circle', source: 'catches', filter: ['!', ['has', 'point_count']],
     paint: {
       'circle-color': ['get', 'color'],
-      'circle-radius': ['case', ['>', ['get', 'count'], 1], ['interpolate', ['linear'], ['zoom'], 6, 12, 14, 15],
-        ['interpolate', ['linear'], ['zoom'], 6, 6, 14, 9]],
+      // „zoom“ gali būti tik viršutiniame interpolate lygyje – kitaip MapLibre sluoksnio nepriima.
+      'circle-radius': ['interpolate', ['linear'], ['zoom'],
+        6, ['case', ['>', ['get', 'count'], 1], 12, 6],
+        14, ['case', ['>', ['get', 'count'], 1], 15, 9]],
       'circle-stroke-width': 2.5,
       'circle-stroke-color': light ? '#ffffff' : '#0A1822'
     }
@@ -111,6 +113,10 @@ async function maplibreEngine(box, { onPick }) {
     layout: { 'text-field': ['to-string', ['get', 'count']], 'text-font': ['Noto Sans Bold'], 'text-size': 13, 'text-allow-overlap': true },
     paint: { 'text-color': '#0A1822' }
   });
+
+  // Jei kuris sluoksnis nepriimtas – geriau paprastas žemėlapis nei tuščias.
+  const missing = ['heat', 'clusters', 'cluster-count', 'points', 'point-count'].filter((id) => !map.getLayer(id));
+  if (missing.length) { map.remove(); throw new Error(`sluoksniai: ${missing.join(', ')}`); }
 
   const layers = ['clusters', 'points'];
   map.on('click', 'clusters', async (e) => {

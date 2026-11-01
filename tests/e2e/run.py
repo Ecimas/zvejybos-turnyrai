@@ -200,6 +200,7 @@ MAPLIBRE_STUB = """(function () {
       this['src_' + id] = { setData(d) { log.data[id] = d.features.length; log.sets++; if (id === 'catches') { log.features = d.features.length; log.ids = d.features.map((f) => f.properties.id); } }, getClusterExpansionZoom: () => Promise.resolve(12) }; }
     getSource(id) { return this['src_' + id]; }
     addLayer(l) { log.layers.push(l.id); log.vis[l.id] = (l.layout && l.layout.visibility) || 'visible'; }
+    getLayer(id) { return log.layers.includes(id) ? { id } : undefined; }
     setLayoutProperty(id, k, v) { if (k === 'visibility') log.vis[id] = v; }
     getCanvas() { return { style: {} }; }
     getZoom() { return 8; }
@@ -716,6 +717,10 @@ def map_demo_test(page, base):
     expect(page.get_by_text("Šį žemėlapį matai tik tu.")).to_be_visible()
     page.wait_for_function("() => window.__mlLog && window.__mlLog.features > 0")
     expect(page.locator("[data-map-wrap]")).to_have_attribute("data-engine", "maplibre")
+    # Tikras MapLibre prideda klasę „maplibregl-map“ (position: relative) – žemėlapio aukštis neturi tapti 0.
+    page.wait_for_function("() => [...document.styleSheets].some((s) => (s.href || '').includes('maplibre-gl.css'))")
+    h = page.evaluate("() => { const b = document.querySelector('[data-map]'); b.classList.add('maplibregl-map'); const h = b.clientHeight; b.classList.remove('maplibregl-map'); return h; }")
+    assert h > 300, f"žemėlapio aukštis su MapLibre stiliumi: {h}"
     log = page.evaluate("() => window.__mlLog")
     assert log["maps"] == 1 and log["style"]["name"] == "fake-dark", log["style"]
     assert {"clusters", "cluster-count", "points", "heat"} <= set(log["layers"]), log["layers"]
