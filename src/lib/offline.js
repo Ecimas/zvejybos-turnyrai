@@ -9,7 +9,9 @@ const SLOW_MS = 8000; // silpnas ryšys: po tiek laukimo rodom išsaugotus duome
 export const READS = ['myProfile', 'species', 'tournaments', 'tournament', 'leaderboard', 'participants', 'divisionMap', 'duelBracket',
   'leagues', 'league', 'myLeagues', 'myCatches', 'userCatches', 'catchDetail', 'userEntries', 'myDisputes', 'followStats',
   'followingFeed', 'clubs', 'club', 'myClubs', 'userClubs', 'clubCatches', 'teamLeaderboard', 'myChecks', 'myBan',
-  'myOrganizerRequest', 'blankTrips', 'announcements', 'profile', 'userTournamentCount', 'myReport'];
+  'myOrganizerRequest', 'blankTrips', 'announcements', 'profile', 'userTournamentCount', 'myReport',
+  'features', 'clubPosts', 'clubTrips', 'catchSocial', 'catchComments', 'clubChallenge', 'clubRecords', 'clubLeague', 'clubPerk',
+  'clubJoinRequests', 'myJoinRequest'];
 
 // Veiksmai, kuriems būtinas ryšys (laimikio siuntimas – ne čia, jis laukia eilėje).
 export const WRITES = ['signIn', 'verifyCode', 'signInWithGoogle', 'updateProfile', 'createTournament', 'updateTournament', 'deleteTournament',
@@ -18,7 +20,10 @@ export const WRITES = ['signIn', 'verifyCode', 'signInWithGoogle', 'updateProfil
   'setModerator', 'follow', 'unfollow', 'createClub', 'updateClub', 'deleteClub', 'joinClub', 'leaveClub', 'removeClubMember',
   'setEntryClub', 'setKeepSpots', 'answerCheck', 'requestCheck', 'resolveCheck', 'savePushSubscription', 'saveNotificationSettings',
   'sendTestPush', 'banUser', 'unbanUser', 'resetNickname', 'exportData', 'deleteAccount', 'reportCatch', 'resolveReport',
-  'addBlankTrip', 'deleteBlankTrip', 'postAnnouncement', 'deleteAnnouncement', 'review'];
+  'addBlankTrip', 'deleteBlankTrip', 'postAnnouncement', 'deleteAnnouncement', 'review',
+  'requestJoinClub', 'decideJoinClub', 'setClubAdmin', 'uploadClubImage', 'setClubVerified', 'requestClubVerification', 'setClubShareMap',
+  'postClub', 'deleteClubPost', 'likeClubPost', 'createTrip', 'rsvpTrip', 'deleteTrip', 'react', 'addComment', 'deleteComment',
+  'reportComment', 'dismissCommentReport', 'saveClubPerk', 'setFeature'];
 
 export const OFFLINE_TEXT = 'Reikia interneto ryšio – pabandyk, kai atsiras';
 

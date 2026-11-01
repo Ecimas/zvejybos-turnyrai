@@ -7,6 +7,7 @@ import { PermanentError, RetryLaterError, idbStore, memoryStore } from '../lib/o
 import { phase, registrationOpen } from '../lib/format.js';
 import { banActive } from '../lib/bans.js';
 import { rolesOf, ASSIGNABLE, permsOf, STAFF_ROLES } from '../lib/roles.js';
+import { seedClubsPlus, clubsPlusDemo } from './clubs_demo.js';
 
 const KEY = 'zt-demo-v1';
 const ME = '00000000-0000-4000-8000-000000000001';
@@ -214,6 +215,7 @@ export function createDemoBackend({ photos } = {}) {
     db.org_requests = who ? [{ user_id: who.id, message: 'Kasmet rengiu Nemuno taurę Kauno rajone, norėčiau ją skelbti viešai.',
       status: 'pending', created_at: new Date(Date.now() - 5 * H).toISOString() }] : [];
   }
+  seedClubsPlus(db, ME, db.logos);
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* pilna atmintis */ } };
   save();
   const photoStore = photos || (typeof indexedDB !== 'undefined' ? idbStore('zvejybos-turnyrai-demo', 'photos') : memoryStore());
@@ -269,7 +271,7 @@ export function createDemoBackend({ photos } = {}) {
     });
   };
 
-  return {
+  const api = {
     mode: 'demo',
     async init() {},
     getUser: () => user,
@@ -281,6 +283,7 @@ export function createDemoBackend({ photos } = {}) {
     async signOut() {
       localStorage.removeItem(KEY);
       db = seed();
+      seedClubsPlus(db, ME, db.logos);
       save();
     },
 
@@ -1004,6 +1007,7 @@ export function createDemoBackend({ photos } = {}) {
       onStep('account');
       localStorage.removeItem(KEY);
       db = seed();
+      seedClubsPlus(db, ME, db.logos);
       save();
     },
 
@@ -1104,4 +1108,5 @@ export function createDemoBackend({ photos } = {}) {
       return db.entries.filter((e) => e.user_id === userId).length;
     }
   };
+  return Object.assign(api, clubsPlusDemo({ getDb: () => db, save, ME, perms: () => permsOf(db.profiles[ME]) }));
 }

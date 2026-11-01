@@ -8,6 +8,8 @@ import { weatherLine } from '../lib/weather.js';
 import { statusChip, avatar, notFound, hydratePhotos, openPhoto } from '../ui.js';
 import { checkRequestBox, mountCheckRequest } from './check.js';
 import { can } from '../lib/roles.js';
+import { feat, REACTIONS } from '../lib/clubs.js';
+import { commentsHtml, bindComments } from './clubs.js';
 
 export const REPORT_REASONS = [
   ['old_photo', 'Sena ar svetima nuotrauka'],
@@ -28,12 +30,21 @@ export async function catchView(ctx, [id]) {
   const sp = state.species.find((s) => s.id === c.species_id)?.name_lt ?? '';
   const canReport = !!me && !own && c.status === 'approved' && !state.ban;
   const canCheck = !own && can(state, 'review') && ['pending', 'approved'].includes(c.status);
-  const [tournaments, entered, myReport, activeCheck] = await Promise.all([
+  const socialOn = c.status === 'approved' && !!me && (feat(state, 'club_reactions') || feat(state, 'club_comments')) && !!backend.catchSocial;
+  const [tournaments, entered, myReport, activeCheck, myClubs, theirClubs] = await Promise.all([
     backend.tournaments().catch(() => []),
     backend.userEntries(c.user_id).catch(() => []),
     canReport ? backend.myReport(c.id).catch(() => null) : null,
-    canCheck && backend.catchCheck ? backend.catchCheck(c.id).catch(() => null) : null
+    canCheck && backend.catchCheck ? backend.catchCheck(c.id).catch(() => null) : null,
+    socialOn && !own ? backend.myClubs().catch(() => []) : [],
+    socialOn && !own ? backend.userClubs(c.user_id).catch(() => []) : []
   ]);
+  // Reakcijos ir komentarai – tik klubo draugams (ir pačiam savininkui).
+  const friends = socialOn && (own || myClubs.some((x) => theirClubs.some((y) => y.id === x.id)));
+  const [social, comments] = friends ? await Promise.all([
+    backend.catchSocial([c.id]).then((x) => x[c.id]).catch(() => null),
+    feat(state, 'club_comments') ? backend.catchComments(c.id).catch(() => []) : []
+  ]) : [null, []];
   const at = new Date(c.captured_at_device).getTime();
   const joinedAt = new Map(entered.map((e) => [e.tournament_id, e.joined_at]));
   const relevant = tournaments
@@ -109,6 +120,13 @@ export async function catchView(ctx, [id]) {
         <p class="small muted">${icon('lock', 14)} Masalo, pastabų ir vietos kiti nemato.</p>
       </section>` : html`<p class="center small muted">${icon('lock', 14)} Laimikio vieta nerodoma</p>`}
 
+      ${social ? html`<section class="stack-2" data-catch-social>
+        <h2 class="h2">Klubo draugai</h2>
+        ${feat(state, 'club_reactions') ? html`<div class="cl-react" data-social="${c.id}">${REACTIONS.map(([k, e, label]) => html`<button type="button" class="cl-chip ${social.mine.includes(k) ? 'on' : ''}"
+          data-react="${k}" aria-pressed="${social.mine.includes(k)}" aria-label="${label}: ${social[k]}" ${own ? 'disabled' : ''}>${e} <span>${social[k]}</span></button>`)}</div>` : ''}
+        ${feat(state, 'club_comments') ? html`<div class="stack-2" data-comment-box>${commentsHtml(comments, me, can(state, 'review'), own)}</div>` : ''}
+      </section>` : ''}
+
       ${canCheck ? checkRequestBox(activeCheck) : ''}
       ${canReport ? (myReport
         ? html`<p class="small muted center" data-reported>${icon('alert', 14)} Tu pranešei apie šį laimikį – ${myReport.status === 'open' ? 'moderatorius peržiūrės' : 'pranešimas jau išnagrinėtas'}.</p>`
@@ -127,6 +145,20 @@ export async function catchView(ctx, [id]) {
     mount(root) {
       hydratePhotos(root, backend);
       if (canCheck) mountCheckRequest(root, ctx, c.id);
+      root.querySelectorAll('[data-react]').forEach((b) => b.addEventListener('click', async () => {
+        const on = b.getAttribute('aria-pressed') !== 'true';
+        const n = b.querySelector('span');
+        b.disabled = true;
+        try {
+          await backend.react(c.id, b.dataset.react, on);
+          b.setAttribute('aria-pressed', String(on));
+          b.classList.toggle('on', on);
+          n.textContent = String(Number(n.textContent) + (on ? 1 : -1));
+        } catch (err) { ctx.toast(err.message || 'Nepavyko'); }
+        b.disabled = false;
+      }));
+      const cbox = root.querySelector('[data-comment-box]');
+      if (cbox) bindComments(cbox, c.id, () => ctx.rerender(), ctx);
       root.querySelector('[data-back]').addEventListener('click', () => {
         if (history.length > 1) history.back();
         else ctx.navigate('#/');

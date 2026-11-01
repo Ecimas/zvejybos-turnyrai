@@ -41,7 +41,8 @@ export async function moderationView(ctx) {
     if (first) { ctx.navigate(first[1]); return { nav: 'profilis', html: html`` }; }
     return denied();
   }
-  const [list, checks] = await Promise.all([backend.pending(), backend.moderationChecks ? backend.moderationChecks().catch(() => []) : []]);
+  const [list, checks, badComments] = await Promise.all([backend.pending(), backend.moderationChecks ? backend.moderationChecks().catch(() => []) : [],
+    backend.reportedComments ? backend.reportedComments().catch(() => []) : []]);
   const c = list[0];
   const answered = checks.filter((k) => k.status === 'answered').length;
   const waiting = checks.filter((k) => k.status === 'open').length;
@@ -51,8 +52,24 @@ export async function moderationView(ctx) {
       <span class="small muted">${answered} laukia sprendimo · ${waiting} laukia žvejo</span>
     </a>
     <button class="btn btn-ghost" type="button" data-random-check>Atsitiktinė patikra</button>
-  </div>`;
+  </div>
+  ${badComments.length ? html`<section class="card stack-2" data-reported-comments>
+    <span class="strong row gap-8">${icon('alert', 18)}Pranešti komentarai <span class="chip chip-wait">${badComments.length}</span></span>
+    ${badComments.map((k) => html`<div class="stack-1" data-rc="${k.id}"><span class="small"><b>${k.nickname}</b>: <span class="prewrap">${k.body}</span></span>
+      <span class="row gap-8"><a class="small link" href="#/l/${k.catch_id}">Laimikis</a>
+        <button type="button" class="btn-text bad small" data-rc-del="${k.id}">Ištrinti</button>
+        <button type="button" class="btn-text small" data-rc-ok="${k.id}">Palikti</button></span></div>`)}
+  </section>` : ''}`;
   const mountStrip = (root) => {
+    root.querySelectorAll('[data-rc-del], [data-rc-ok]').forEach((b) => b.addEventListener('click', async () => {
+      const del = 'rcDel' in b.dataset;
+      try {
+        if (del) await backend.deleteComment(b.dataset.rcDel);
+        else await backend.dismissCommentReport(b.dataset.rcOk);
+        ctx.toast(del ? 'Komentaras ištrintas' : 'Komentaras paliktas');
+        ctx.rerender();
+      } catch { ctx.toast('Nepavyko'); }
+    }));
     root.querySelector('[data-random-check]').addEventListener('click', async (e) => {
       e.currentTarget.disabled = true;
       try {

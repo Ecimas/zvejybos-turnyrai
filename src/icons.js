@@ -29,6 +29,7 @@ const P = {
   mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
   play: '<path d="M8 5.5v13l11-6.5z" fill="currentColor"/>',
   pause: '<path d="M8 5v14"/><path d="M16 5v14"/>',
+  chat: '<path d="M4 5h16v11H9l-5 4z"/>',
   bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4l2-2z"/><path d="M10 20a2 2 0 0 0 4 0"/>'
 };
 

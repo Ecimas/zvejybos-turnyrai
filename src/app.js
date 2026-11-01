@@ -19,7 +19,8 @@ import { createView } from './views/create.js';
 import { moderationView, disputesView, teamView, reportsView, bansView, checksView } from './views/moderation.js';
 import { checkView } from './views/check.js';
 import { mapView } from './views/map.js';
-import { feedView, clubsView, clubView } from './views/social.js';
+import { feedView } from './views/social.js';
+import { clubsView, clubView, clubLeagueView, clubMapView } from './views/clubs.js';
 import { loginView } from './views/login.js';
 import { inviteView, takeInvite } from './views/invite.js';
 import { privacyView, rulesView } from './views/pages.js';
@@ -57,6 +58,8 @@ const ROUTES = [
   [/^\/sekami$/, feedView],
   [/^\/klubai$/, clubsView],
   [/^\/klubas\/([\w-]+)$/, clubView],
+  [/^\/klubas\/([\w-]+)\/zemelapis$/, clubMapView],
+  [/^\/klubu-lyga$/, clubLeagueView],
   [/^\/privatumas$/, privacyView],
   [/^\/taisykles$/, rulesView],
   [/^\/prisijungti$/, loginView]
@@ -126,6 +129,8 @@ async function main() {
   }
 
   ctx.state.species = await backend.species().catch(() => []);
+  // Funkcijų jungikliai (0029): nežinomos – įjungtos.
+  ctx.state.features = (await backend.features?.().catch(() => ({}))) || {};
   await loadUser();
   const presence = startPresence(ctx);
   backend.onAuth(async () => {

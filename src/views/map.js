@@ -6,6 +6,7 @@ import { icon } from '../icons.js';
 import { cm, shortDate, count, dateTime, longDate } from '../lib/format.js';
 import { backButton, loginPrompt, empty, thumb, hydratePhotos } from '../ui.js';
 import { weatherLine } from '../lib/weather.js';
+import { feat } from '../lib/clubs.js';
 import {
   loadLeaflet, TILES, colorFor, groupSpots, loadMapLibre, STYLE_DARK, STYLE_LIGHT, LT_CENTER,
   DAYPARTS, daypartOf, daypartLabel, inPeriod, bestSpots, toGeoJSON
@@ -172,6 +173,16 @@ async function leafletEngine(box, { onPick }) {
   };
 }
 
+// Pirmiausia vektorinis (jei įjungtas), nepavykus – Leaflet.
+export async function mapEngine(box, { onPick, state }) {
+  if (feat(state, 'map_vector')) {
+    try {
+      return await maplibreEngine(box, { onPick });
+    } catch { box.innerHTML = ''; }
+  }
+  return leafletEngine(box, { onPick });
+}
+
 // ---------------------------------------------------------------- Ekranas
 export async function mapView(ctx) {
   const { backend, state } = ctx;
@@ -319,16 +330,11 @@ export async function mapView(ctx) {
       // Variklis: pirmiausia MapLibre, nepavykus – Leaflet.
       const msg = root.querySelector('[data-map-msg]');
       try {
-        engine = await maplibreEngine(box, { onPick: pick });
+        engine = await mapEngine(box, { onPick: pick, state });
       } catch {
-        if (dead) return undefined;
-        try {
-          box.innerHTML = '';
-          engine = await leafletEngine(box, { onPick: pick });
-        } catch {
-          if (msg) msg.textContent = 'Žemėlapio nepavyko įkelti – patikrink ryšį.';
-          return undefined;
-        }
+        if (msg && msg.isConnected) msg.textContent = 'Žemėlapio nepavyko įkelti – patikrink ryšį.';
+        else if (box.isConnected) box.innerHTML = String(html`<p class="small muted center mp-msg">Žemėlapio nepavyko įkelti – patikrink ryšį.</p>`);
+        return undefined;
       }
       if (dead || !box.isConnected) { engine.destroy(); return undefined; }
       root.querySelector('[data-map-wrap]').dataset.engine = engine.kind;

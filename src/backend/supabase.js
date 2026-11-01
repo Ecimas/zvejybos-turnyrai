@@ -3,6 +3,7 @@
 import { SPECIES } from './species.js';
 import { PermanentError, RetryLaterError } from '../lib/outbox.js';
 import { banActive } from '../lib/bans.js';
+import { clubsPlusSupabase } from './clubs_supabase.js';
 
 const BUCKET = 'catch-photos';
 // Versija prisegta: CDN negali netikėtai pakeisti kodo, kuris tvarko prisijungimą.
@@ -100,7 +101,7 @@ export async function createSupabaseBackend(url, anonKey) {
   };
   const CLUB_COLS = 'id, name, region, description, owner_id, open, created_at';
 
-  return {
+  const api = {
     mode: 'supabase',
     async init() {
       const { data } = await sb.auth.getSession();
@@ -926,4 +927,5 @@ export async function createSupabaseBackend(url, anonKey) {
       return count ?? 0;
     }
   };
+  return Object.assign(api, clubsPlusSupabase({ sb, check, uid, getUser: () => user, friendly }));
 }

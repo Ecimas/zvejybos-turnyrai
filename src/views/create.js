@@ -24,7 +24,8 @@ const TOPN_LABEL = {
 // Naujas turnyras (#/naujas) ir esamo redagavimas (#/t/:id/redaguoti): organizatorius – iki starto,
 // administratorius – bet kada (prasidėjus – tik tai, kas nekeičia rezultatų; žr. 0026).
 const LOCKED_KEYS = ['title', 'description', 'ends_at', 'visibility', 'leaderboard_hidden', 'late_join_minutes', 'prizes'];
-export async function createView(ctx, [editId] = []) {
+export async function createView(ctx, [editId] = [], query) {
+  const clubId = !editId ? (query?.get?.('klubas') || '').replace(/[^\w-]/g, '') : '';
   const { backend, state } = ctx;
   const heading = editId ? 'Turnyro redagavimas' : 'Naujas turnyras';
   if (!state.user) {
@@ -79,6 +80,7 @@ export async function createView(ctx, [editId] = []) {
       <header class="top-bar">${backButton(back)}<span class="muted strong">${heading}</span><span></span></header>
       <h1 class="display-lg" tabindex="-1">${t ? 'Keisk turnyrą' : 'Sukurk turnyrą'}</h1>
       <p class="muted">${t ? 'Keisti galima iki starto. Dalyviai matys naujas taisykles.' : 'Keturi laukai – ir turnyras paruoštas. Kol kas visi turnyrai nemokami.'}</p>
+      ${clubId ? html`<p class="card small row gap-8" data-club-note>${icon('users', 18)}Klubo turnyras: sukūrus, klubo nariai gaus kvietimą su nuoroda.</p>` : ''}
       ${canPublic ? '' : html`<div class="card stack-2 private-note" data-private-note>
         <p class="strong row gap-8">${icon('lock', 18, 2.6)}Turnyras bus tik su kvietimu</p>
         <p class="small muted">Jis nebus rodomas bendrame turnyrų sąraše. Sukūręs gausi nuorodą ir ja pakviesi draugus, klubo narius ar kitus žvejus.</p>
@@ -488,7 +490,19 @@ export async function createView(ctx, [editId] = []) {
             ctx.navigate(`#/t/${t.id}`);
           } else {
             const id = await backend.createTournament(data);
-            ctx.toast('Turnyras sukurtas');
+            // Klubo turnyras: nariai pakviečiami klubo pranešimu su kvietimo nuoroda.
+            if (clubId && backend.postClub) {
+              try {
+                const nt = await backend.tournament(id);
+                const link = nt?.invite_code ? `${location.origin}${location.pathname}#/kvietimas/${nt.invite_code}` : `${location.origin}${location.pathname}#/t/${id}`;
+                await backend.postClub(clubId, 'post', `Naujas klubo turnyras „${data.title}“! Prisijunk: ${link}`);
+                ctx.toast('Turnyras sukurtas – klubo nariai pakviesti');
+              } catch {
+                ctx.toast('Turnyras sukurtas (narių pakviesti nepavyko – pasidalink nuoroda)');
+              }
+            } else {
+              ctx.toast('Turnyras sukurtas');
+            }
             ctx.navigate(`#/t/${id}`);
           }
         } catch (err) {
