@@ -1056,8 +1056,8 @@ def main():
         )
         ctx.add_init_script(f"window.__appBase = {base!r};")
         ctx.add_init_script(PUSH_STUB)
-        ctx.route(re.compile(r"https://cdn\.jsdelivr\.net/npm/leaflet@.*"), base_mod.leaflet_route)
-        ctx.route(re.compile(r"https://cdn\.jsdelivr\.net/npm/maplibre-gl@.*"), base_mod.maplibre_fail)
+        ctx.route(re.compile(r"https://(cdn\.jsdelivr\.net/npm|unpkg\.com)/leaflet@.*"), base_mod.leaflet_route)
+        ctx.route(re.compile(r"https://(cdn\.jsdelivr\.net/npm|unpkg\.com)/maplibre-gl@.*"), base_mod.maplibre_fail)
         ts_state = {"abort": False}
         ctx.route(re.compile(r"https://challenges\.cloudflare\.com/.*"), lambda r: r.abort() if ts_state["abort"] else r.fulfill(
             status=200, content_type="text/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=TURNSTILE_STUB))

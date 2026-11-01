@@ -766,8 +766,8 @@ def map_demo_test(page, base):
     step("naujas žemėlapis: burbulai, filtrai, šiluma, laimikio kortelė, geriausios vietos, sezono atkūrimas")
 
     # Atsarginis žemėlapis, kai vektorinis neįsikelia
-    page.unroute(re.compile(r"https://cdn\.jsdelivr\.net/npm/maplibre-gl@.*"))
-    page.route(re.compile(r"https://cdn\.jsdelivr\.net/npm/maplibre-gl@.*"), maplibre_fail)
+    page.unroute(re.compile(r"https://(cdn\.jsdelivr\.net/npm|unpkg\.com)/maplibre-gl@.*"))
+    page.route(re.compile(r"https://(cdn\.jsdelivr\.net/npm|unpkg\.com)/maplibre-gl@.*"), maplibre_fail)
     page.evaluate("() => { delete window.maplibregl; }")
     page.goto(base + "#/zemelapis")
     page.reload()
@@ -776,8 +776,8 @@ def map_demo_test(page, base):
     expect(page.locator("[data-mode-seg]")).to_be_hidden()
     expect(page.locator("[data-sheet]")).to_contain_text("Mano geriausios vietos")
     page.goto(base + "#/")
-    page.unroute(re.compile(r"https://cdn\.jsdelivr\.net/npm/maplibre-gl@.*"))
-    page.route(re.compile(r"https://cdn\.jsdelivr\.net/npm/maplibre-gl@.*"), maplibre_route)
+    page.unroute(re.compile(r"https://(cdn\.jsdelivr\.net/npm|unpkg\.com)/maplibre-gl@.*"))
+    page.route(re.compile(r"https://(cdn\.jsdelivr\.net/npm|unpkg\.com)/maplibre-gl@.*"), maplibre_route)
     step("žemėlapis: neįsikėlus vektoriniam – atsarginis (Leaflet)")
 
 
@@ -1066,8 +1066,8 @@ def main():
         page.route(re.compile(r"https://fonts\.(googleapis|gstatic)\.com/.*"), lambda r: r.abort())
         meteo_calls = []
         page.route(METEO, lambda r: (meteo_calls.append(r.request.url), fake_meteo(r)))
-        page.route(re.compile(r"https://cdn\.jsdelivr\.net/npm/leaflet@.*"), leaflet_route)
-        page.route(re.compile(r"https://cdn\.jsdelivr\.net/npm/maplibre-gl@.*"), maplibre_route)
+        page.route(re.compile(r"https://(cdn\.jsdelivr\.net/npm|unpkg\.com)/leaflet@.*"), leaflet_route)
+        page.route(re.compile(r"https://(cdn\.jsdelivr\.net/npm|unpkg\.com)/maplibre-gl@.*"), maplibre_route)
         page.add_init_script("window.__assumeWebgl = true;")
         expect.set_options(timeout=8000)
 

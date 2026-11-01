@@ -1,6 +1,6 @@
 // Service worker: programėlės apvalkalas veikia ir be ryšio.
 // API užklausų (Supabase) nesaugo – jos visada eina į tinklą.
-const VERSION = 'zt-v38';
+const VERSION = 'zt-v39';
 const SHELL = [
   './',
   'index.html',
@@ -56,12 +56,14 @@ const SHELL = [
   'src/lib/sponsors.js',
   'src/lib/offline.js',
   'src/lib/clubs.js',
+  'vendor/leaflet.css',
+  'vendor/maplibre-gl.css',
   'src/views/clubs.js',
   'src/backend/clubs_demo.js',
   'src/backend/clubs_supabase.js',
   'src/views/organizer.js'
 ];
-const CDN = ['https://cdn.jsdelivr.net', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'];
+const CDN = ['https://cdn.jsdelivr.net', 'https://unpkg.com', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

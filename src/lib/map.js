@@ -1,6 +1,7 @@
 // Žemėlapis: Leaflet (įkeliamas tik atidarius žemėlapį) + OpenStreetMap plytelės.
-const LEAFLET = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/+esm';
-const LEAFLET_CSS = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css';
+// Skriptai – iš dviejų CDN (jei vienas nepasiekiamas, imamas kitas); stiliai – iš pačios programėlės.
+const LEAFLET = ['https://cdn.jsdelivr.net/npm/leaflet@1.9.4/+esm', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet-src.esm.js'];
+const LEAFLET_CSS = 'vendor/leaflet.css';
 export const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 export const CARTO_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 export const CARTO_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
@@ -28,8 +29,15 @@ function loadCss() {
 }
 
 export function loadLeaflet() {
+  const importFirst = async () => {
+    let last;
+    for (const url of window.__leafletUrl ? [window.__leafletUrl] : LEAFLET) {
+      try { return await import(/* @vite-ignore */ url); } catch (e) { last = e; }
+    }
+    throw last;
+  };
   loading ||= Promise.all([
-    import(/* @vite-ignore */ window.__leafletUrl || LEAFLET).then((m) => (m.default && m.default.map ? m.default : m)),
+    importFirst().then((m) => (m.default && m.default.map ? m.default : m)),
     loadCss()
   ]).then(([L]) => L).catch((e) => { loading = null; throw e; });
   return loading;
@@ -61,8 +69,8 @@ export function distance(lat1, lng1, lat2, lng2) {
 
 // ---------------------------------------------------------------- Naujas žemėlapis (MapLibre + OpenFreeMap)
 // Vektorinis žemėlapis: sklandus artinimas, sukimas, burbulai ir „šilumos“ sluoksnis. Nepavykus – Leaflet (atsarginis).
-export const MAPLIBRE_JS = 'https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js';
-export const MAPLIBRE_CSS = 'https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css';
+export const MAPLIBRE_JS = ['https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js', 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js'];
+export const MAPLIBRE_CSS = 'vendor/maplibre-gl.css';
 export const STYLE_DARK = 'https://tiles.openfreemap.org/styles/dark';
 export const STYLE_LIGHT = 'https://tiles.openfreemap.org/styles/positron';
 export const LT_CENTER = [23.9, 55.2];
@@ -108,7 +116,14 @@ export function webglOk() {
 
 export async function loadMapLibre() {
   if (!webglOk()) throw new Error('no webgl');
-  await Promise.all([addScript(window.__maplibreUrl || MAPLIBRE_JS), addCss(window.__maplibreCssUrl || MAPLIBRE_CSS)]);
+  const scriptFirst = async () => {
+    let last;
+    for (const url of window.__maplibreUrl ? [window.__maplibreUrl] : MAPLIBRE_JS) {
+      try { await addScript(url); if (window.maplibregl?.Map) return; } catch (e) { last = e; }
+    }
+    throw last || new Error('maplibre missing');
+  };
+  await Promise.all([scriptFirst(), addCss(window.__maplibreCssUrl || MAPLIBRE_CSS)]);
   if (!window.maplibregl?.Map) throw new Error('maplibre missing');
   return window.maplibregl;
 }
