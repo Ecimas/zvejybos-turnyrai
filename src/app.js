@@ -16,7 +16,7 @@ import { catchView } from './views/catch.js';
 import { diaryView } from './views/diary.js';
 import { profileView, anglerView } from './views/profile.js';
 import { createView } from './views/create.js';
-import { moderationView, disputesView, teamView, reportsView, bansView, checksView } from './views/moderation.js';
+import { moderationView, disputesView, teamView, reportsView, bansView, checksView, hydrateModTabs } from './views/moderation.js';
 import { checkView } from './views/check.js';
 import { mapView } from './views/map.js';
 import { feedView } from './views/social.js';
@@ -232,6 +232,7 @@ async function main() {
         cleanup = out || null;
       }
     }
+    hydrateModTabs(main, backend);
     if (!keepScroll) main.querySelector('h1')?.focus({ preventScroll: true });
     refreshStatus();
   }

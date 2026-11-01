@@ -863,6 +863,22 @@ export async function createSupabaseBackend(url, anonKey) {
       if (!user) return null;
       return check(await sb.from('catch_reports').select('id, status, reason').eq('catch_id', catchId).eq('reporter_id', user.id).maybeSingle());
     },
+    // Moderavimo skilčių skaičiukai: tik kiekiai (be duomenų), kiekvienas atskirai – nepavykęs rodo 0.
+    async modCounts() {
+      const n = async (table, col, filter) => {
+        try {
+          const { count, error } = await filter(sb.from(table).select(col, { count: 'exact', head: true }));
+          return error ? 0 : count || 0;
+        } catch { return 0; }
+      };
+      const [queue, comments, reports, disputes, team] = await Promise.all([
+        n('catches', 'id', (q) => q.eq('status', 'pending')),
+        n('catch_comments', 'id', (q) => q.eq('reported', true)),
+        n('catch_reports', 'id', (q) => q.eq('status', 'open')),
+        n('disputes', 'id', (q) => q.eq('status', 'open')),
+        n('organizer_requests', 'user_id', (q) => q.eq('status', 'pending'))]);
+      return { queue: queue + comments, reports, disputes, team };
+    },
     async openReports() {
       const rows = check(await sb.from('catch_reports')
         .select(`*, catches(${CATCH_COLS}), profiles!catch_reports_reporter_id_fkey(nickname)`)

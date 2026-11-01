@@ -11,17 +11,37 @@ import { can, ASSIGNABLE, rolesOf, roleLabel, ROLES } from '../lib/roles.js';
 
 const REASONS = ['Nesimato matavimo', 'Ne ta rūšis', 'Netikslus ilgis', 'Pakartota nuotrauka'];
 
-// Skiltys rodomos tik tos, kurioms žmogus turi teisę.
+// Skiltys rodomos tik tos, kurioms žmogus turi teisę. Visos matomos iškart (be slinkimo į šonus):
+// iki 4 – viena eilutė, daugiau – dvi. Skaičiukai (kiek laukia) įkeliami po to – hydrateModTabs.
 let tabState = null;
+const MOD_TABS = [['#/moderavimas', 'queue', 'Laimikiai', 'review', 'fish'], ['#/moderavimas/pranesimai', 'reports', 'Pranešimai', 'disputes', 'alert'],
+  ['#/moderavimas/gincai', 'disputes', 'Ginčai', 'disputes', 'chat'], ['#/moderavimas/blokuoti', 'bans', 'Blokuoti', 'ban', 'lock'],
+  ['#/moderavimas/turnyrai', 'tlog', 'Turnyrai', 'tournaments', 'trophy'],
+  ['#/moderavimas/komanda', 'team', 'Komanda', 'roles', 'users'], ['#/moderavimas/statistika', 'stats', 'Statistika', 'roles', 'bars']];
 function tabs(active) {
-  const all = [['#/moderavimas', 'queue', 'Laimikiai', 'review'], ['#/moderavimas/pranesimai', 'reports', 'Pranešimai', 'disputes'],
-    ['#/moderavimas/gincai', 'disputes', 'Ginčai', 'disputes'], ['#/moderavimas/blokuoti', 'bans', 'Blokuoti', 'ban'],
-    ['#/moderavimas/turnyrai', 'tlog', 'Turnyrai', 'tournaments'],
-    ['#/moderavimas/komanda', 'team', 'Komanda', 'roles'], ['#/moderavimas/statistika', 'stats', 'Statistika', 'roles']];
-  const items = all.filter(([, , , perm]) => can(tabState, perm));
+  const items = MOD_TABS.filter(([, , , perm]) => can(tabState, perm));
   if (items.length < 2) return '';
-  return html`<nav class="seg seg-tabs" aria-label="Moderavimo skiltys">${items.map(([href, key, label]) =>
-    html`<a href="${href}" role="button" aria-pressed="${key === active}"${key === active ? html` aria-current="page"` : ''}>${label}</a>`)}</nav>`;
+  // 12 stulpelių tinklelis: pirma eilutė – iki 4 skilčių, antroje likusios ištemptos per visą plotį.
+  const first = items.length > 4 ? 4 : items.length;
+  const rest = items.length - first;
+  const span = (i) => (i < first ? 12 / first : 12 / rest);
+  return html`<nav class="t-tabs mod-tabs" aria-label="Moderavimo skiltys">${items.map(([href, key, label, , ic], i) =>
+    html`<a href="${href}" role="button" class="mt-s${span(i)}" aria-pressed="${key === active}"${key === active ? html` aria-current="page"` : ''}>
+      <span class="t-tab-ic">${icon(ic, 20)}<span class="tab-badge" data-mod-count="${key}" aria-hidden="true" hidden></span></span>
+      <span class="t-tab-l">${label}</span></a>`)}</nav>`;
+}
+
+// Kiek laukia darbo kiekvienoje skiltyje (klaidos atveju skaičiukų tiesiog nerodom).
+export async function hydrateModTabs(root, backend) {
+  const spots = root.querySelectorAll('[data-mod-count]');
+  if (!spots.length || !backend.modCounts) return;
+  let counts = {};
+  try { counts = (await backend.modCounts()) || {}; } catch { return; }
+  spots.forEach((el) => {
+    const n = Number(counts[el.dataset.modCount]) || 0;
+    el.textContent = n > 99 ? '99+' : String(n);
+    el.hidden = n === 0;
+  });
 }
 
 export function moderationTabs(state, active) {

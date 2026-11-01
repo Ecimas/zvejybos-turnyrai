@@ -907,7 +907,7 @@ def stats_real_test(page, base, me):
     expect(page.locator("[data-models]")).to_contain_text("Galaxy S23 Ultra (SM-S918B)")
     expect(page.locator("[data-installed]")).to_have_text("1")
     expect(page.locator("svg.stats-chart rect")).to_have_count(30)
-    expect(page.locator("nav.seg-tabs a", has_text="Statistika")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("nav.mod-tabs a", has_text="Statistika")).to_have_attribute("aria-pressed", "true")
     stats = page.evaluate("() => window.__zt.backend.adminStats()")
     assert stats["signups"][-1]["count"] >= 1 and not any("user_id" in str(m) for m in stats["models"]), stats
     fake(page, "db.profiles.find(x => x.id === arg[0]).roles = arg[1]; window.__fakeDb.save(); return 1;", [me, roles or []])

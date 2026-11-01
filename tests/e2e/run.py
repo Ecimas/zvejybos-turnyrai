@@ -388,6 +388,22 @@ def clubs_demo_test(page, base):
     page.goto(base + "#/moderavimas")
     rc = page.locator("[data-reported-comments]")
     expect(rc).to_be_visible()
+    # Skiltys: visos matomos be slinkimo (dvi eilutės), skaičiukas – kiek laukia
+    mt = page.locator("nav.mod-tabs")
+    expect(mt.locator("a")).to_have_count(7)
+    expect(mt.locator("a[aria-current='page'] .t-tab-l")).to_have_text("Laimikiai")
+    geo = page.evaluate("""() => { const n = document.querySelector('nav.mod-tabs');
+      const ys = [...n.querySelectorAll('a')].map((a) => Math.round(a.getBoundingClientRect().top));
+      return { sw: n.scrollWidth, cw: n.clientWidth, rows: new Set(ys).size,
+        inside: [...n.querySelectorAll('a')].every((a) => a.getBoundingClientRect().right <= n.getBoundingClientRect().right + 1) }; }""")
+    assert geo["sw"] <= geo["cw"] and geo["rows"] == 2 and geo["inside"], geo
+    want = page.evaluate("async () => (await window.__zt.backend.modCounts()).queue")
+    qb = mt.locator("[data-mod-count='queue']")
+    if want:
+        expect(qb).to_have_text(str(want))
+    else:
+        expect(qb).to_be_hidden()
+    shot(page, "mod-tabs")
     rc.locator("[data-rc-del]").first.click()
     expect(page.locator("#toast")).to_have_text("Komentaras ištrintas")
     step("laimikio puslapis: klubo draugų reakcijos ir komentarai; pranešti komentarai moderatoriui")

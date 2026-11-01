@@ -1022,6 +1022,15 @@ export function createDemoBackend({ photos } = {}) {
     async myReport(catchId) {
       return db.reports.find((r) => r.catch_id === catchId && r.reporter_id === ME) || null;
     },
+    async modCounts() {
+      const comments = await (api.reportedComments ? api.reportedComments().catch(() => []) : []);
+      return {
+        queue: db.catches.filter((c) => c.status === 'pending').length + comments.length,
+        reports: db.reports.filter((r) => r.status === 'open').length,
+        disputes: db.disputes.filter((d) => d.status === 'open').length,
+        team: permsOf(db.profiles[ME]).has('roles') ? db.org_requests.filter((x) => x.status === 'pending').length : 0
+      };
+    },
     async openReports() {
       return db.reports.filter((r) => r.status === 'open').map((r) => ({
         ...r, catch: db.catches.find((c) => c.id === r.catch_id) || null, reporter: db.profiles[r.reporter_id]?.nickname ?? ''

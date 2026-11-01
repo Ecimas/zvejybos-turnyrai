@@ -11,7 +11,7 @@ export const READS = ['myProfile', 'species', 'tournaments', 'tournament', 'lead
   'followingFeed', 'clubs', 'club', 'myClubs', 'userClubs', 'clubCatches', 'teamLeaderboard', 'myChecks', 'myBan',
   'myOrganizerRequest', 'blankTrips', 'announcements', 'profile', 'userTournamentCount', 'myReport',
   'features', 'clubPosts', 'clubTrips', 'catchSocial', 'catchComments', 'clubChallenge', 'clubRecords', 'clubLeague', 'clubPerk',
-  'clubJoinRequests', 'myJoinRequest'];
+  'clubJoinRequests', 'myJoinRequest', 'modCounts'];
 
 // Veiksmai, kuriems būtinas ryšys (laimikio siuntimas – ne čia, jis laukia eilėje).
 export const WRITES = ['signIn', 'verifyCode', 'signInWithGoogle', 'updateProfile', 'createTournament', 'updateTournament', 'deleteTournament',

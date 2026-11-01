@@ -727,6 +727,14 @@ fieldset[disabled] button { cursor: not-allowed; }
 .t-tab-ic { position: relative; display: inline-flex; }
 .t-tab-ic .tab-badge { position: absolute; top: -6px; left: 13px; }
 .t-tabs button[aria-selected="true"] .tab-badge { background: var(--on-accent); color: var(--accent); }
+/* Moderavimo skiltys: tas pats meniu kaip turnyre, tik nuorodos ir iki dviejų eilučių. */
+.mod-tabs { grid-auto-flow: row; grid-template-columns: repeat(12, minmax(0, 1fr)); margin-bottom: 4px; }
+.mod-tabs a { position: relative; min-width: 0; min-height: 54px; padding: 6px 2px; border-radius: 12px; color: var(--muted); text-decoration: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
+.mod-tabs a[aria-current="page"] { background: var(--accent); color: var(--on-accent); }
+.mod-tabs a[aria-current="page"] .tab-badge { background: var(--on-accent); color: var(--accent); }
+.mod-tabs .mt-s3 { grid-column: span 3; } .mod-tabs .mt-s4 { grid-column: span 4; } .mod-tabs .mt-s6 { grid-column: span 6; } .mod-tabs .mt-s12 { grid-column: span 12; }
+.mod-tabs .t-tab-ic .tab-badge { left: 14px; }
 .sponsor-logos-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 6px; }
 .sponsor-logos-row .sponsor-logo { width: 100%; min-width: 0; height: 44px; }
 .tab-badge { display: inline-flex; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--on-accent);
