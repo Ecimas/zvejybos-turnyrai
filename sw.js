@@ -1,6 +1,6 @@
 // Service worker: programėlės apvalkalas veikia ir be ryšio.
 // API užklausų (Supabase) nesaugo – jos visada eina į tinklą.
-const VERSION = 'zt-v42';
+const VERSION = 'zt-v43';
 const SHELL = [
   './',
   'index.html',
@@ -118,8 +118,11 @@ self.addEventListener('fetch', (e) => {
   if (!sameOrigin && !CDN.includes(url.origin)) return;
 
   // Tinklas pirmiau, atsarginė kopija – talpykloje (naujos versijos pasiekia iškart).
+  // Pagrindinis puslapis – visada šviežias iš serverio (ne iš naršyklės talpyklos), kad galiotų naujausios
+  // saugumo taisyklės (CSP). Kitaip telefonas gali ilgai laikyti senas taisykles, nors failas nepasikeitė.
+  const nav = req.mode === 'navigate';
   e.respondWith(
-    fetch(req)
+    (nav ? fetch(req.url, { cache: 'no-store', credentials: 'same-origin' }) : fetch(req))
       .then((res) => {
         if (res.ok && (res.type === 'basic' || res.type === 'cors')) {
           const copy = res.clone();
