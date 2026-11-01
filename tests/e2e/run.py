@@ -222,6 +222,11 @@ def maplibre_route(route):
         route.fulfill(status=200, content_type="text/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=MAPLIBRE_STUB)
 
 
+def ofm_style_route(route):
+    route.fulfill(status=200, content_type="application/json", headers={"Access-Control-Allow-Origin": "*"},
+                  body='{"version": 8, "name": "fake-dark", "sources": {}, "layers": []}')
+
+
 def maplibre_fail(route):
     route.abort()
 
@@ -712,7 +717,7 @@ def map_demo_test(page, base):
     page.wait_for_function("() => window.__mlLog && window.__mlLog.features > 0")
     expect(page.locator("[data-map-wrap]")).to_have_attribute("data-engine", "maplibre")
     log = page.evaluate("() => window.__mlLog")
-    assert log["maps"] == 1 and "openfreemap.org/styles/dark" in log["style"], log["style"]
+    assert log["maps"] == 1 and log["style"]["name"] == "fake-dark", log["style"]
     assert {"clusters", "cluster-count", "points", "heat"} <= set(log["layers"]), log["layers"]
     assert log["fit"] or log["fly"], "žemėlapis turi priartėti prie taškų"
     total = log["features"]
@@ -1071,6 +1076,7 @@ def main():
         page.route(METEO, lambda r: (meteo_calls.append(r.request.url), fake_meteo(r)))
         page.route(re.compile(r"https://(cdn\.jsdelivr\.net/npm|unpkg\.com)/leaflet@.*"), leaflet_route)
         page.route(re.compile(r"https://(cdn\.jsdelivr\.net/npm|unpkg\.com)/maplibre-gl@.*"), maplibre_route)
+        page.route(re.compile(r"https://tiles\.openfreemap\.org/styles/.*"), ofm_style_route)
         page.add_init_script("window.__assumeWebgl = true;")
         expect.set_options(timeout=8000)
 

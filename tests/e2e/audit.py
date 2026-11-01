@@ -168,6 +168,7 @@ def main():
                 ctx.route(re.compile(r"https://(cdn\.jsdelivr\.net/npm|unpkg\.com)/leaflet@.*"), base_mod.leaflet_route)
                 ctx.route(re.compile(r"https://(cdn\.jsdelivr\.net/npm|unpkg\.com)/maplibre-gl@.*"), base_mod.maplibre_route)
                 ctx.add_init_script("window.__assumeWebgl = true;")
+                ctx.route(re.compile(r"https://tiles\.openfreemap\.org/styles/.*"), base_mod.ofm_style_route)
                 page = ctx.new_page()
                 page.on("pageerror", lambda e: problems.append(f"pageerror: {e}"))
                 page.on("dialog", lambda d: d.dismiss())

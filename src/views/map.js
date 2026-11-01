@@ -18,9 +18,30 @@ const kg = (g) => `${String(Math.round(g / 10) / 100).replace('.', ',')} kg`;
 async function maplibreEngine(box, { onPick }) {
   const ml = await loadMapLibre();
   const light = document.documentElement.dataset.theme === 'light';
+  // Stilių parsisiunčiam patys – jei nepavyks, aiškiai žinosim, kad kalta būtent ši užklausa.
+  const styleUrl = light ? STYLE_LIGHT : STYLE_DARK;
+  let style;
+  try {
+    const r = await fetch(styleUrl, { mode: 'cors', credentials: 'omit' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    style = await r.json();
+  } catch (e) {
+    throw new Error(`stilius: ${e?.message || e}`);
+  }
+  // Pirmos nepavykusios užklausos adresas – kad būtų aišku, ko trūksta.
+  const realFetch = window.fetch;
+  let failedUrl = '';
+  window.fetch = function (input, init) {
+    return realFetch.call(this, input, init).catch((err) => {
+      if (!failedUrl) failedUrl = String(input?.url || input).slice(0, 90);
+      throw err;
+    });
+  };
+  const restoreFetch = () => { if (window.fetch !== realFetch) window.fetch = realFetch; };
+  setTimeout(restoreFetch, 25000);
   const map = new ml.Map({
     container: box,
-    style: light ? STYLE_LIGHT : STYLE_DARK,
+    style,
     center: LT_CENTER,
     zoom: 6,
     attributionControl: { compact: true },
@@ -34,8 +55,15 @@ async function maplibreEngine(box, { onPick }) {
     map.once('style.load', done);
     map.once('load', done);
     // Atskirų plytelių ar šriftų klaidos žemėlapio nesugadina – atsisakom tik jei neįsikelia pats stilius.
-    map.on('error', (e) => { if (!e?.sourceId && !e?.tile && !map.isStyleLoaded() && !map.loaded()) { clearTimeout(t); reject(e?.error || new Error('style error')); } });
-  }).catch((e) => { map.remove(); throw e; });
+    map.on('error', (e) => {
+      if (!e?.sourceId && !e?.tile && !map.isStyleLoaded() && !map.loaded()) {
+        clearTimeout(t);
+        const m = e?.error?.message || 'style error';
+        reject(new Error(failedUrl ? `${m}: ${failedUrl}` : m));
+      }
+    });
+  }).catch((e) => { restoreFetch(); map.remove(); throw e; });
+  restoreFetch();
 
   const empty = toGeoJSON([]);
   // Burbulai: kiek laimikių – suma per visas sugrupuotas vietas.
@@ -210,6 +238,7 @@ export async function mapEngine(box, { onPick, state }) {
     try {
       return await maplibreEngine(box, { onPick });
     } catch (err) {
+      await new Promise((r) => setTimeout(r, 400)); // CSP pranešimai ateina šiek tiek vėliau
       mapFailReason = [String(err?.message || err?.type || err || 'klaida').slice(0, 140), ...csp.slice(0, 2)].join(' · ');
       box.innerHTML = '';
     } finally {
