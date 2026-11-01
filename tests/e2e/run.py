@@ -176,7 +176,7 @@ def community_demo_tests(page, base):
 
 LEAFLET_STUB = """const log = (window.__leafletLog = { maps: 0, markers: [], popups: [], fit: [], tiles: [], removed: 0 });
 function map(el) { log.maps++; el.classList.add('leaflet-container'); el.innerHTML = '<div class="fake-map">MAP</div>';
-  return { fitBounds(b) { log.fit.push(b.length); return this; }, remove() { log.removed++; } }; }
+  return { fitBounds(b) { log.fit.push(b.length); return this; }, invalidateSize() { log.resized = (log.resized || 0) + 1; return this; }, remove() { log.removed++; } }; }
 function tileLayer(url, o) { log.tiles.push(url); log.attribution = o && o.attribution; return { addTo() { return this; } }; }
 function layerGroup() { const g = { addTo() { return g; }, clearLayers() { log.markers = []; log.popups = []; } }; return g; }
 function circleMarker(ll, o) { const m = { bindPopup(h) { log.popups.push(h); return m; },

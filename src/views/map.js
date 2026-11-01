@@ -65,6 +65,10 @@ export async function mapView(ctx) {
       box.innerHTML = '';
       const map = L.map(box, { zoomControl: true, attributionControl: true });
       L.tileLayer(TILES, { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
+      // Dydis perskaičiuojamas, kai ekranas jau išdėstytas (kitaip dalis plytelių lieka tuščia).
+      requestAnimationFrame(() => map.invalidateSize());
+      const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => map.invalidateSize()) : null;
+      ro?.observe(box);
       const layer = L.layerGroup().addTo(map);
       let species = 'all';
       let year = 'all';
@@ -97,7 +101,7 @@ export async function mapView(ctx) {
       }));
       root.querySelector('[data-year]')?.addEventListener('change', (e) => { year = e.target.value; draw(); });
       draw();
-      return () => map.remove();
+      return () => { ro?.disconnect(); map.remove(); };
     }
   };
 }

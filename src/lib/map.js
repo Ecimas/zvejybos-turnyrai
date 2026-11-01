@@ -4,17 +4,32 @@ const LEAFLET_CSS = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css
 export const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 let loading = null;
-export function loadLeaflet() {
-  if (!document.querySelector('link[data-leaflet]')) {
-    const link = document.createElement('link');
+let cssReady = null;
+// Žemėlapis piešiamas tik kai jo stilius jau įkeltas – kitaip plytelės išsimėto (buvo „kartais neužsikrauna“).
+function loadCss() {
+  if (cssReady) return cssReady;
+  let link = document.querySelector('link[data-leaflet]');
+  if (!link) {
+    link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = LEAFLET_CSS;
+    link.href = window.__leafletCssUrl || LEAFLET_CSS;
     link.dataset.leaflet = '';
     document.head.append(link);
   }
-  loading ||= import(/* @vite-ignore */ window.__leafletUrl || LEAFLET)
-    .then((m) => (m.default && m.default.map ? m.default : m))
-    .catch((e) => { loading = null; throw e; });
+  cssReady = new Promise((resolve, reject) => {
+    if (link.sheet) { resolve(); return; }
+    const t = setTimeout(() => { cssReady = null; link.remove(); reject(new Error('css timeout')); }, 12000);
+    link.addEventListener('load', () => { clearTimeout(t); resolve(); }, { once: true });
+    link.addEventListener('error', () => { clearTimeout(t); cssReady = null; link.remove(); reject(new Error('css failed')); }, { once: true });
+  });
+  return cssReady;
+}
+
+export function loadLeaflet() {
+  loading ||= Promise.all([
+    import(/* @vite-ignore */ window.__leafletUrl || LEAFLET).then((m) => (m.default && m.default.map ? m.default : m)),
+    loadCss()
+  ]).then(([L]) => L).catch((e) => { loading = null; throw e; });
   return loading;
 }
 
