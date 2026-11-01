@@ -28,8 +28,11 @@ async function maplibreEngine(box, { onPick }) {
   });
   // Stilius turi įsikelti per 12 s – kitaip pereinam prie atsarginio žemėlapio.
   await new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('style timeout')), 12000);
-    map.once('load', () => { clearTimeout(t); resolve(); });
+    const t = setTimeout(() => reject(new Error('style timeout')), 20000);
+    // Užtenka įsikėlusio stiliaus – plytelės gali krautis toliau.
+    const done = () => { clearTimeout(t); resolve(); };
+    map.once('style.load', done);
+    map.once('load', done);
     // Atskirų plytelių ar šriftų klaidos žemėlapio nesugadina – atsisakom tik jei neįsikelia pats stilius.
     map.on('error', (e) => { if (!e?.sourceId && !e?.tile && !map.isStyleLoaded() && !map.loaded()) { clearTimeout(t); reject(e?.error || new Error('style error')); } });
   }).catch((e) => { map.remove(); throw e; });
@@ -187,11 +190,22 @@ async function leafletEngine(box, { onPick }) {
 }
 
 // Pirmiausia vektorinis (jei įjungtas), nepavykus – Leaflet.
+// Kodėl nepavyko vektorinis žemėlapis – rodoma po žemėlapiu, kad būtų lengva pataisyti.
+export let mapFailReason = '';
 export async function mapEngine(box, { onPick, state }) {
+  mapFailReason = '';
   if (feat(state, 'map_vector')) {
+    const csp = [];
+    const onCsp = (e) => csp.push(`${e.violatedDirective} ${String(e.blockedURI || '').slice(0, 40)}`);
+    document.addEventListener('securitypolicyviolation', onCsp);
     try {
       return await maplibreEngine(box, { onPick });
-    } catch { box.innerHTML = ''; }
+    } catch (err) {
+      mapFailReason = [String(err?.message || err || 'klaida').slice(0, 80), ...csp.slice(0, 2)].join(' · ');
+      box.innerHTML = '';
+    } finally {
+      document.removeEventListener('securitypolicyviolation', onCsp);
+    }
   }
   return leafletEngine(box, { onPick });
 }
@@ -336,7 +350,7 @@ export async function mapView(ctx) {
         current = filtered();
         engine?.setPoints(current);
         if (fit) engine?.fit(current);
-        root.querySelector('[data-map-count]').textContent = `Rodoma: ${count(current.length, 'laimikis', 'laimikiai', 'laimikių')}, ${count(groupSpots(current).length, 'vieta', 'vietos', 'vietų')}. Žemėlapis: ${engine?.kind === 'maplibre' ? 'naujas' : 'paprastas'}.`;
+        root.querySelector('[data-map-count]').textContent = `Rodoma: ${count(current.length, 'laimikis', 'laimikiai', 'laimikių')}, ${count(groupSpots(current).length, 'vieta', 'vietos', 'vietų')}. Žemėlapis: ${engine?.kind === 'maplibre' ? 'naujas' : `paprastas${mapFailReason ? ` (${mapFailReason})` : ''}`}.`;
         showSpots();
       };
 
