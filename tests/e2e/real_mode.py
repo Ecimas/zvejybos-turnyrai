@@ -185,10 +185,7 @@ def more_real_tests(page, base):
     page.evaluate("async () => { window.__zt.state.profile = await window.__zt.backend.myProfile(); }")
     go(page, base + "#/profilis")
     expect(page.locator("[data-roles]")).to_contain_text("Bendruomenės prižiūrėtojas")
-    expect(page.get_by_role("link", name="Užblokuoti žvejai")).to_be_visible()
-    expect(page.get_by_role("link", name=re.compile("^Moderavimas"))).to_have_count(0)
-    expect(page.get_by_role("link", name=re.compile("^Ginčai"))).to_have_count(0)
-    expect(page.get_by_role("link", name="Komanda ir rolės")).to_have_count(0)
+    expect(page.locator("[data-mod-card]")).to_have_attribute("href", "#/moderavimas/blokuoti")
     go(page, base + "#/moderavimas")
     expect(page.get_by_role("heading", name="Užblokuoti žvejai")).to_be_attached()
     assert page.evaluate("() => location.hash") == "#/moderavimas/blokuoti"
@@ -220,7 +217,7 @@ def more_real_tests(page, base):
       starts_at: new Date(Date.now() + 864e5).toISOString(), ends_at: new Date(Date.now() + 2 * 864e5).toISOString(), visibility: 'public', species_ids: [] })
       .then(() => 'ok', e => e.message)""")
     assert res == "Viešus turnyrus kuria patvirtinti organizatoriai – sukurk turnyrą su kvietimu", res
-    go(page, base + "#/profilis")
+    go(page, base + "#/profilis?skiltis=nustatymai")
     page.locator("[data-become-organizer]").click()
     page.get_by_label("Trumpai apie save (nebūtina)").fill("Rengiu Kauno marių turnyrus")
     page.get_by_role("button", name="Siųsti prašymą").click()
@@ -512,7 +509,7 @@ def more_real_tests(page, base):
     expect(page.locator(".t-card", has_text="Slaptas klubo turnyras")).to_have_count(0)
     res = page.evaluate("(id) => window.__zt.backend.join(id).then(() => 'ok', e => e.code)", T2)
     assert res == "42501", f"prisijungti prie privataus be kvietimo neturėtų pavykti: {res}"
-    go(page, base + "#/profilis")
+    go(page, base + "#/profilis?skiltis=nustatymai")
     page.get_by_role("button", name="Atsijungti").click()
     go(page, base + "#/kvietimas/b1b2b3b4b5")
     expect(page.get_by_role("heading", name="Slaptas klubo turnyras")).to_be_visible()
@@ -590,7 +587,7 @@ def more_real_tests(page, base):
     stats_real_test(page, base, me)
 
     # Duomenų eksportas
-    go(page, base + "#/profilis")
+    go(page, base + "#/profilis?skiltis=nustatymai")
     with page.expect_download() as dl:
         page.get_by_role("button", name="Atsisiųsti mano duomenis").click()
     data = json.loads(pathlib.Path(dl.value.path()).read_text())
@@ -923,7 +920,7 @@ PUSH_STUB = """(() => {
 
 def push_test(page, base):
     me = fake(page, "return db.profiles.find(p => p.nickname === 'Google_Zvejys').id;")
-    go(page, base + "#/profilis")
+    go(page, base + "#/profilis?skiltis=nustatymai")
     card = page.locator("[data-push]")
     expect(card.get_by_role("heading", name="Pranešimai į telefoną")).to_be_visible()
     card.get_by_role("button", name="Įjungti pranešimus").click()
@@ -969,7 +966,7 @@ TURNSTILE_STUB = """window.turnstile = { n: 0, o: null,
 def captcha_test(page, base, ts_state):
     # Be rakto apsaugos nėra: ankstesni prisijungimai be žetono
     assert all(c["captchaToken"] is None for c in calls(page, "signInWithOtp")), "be rakto žetonas neturi būti siunčiamas"
-    go(page, base + "#/profilis")
+    go(page, base + "#/profilis?skiltis=nustatymai")
     page.get_by_role("button", name="Atsijungti").click()
     # Įjungus raktą, bet nepavykus įkelti Cloudflare – aiškus pranešimas
     ts_state["abort"] = True
@@ -1162,7 +1159,7 @@ def main():
         step("turnyro kūrimas su rūšimi")
 
         # 10. Atsijungimas
-        page.goto(base + "#/profilis")
+        page.goto(base + "#/profilis?skiltis=nustatymai")
         page.get_by_role("button", name="Atsijungti").click()
         expect(page.get_by_role("heading", name="Turnyrai", level=1)).to_be_visible()
         page.goto(base + "#/dienorastis")

@@ -1,6 +1,6 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { cm, shortDate } from '../lib/format.js';
+import { cm, shortDate, count, plural } from '../lib/format.js';
 import { thumb, hydratePhotos, backButton, empty, avatar, loginPrompt, notFound, defaultNickname, banNotice } from '../ui.js';
 import { computeBadges } from '../lib/badges.js';
 import { weatherEnabled } from './capture.js';
@@ -9,12 +9,19 @@ import { permsOf, rolesOf, roleLabel, isStaff, can } from '../lib/roles.js';
 import { pushSupport, currentSubscription, enablePush, disablePush, NOTIFY_KINDS } from '../lib/push.js';
 import { followBlock, mountFollow } from './social.js';
 
-function badges(catches, tcount) {
+function badges(catches, tcount, compact = false) {
   const list = computeBadges(catches, tcount);
   const earned = list.filter((b) => b.earned).length;
+  const next = list.filter((b) => !b.earned).sort((a, b) => b.progress - a.progress)[0];
   return html`<section class="stack">
     <div class="row-between"><h2 class="h2">Ženkliukai</h2><span class="small muted">${earned} iš ${list.length}</span></div>
-    <ul class="badges plain">${list.map((b) => html`<li class="badge-tile ${b.earned ? 'earned' : ''}" title="${b.desc}">
+    ${compact ? html`<button type="button" class="p-badges" data-badges-open aria-expanded="false" aria-controls="badge-grid">
+      <span class="p-bdg" aria-hidden="true">${icon(next ? 'lock' : 'star', 20, 2.2)}</span>
+      <span class="p-next">${next ? html`<span class="strong">Kitas: ${next.name}</span><span class="small muted">${next.desc}</span>
+        <span class="p-bar" aria-hidden="true"><i style="width:${Math.round(next.progress * 100)}%"></i></span>` : html`<span class="strong">Visi ženkliukai surinkti!</span>`}
+        <span class="small accent strong">Visi ženkliukai</span></span>
+      <span class="p-chev">${icon('chevron', 18)}</span></button>` : ''}
+    <ul class="badges plain" id="badge-grid" ${compact ? 'hidden' : ''}>${list.map((b) => html`<li class="badge-tile ${b.earned ? 'earned' : ''}" title="${b.desc}">
       <span class="badge-ico" aria-hidden="true">${icon(b.earned ? 'star' : 'lock', 20, 2.2)}</span>
       <span class="small strong">${b.name}</span>
       <span class="sr-only">${b.earned ? 'gautas' : `dar negautas, ${Math.round(b.progress * 100)} %`}: ${b.desc}</span>
@@ -73,11 +80,12 @@ function seasonChart(s) {
   </section>`;
 }
 
-function records(s) {
+function records(s, top = 0) {
   if (!s.records.length) return '';
+  const more = top && s.records.length > top;
   return html`<section class="stack">
-    <h2 class="h2">Asmeniniai rekordai</h2>
-    <div class="list">${s.records.map((r) => html`<a class="list-row" href="#/l/${r.id}">
+    <div class="row-between"><h2 class="h2">Asmeniniai rekordai</h2>${more ? html`<button type="button" class="link-btn small muted strong" data-rec-more>Visi (${s.records.length})</button>` : ''}</div>
+    <div class="list">${s.records.map((r, i) => html`<a class="list-row" href="#/l/${r.id}" ${more && i >= top ? html`hidden data-rec-extra` : ''}>
       ${thumb(r.photo_path, 40)}
       <span class="grow stack-1"><span class="strong">${r.name}</span><span class="small muted">${shortDate(r.captured_at_device)}</span></span>
       <span class="num-md">${cm(r.length_mm)}</span>
@@ -94,7 +102,7 @@ function statGrid(s, tournaments) {
   </div>`;
 }
 
-export async function profileView(ctx) {
+export async function profileView(ctx, _params, query) {
   const { backend, state } = ctx;
   if (!state.user) {
     return { nav: 'profilis', title: 'Profilis', html: html`<div class="screen"><h1 class="display-lg" tabindex="-1">Profilis</h1>${loginPrompt('Prisijunk, kad matytum savo profilį.')}</div>` };
@@ -121,6 +129,29 @@ export async function profileView(ctx) {
   const s = stats(catches, state.species);
   let theme = 'dark';
   try { theme = localStorage.getItem('zt-theme') || 'dark'; } catch { /* nėra saugyklos */ }
+  const wantedTab = query?.get?.('skiltis');
+  let tab = 'zvejyba';
+  try { tab = sessionStorage.getItem('zt-ptab') || 'zvejyba'; } catch { /* nėra saugyklos */ }
+  if (wantedTab === 'nustatymai' || wantedTab === 'zvejyba') tab = wantedTab;
+  if (tab !== 'nustatymai') tab = 'zvejyba';
+
+  // Komandos darbai – viena kortelė: kas laukia ir kur eiti.
+  const modTargets = [['review', '#/moderavimas'], ['disputes', '#/moderavimas/pranesimai'], ['ban', '#/moderavimas/blokuoti'],
+    ['tournaments', '#/moderavimas/turnyrai'], ['roles', '#/moderavimas/komanda']];
+  const modHref = modTargets.find(([perm]) => perms.has(perm))?.[1];
+  const modParts = [
+    pendingList.length ? html`${count(pendingList.length, 'laimikis laukia', 'laimikiai laukia', 'laimikių laukia')}` : '',
+    reportedCatches ? html`${count(reportedCatches, 'pranešimas apie laimikį', 'pranešimai apie laimikius', 'pranešimų apie laimikius')}` : '',
+    disputes.length ? html`${count(disputes.length, 'ginčas', 'ginčai', 'ginčų')}` : '',
+    orgRequests.length ? html`<span data-org-requests>${orgRequests.length}</span> ${plural(orgRequests.length, 'prašymas', 'prašymai', 'prašymų')} tapti organizatoriumi` : ''
+  ].filter(Boolean);
+  const modTotal = pendingList.length + reportedCatches + disputes.length + orgRequests.length;
+  const modCard = modHref ? html`<a class="p-mod ${modTotal ? 'busy' : ''}" href="${modHref}" data-mod-card>
+    <span class="p-mod-ic">${icon('shield', 22)}</span>
+    <span class="grow stack-1"><span class="strong">Moderavimas</span>
+      <span class="small muted">${modParts.length ? modParts.map((x, i) => html`${i ? ' · ' : ''}${x}`) : 'Naujų darbų nėra'}</span></span>
+    ${modTotal ? html`<span class="chip chip-wait">${modTotal}</span>` : ''}${icon('chevron', 18)}
+  </a>` : '';
 
   return {
     nav: 'profilis',
@@ -153,62 +184,86 @@ export async function profileView(ctx) {
         <div class="row gap-10"><button class="btn btn-primary grow" type="submit">Išsaugoti</button><button class="btn" type="button" data-cancel>Atšaukti</button></div>
       </form>
 
-      ${statGrid(s, tcount)}
-      ${trips.length ? html`<p class="card small" data-luck>${icon('book', 16)} Žvejybos dienų: <strong>${allDays.size}</strong> · su laimikiu <strong>${catchDays.size}</strong> (${luck} %)</p>` : ''}
-      ${s.ok.length ? seasonChart(s) : ''}
-      ${records(s)}
-      ${badges(catches, tcount)}
+      <div class="p-tabs" role="tablist" aria-label="Profilio skiltys">
+        ${[['zvejyba', 'Žvejyba', 'fish'], ['nustatymai', 'Nustatymai', 'sun']].map(([k, label, ic]) => html`<button type="button" role="tab" id="pt-${k}" aria-controls="pp-${k}"
+          data-ptab="${k}" aria-selected="${k === tab}" aria-pressed="${k === tab}">${icon(ic, 18)}${label}</button>`)}
+      </div>
 
-      <section class="card stack push-card" data-push aria-labelledby="push-h">
-        <h2 class="h2 row gap-8" id="push-h">${icon('bell', 20)}Pranešimai į telefoną</h2>
-        <p class="small muted" data-push-body>Tikrinama…</p>
+      <section class="stack-lg" data-ppanel="zvejyba" id="pp-zvejyba" role="tabpanel" aria-labelledby="pt-zvejyba" ${tab === 'zvejyba' ? '' : 'hidden'}>
+        ${modCard}
+        ${statGrid(s, tcount)}
+        ${trips.length ? html`<p class="card small" data-luck>${icon('book', 16)} Žvejybos dienų: <strong>${allDays.size}</strong> · su laimikiu <strong>${catchDays.size}</strong> (${luck} %)</p>` : ''}
+        <nav class="p-quick" aria-label="Greitos nuorodos">
+          <a class="p-q" href="#/klubai">${icon('users', 20)}<span>Klubai</span></a>
+          <a class="p-q" href="#/sekami">${icon('star', 20)}<span>Sekami</span></a>
+          <a class="p-q" href="#/zemelapis">${icon('pin', 20)}<span>Žemėlapis</span></a>
+          <a class="p-q" href="#/zvejys/${p.id}">${icon('user', 20)}<span>Kaip mane mato</span></a>
+        </nav>
+        ${s.ok.length ? seasonChart(s) : ''}
+        ${records(s, 3)}
+        ${badges(catches, tcount, true)}
       </section>
 
-      <section class="stack">
-        <h2 class="h2">Daugiau</h2>
-        <div class="list">
-          ${perms.has('review') ? html`<a class="list-row" href="#/moderavimas">${icon('shield', 20)}<span class="grow strong">Moderavimas</span>${pendingList.length ? html`<span class="chip chip-wait">${pendingList.length}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
-          ${perms.has('disputes') ? html`<a class="list-row" href="#/moderavimas/pranesimai">${icon('alert', 20)}<span class="grow strong">Pranešimai apie laimikius</span>${reportedCatches ? html`<span class="chip chip-wait">${reportedCatches}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
-          ${perms.has('disputes') ? html`<a class="list-row" href="#/moderavimas/gincai">${icon('alert', 20)}<span class="grow strong">Ginčai</span>${disputes.length ? html`<span class="chip chip-wait">${disputes.length}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
-          ${perms.has('ban') ? html`<a class="list-row" href="#/moderavimas/blokuoti">${icon('lock', 20)}<span class="grow strong">Užblokuoti žvejai</span>${icon('chevron', 18)}</a>` : ''}
-          ${perms.has('tournaments') ? html`<a class="list-row" href="#/moderavimas/turnyrai">${icon('trophy', 20)}<span class="grow strong">Turnyrų žurnalas</span>${icon('chevron', 18)}</a>` : ''}
-          ${perms.has('roles') ? html`<a class="list-row" href="#/moderavimas/komanda">${icon('user', 20)}<span class="grow strong">Komanda ir rolės</span>${orgRequests.length ? html`<span class="chip chip-wait" data-org-requests>${orgRequests.length}</span>` : ''}${icon('chevron', 18)}</a>` : ''}
-          ${perms.has('roles') ? html`<a class="list-row" href="#/moderavimas/statistika">${icon('bars', 20)}<span class="grow strong">Statistika</span>${icon('chevron', 18)}</a>` : ''}
-          <a class="list-row" href="#/naujas">${icon('plus', 20)}<span class="grow strong">Sukurti turnyrą</span>${icon('chevron', 18)}</a>
-          ${perms.has('publish') ? '' : html`<a class="list-row" href="#/organizatorius" data-become-organizer>${icon('trophy', 20)}<span class="grow stack-1"><span class="strong">Tapti organizatoriumi</span><span class="small muted">Vieši turnyrai, matomi visų sąraše</span></span>${icon('chevron', 18)}</a>`}
-          <a class="list-row" href="#/sekami">${icon('star', 20)}<span class="grow strong">Sekamų žvejų laimikiai</span>${icon('chevron', 18)}</a>
-          <a class="list-row" href="#/klubai">${icon('users', 20)}<span class="grow strong">Klubai</span>${clubs.length ? html`<span class="small muted">${clubs.map((c) => c.name).join(', ')}</span>` : ''}${icon('chevron', 18)}</a>
-          <a class="list-row" href="#/zemelapis">${icon('pin', 20)}<span class="grow strong">Mano laimikių žemėlapis</span>${icon('chevron', 18)}</a>
-          <a class="list-row" href="#/zvejys/${p.id}">${icon('user', 20)}<span class="grow strong">Kaip mane mato kiti</span>${icon('chevron', 18)}</a>
-          <div class="list-row">${icon('sun', 20)}<span class="grow strong">Tema</span>
-            <select data-theme aria-label="Tema">
-              <option value="auto" ${theme === 'auto' ? 'selected' : ''}>Pagal telefoną</option>
-              <option value="dark" ${theme === 'dark' ? 'selected' : ''}>Tamsi</option>
-              <option value="light" ${theme === 'light' ? 'selected' : ''}>Šviesi (lauke)</option>
-            </select>
+      <section class="stack-lg" data-ppanel="nustatymai" id="pp-nustatymai" role="tabpanel" aria-labelledby="pt-nustatymai" ${tab === 'nustatymai' ? '' : 'hidden'}>
+        <section class="card stack push-card" data-push aria-labelledby="push-h">
+          <h2 class="h2 row gap-8" id="push-h">${icon('bell', 20)}Pranešimai į telefoną</h2>
+          <p class="small muted" data-push-body>Tikrinama…</p>
+        </section>
+        <div class="stack-2"><h2 class="p-sec">Programėlė</h2>
+          <div class="list">
+            <label class="list-row">${icon('sun', 20)}<span class="grow strong">Tema</span>
+              <select class="p-select" data-theme aria-label="Tema">
+                <option value="auto" ${theme === 'auto' ? 'selected' : ''}>Pagal telefoną</option>
+                <option value="dark" ${theme === 'dark' ? 'selected' : ''}>Tamsi</option>
+                <option value="light" ${theme === 'light' ? 'selected' : ''}>Šviesi (lauke)</option>
+              </select></label>
+            <label class="list-row">${icon('sun', 20)}<span class="grow stack-1"><span class="strong">Oras prie laimikio</span><span class="small muted">Temperatūra, vėjas, slėgis (Open-Meteo)</span></span>
+              <input type="checkbox" class="switch" role="switch" data-weather-toggle ${weatherEnabled() ? 'checked' : ''}></label>
+          </div></div>
+        <div class="stack-2"><h2 class="p-sec">Turnyrai</h2>
+          <div class="list">
+            <a class="list-row" href="#/naujas">${icon('plus', 20)}<span class="grow strong">Sukurti turnyrą</span>${icon('chevron', 18)}</a>
+            ${perms.has('publish') ? '' : html`<a class="list-row" href="#/organizatorius" data-become-organizer>${icon('trophy', 20)}<span class="grow stack-1"><span class="strong">Tapti organizatoriumi</span><span class="small muted">Vieši turnyrai, matomi visų sąraše</span></span>${icon('chevron', 18)}</a>`}
+            <a class="list-row" href="#/taisykles">${icon('book', 20)}<span class="grow strong">Turnyrų taisyklės</span>${icon('chevron', 18)}</a>
+          </div></div>
+        <div class="stack-2"><h2 class="p-sec">Paskyra</h2>
+          <div class="list">
+            <button class="list-row" data-export>${icon('share', 20)}<span class="grow strong left">Atsisiųsti mano duomenis</span></button>
+            <a class="list-row" href="#/privatumas">${icon('lock', 20)}<span class="grow strong">Privatumo politika</span>${icon('chevron', 18)}</a>
+            ${backend.mode === 'demo'
+              ? html`<button class="list-row" data-reset>${icon('refresh', 20)}<span class="grow strong left">Atstatyti demo duomenis</span></button>`
+              : html`<button class="list-row" data-logout>${icon('logout', 20)}<span class="grow strong left">Atsijungti</span></button>`}
+            <button class="list-row bad" data-delete-open>${icon('x', 20)}<span class="grow strong left">Ištrinti paskyrą</span></button>
           </div>
-          <label class="list-row">${icon('sun', 20)}<span class="grow stack-1"><span class="strong">Oras prie laimikio</span><span class="small muted">Temperatūra, vėjas ir slėgis iš Open-Meteo</span></span>
-            <input type="checkbox" data-weather-toggle ${weatherEnabled() ? 'checked' : ''}></label>
-          <a class="list-row" href="#/taisykles">${icon('book', 20)}<span class="grow strong">Turnyrų taisyklės</span>${icon('chevron', 18)}</a>
-          <a class="list-row" href="#/privatumas">${icon('lock', 20)}<span class="grow strong">Privatumo politika</span>${icon('chevron', 18)}</a>
-          <button class="list-row" data-export>${icon('share', 20)}<span class="grow strong left">Atsisiųsti mano duomenis</span></button>
-          ${backend.mode === 'demo'
-            ? html`<button class="list-row" data-reset>${icon('refresh', 20)}<span class="grow strong left">Atstatyti demo duomenis</span></button>`
-            : html`<button class="list-row" data-logout>${icon('logout', 20)}<span class="grow strong left">Atsijungti</span></button>`}
-          <button class="list-row bad" data-delete-open>${icon('x', 20)}<span class="grow strong left">Ištrinti paskyrą</span></button>
-        </div>
-        <div class="card stack danger-box" data-delete-box hidden>
-          <p class="strong">Ištrinti paskyrą visam laikui?</p>
-          <p class="small muted">Bus ištrinti tavo laimikiai, nuotraukos, vietos, sukurti turnyrai ir registracijos. Atkurti nebus galima. Prieš tai gali atsisiųsti savo duomenis.</p>
-          <label class="field"><span class="small muted strong">Patvirtinimui įrašyk IŠTRINTI</span><input data-delete-word autocomplete="off"></label>
-          <p class="small" data-delete-status aria-live="polite"></p>
-          <button class="btn btn-danger" data-delete-confirm>Ištrinti paskyrą</button>
+          <div class="card stack danger-box" data-delete-box hidden>
+            <p class="strong">Ištrinti paskyrą visam laikui?</p>
+            <p class="small muted">Bus ištrinti tavo laimikiai, nuotraukos, vietos, sukurti turnyrai ir registracijos. Atkurti nebus galima. Prieš tai gali atsisiųsti savo duomenis.</p>
+            <label class="field"><span class="small muted strong">Patvirtinimui įrašyk IŠTRINTI</span><input data-delete-word autocomplete="off"></label>
+            <p class="small" data-delete-status aria-live="polite"></p>
+            <button class="btn btn-danger" data-delete-confirm>Ištrinti paskyrą</button>
+          </div>
         </div>
       </section>
     </div>`,
     mount(root) {
       hydratePhotos(root, backend);
       mountPush(root.querySelector('[data-push]'), ctx);
+      root.querySelectorAll('[data-ptab]').forEach((b) => b.addEventListener('click', () => {
+        const key = b.dataset.ptab;
+        try { sessionStorage.setItem('zt-ptab', key); } catch { /* nėra saugyklos */ }
+        try { history.replaceState(history.state, '', `#/profilis?skiltis=${key}`); } catch { /* nepavyko */ }
+        root.querySelectorAll('[data-ptab]').forEach((x) => { x.setAttribute('aria-selected', String(x === b)); x.setAttribute('aria-pressed', String(x === b)); });
+        root.querySelectorAll('[data-ppanel]').forEach((x) => { x.hidden = x.dataset.ppanel !== key; });
+      }));
+      root.querySelector('[data-rec-more]')?.addEventListener('click', (e) => {
+        root.querySelectorAll('[data-rec-extra]').forEach((x) => { x.hidden = false; });
+        e.currentTarget.remove();
+      });
+      root.querySelector('[data-badges-open]')?.addEventListener('click', (e) => {
+        const grid = root.querySelector('#badge-grid');
+        grid.hidden = !grid.hidden;
+        e.currentTarget.setAttribute('aria-expanded', String(!grid.hidden));
+      });
       const form = root.querySelector('[data-form]');
       root.querySelector('[data-edit]')?.addEventListener('click', () => { form.hidden = !form.hidden; if (!form.hidden) form.nickname.focus(); });
       root.querySelector('[data-pick-nick]')?.addEventListener('click', () => {

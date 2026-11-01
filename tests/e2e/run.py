@@ -124,7 +124,8 @@ def community_demo_tests(page, base):
     page.goto(base + own)
     expect(page.get_by_role("button", name="Pranešti apie įtartiną laimikį")).to_have_count(0)  # apie savo – ne
     page.goto(base + "#/profilis")
-    page.get_by_role("link", name=re.compile("Pranešimai apie laimikius")).click()
+    expect(page.locator("[data-mod-card]")).to_contain_text(re.compile(r"\d pranešim"))
+    page.goto(base + "#/moderavimas/pranesimai")
     groups = page.locator("[data-group]")
     expect(groups).to_have_count(2)
     g1 = page.locator("[data-group='demo-c1']")
@@ -372,7 +373,7 @@ def stats_demo_test(page, base):
     page.goto(base + "#/profilis")
     page.reload()  # paleidžiant programėlė praneša „esu čia“ su įrenginiu
     page.wait_for_function("() => (JSON.parse(localStorage.getItem('zt-demo-v1')).devices || []).length > 0")
-    page.get_by_role("link", name="Statistika").click()
+    page.goto(base + "#/moderavimas/statistika")
     expect(page.get_by_role("heading", name="Vartotojai")).to_be_visible()
     users = page.evaluate("() => Object.keys(JSON.parse(localStorage.getItem('zt-demo-v1')).profiles).length")
     expect(page.locator("[data-stat='users'] .stat-value")).to_have_text(str(users))
@@ -533,8 +534,8 @@ def admin_demo_test(page, base):
 
 
 def map_demo_test(page, base):
-    page.goto(base + "#/profilis")
-    page.get_by_role("link", name="Mano laimikių žemėlapis").click()
+    page.goto(base + "#/profilis?skiltis=zvejyba")
+    page.get_by_role("link", name="Žemėlapis").click()
     expect(page.get_by_role("heading", name="Mano laimikių žemėlapis")).to_be_attached()
     expect(page.get_by_text("Šį žemėlapį matai tik tu.")).to_be_visible()
     page.wait_for_function("() => window.__leafletLog && window.__leafletLog.markers.length > 0")
@@ -580,8 +581,7 @@ def extra_demo_tests(page, base, meteo_calls):
         const c = (await b.myCatches()).find(x => x.status === 'rejected');
         return b.openDispute(c.id, 'dar kartą').then(() => 'ok', e => e.message); }""")
     assert dup == "Ginčas dėl šio laimikio jau pateiktas", dup
-    page.goto(base + "#/profilis")
-    page.get_by_role("link", name=re.compile("Ginčai")).click()
+    page.goto(base + "#/moderavimas/gincai")
     expect(page.locator(".quote")).to_have_text("Liniuotė matosi <script>window.__xss=1</script>")
     shot(page, "12-gincai")
     page.get_by_label("Atsakymas dalyviui").fill("Atsiprašome, ilgis teisingas")
@@ -760,7 +760,9 @@ def extra_demo_tests(page, base, meteo_calls):
     step("nugalėtojai ir didelio ekrano režimas")
 
     # Ženkliukai, puslapiai, eksportas
-    page.goto(base + "#/profilis")
+    page.goto(base + "#/profilis?skiltis=zvejyba")
+    expect(page.locator("#badge-grid")).to_be_hidden()
+    page.locator("[data-badges-open]").click()
     expect(page.locator(".badge-tile")).to_have_count(10)
     grid = page.locator(".badges").bounding_box()
     head = page.locator("h2", has_text="Ženkliukai").bounding_box()
@@ -770,13 +772,14 @@ def extra_demo_tests(page, base, meteo_calls):
     right_gap = vw - (grid["x"] + grid["width"])
     assert abs(right_gap - head["x"]) < 2, f"ženkliukai necentruoti: kairėje {head['x']}, dešinėje {right_gap}"
     assert page.locator(".badge-tile.earned").count() >= 2
+    page.locator("[data-ptab=nustatymai]").click()
     page.get_by_role("link", name="Turnyrų taisyklės").click()
     expect(page.get_by_role("heading", name="Turnyrų taisyklės")).to_be_visible()
     page.get_by_role("button", name="Atgal").click()
     page.get_by_role("link", name="Privatumo politika").click()
     expect(page.get_by_role("heading", name="Privatumo politika")).to_be_visible()
     expect(page.locator(".prose")).to_contain_text("90 dienų")
-    page.goto(base + "#/profilis")
+    page.goto(base + "#/profilis?skiltis=nustatymai")
     with page.expect_download() as dl:
         page.get_by_role("button", name="Atsisiųsti mano duomenis").click()
     data = json.loads(pathlib.Path(dl.value.path()).read_text())
@@ -790,6 +793,7 @@ def extra_demo_tests(page, base, meteo_calls):
     community_demo_tests(page, base)
 
     # Oras išjungiamas
+    page.goto(base + "#/profilis?skiltis=nustatymai")
     page.get_by_text("Oras prie laimikio").click()
     assert page.evaluate("() => localStorage.getItem('zt-weather')") == "off"
     n = len(meteo_calls)
@@ -802,7 +806,7 @@ def extra_demo_tests(page, base, meteo_calls):
     step("oro užklausų išjungimas")
 
     # Paskyros ištrynimas
-    page.goto(base + "#/profilis")
+    page.goto(base + "#/profilis?skiltis=nustatymai")
     page.get_by_role("button", name="Ištrinti paskyrą").first.click()
     page.get_by_label("Patvirtinimui įrašyk IŠTRINTI").fill("taip")
     page.locator("[data-delete-confirm]").click()
@@ -1067,12 +1071,13 @@ def main():
         page.get_by_label("Slapyvardis (matomas kitiems)").fill("Testas_1")
         page.get_by_role("button", name="Išsaugoti").click()
         expect(page.get_by_role("heading", name="Testas_1")).to_be_visible()
+        page.locator("[data-ptab=nustatymai]").click()
         page.get_by_label("Tema").select_option("light")
         assert page.evaluate("() => document.documentElement.dataset.theme") == "light"
         shot(page, "09-profilis-sviesi")
         page.goto(base + "#/")
         shot(page, "10-turnyrai-sviesi")
-        page.goto(base + "#/profilis")
+        page.goto(base + "#/profilis?skiltis=nustatymai")
         page.get_by_label("Tema").select_option("dark")
         step("profilio redagavimas ir šviesi tema")
 

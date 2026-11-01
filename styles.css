@@ -819,3 +819,34 @@ a.d-row:active { background: var(--surface-2); }
   background: transparent; color: var(--soft); font: inherit; font-weight: 700; cursor: pointer; }
 @media (max-width: 359px) { .d-sub { padding-left: 12px; } }
 @media (max-width: 359px) { .d-head .display-lg { font-size: 34px; } .d-btn { padding: 0 12px; } }
+
+/* Profilis: skirtukai Žvejyba / Nustatymai */
+.p-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; padding: 4px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+.p-tabs button { min-width: 0; min-height: 44px; border: 0; border-radius: 12px; background: transparent; color: var(--muted); font: inherit; font-weight: 700; font-size: 15px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+.p-tabs button[aria-selected="true"] { background: var(--accent); color: var(--on-accent); }
+[data-ppanel][hidden] { display: none; }
+.p-mod { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 12px 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line-2);
+  color: var(--text); text-decoration: none; }
+.p-mod.busy { background: var(--wait-bg); border-color: var(--wait); }
+.p-mod-ic { color: var(--wait); display: inline-flex; flex: none; }
+.p-quick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.p-q { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line);
+  font-weight: 700; color: var(--text); text-decoration: none; min-width: 0; }
+.p-q span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p-q svg { color: var(--accent); flex: none; }
+.p-sec { font-size: 14px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 4px 2px 0; }
+.p-badges { display: flex; gap: 12px; align-items: center; width: 100%; padding: 12px 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line);
+  color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.p-bdg { width: 44px; height: 44px; border-radius: 22px; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--accent); flex: none; }
+.p-next { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.p-bar { display: block; height: 6px; border-radius: 3px; background: var(--bg); overflow: hidden; }
+.p-bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.p-chev { color: var(--muted); display: inline-flex; flex: none; }
+.p-select { max-width: 52%; min-height: 40px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); font: inherit; font-weight: 700; padding: 0 8px; }
+.list-row input.switch, input.switch { appearance: none; -webkit-appearance: none; width: 50px; height: 30px; min-width: 50px; border-radius: 15px; background: var(--line-2); position: relative; flex: none; cursor: pointer; margin: 0;
+  transition: background .15s; }
+input.switch::after { content: ""; position: absolute; left: 3px; top: 3px; width: 24px; height: 24px; border-radius: 12px; background: #fff; transition: left .15s; }
+input.switch:checked { background: var(--accent); }
+input.switch:checked::after { left: 23px; }
+input.switch:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }

@@ -205,6 +205,8 @@ def main():
                             page.get_by_role("button", name="Nesutinku su sprendimu").first.click()
                     if r == "#/profilis":
                         page.get_by_role("button", name="Redaguoti profilį").click()
+                        page.locator("[data-badges-open]").click()
+                        page.locator("[data-ptab=nustatymai]").click()
                         page.get_by_role("button", name="Ištrinti paskyrą").first.click()
                     if r == "#/naujas":  # atidarom prizinio fondo ir rėmėjų laukus
                         page.get_by_label("Fondo suma, €").fill("1000")
