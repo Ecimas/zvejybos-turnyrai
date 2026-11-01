@@ -184,6 +184,45 @@ function circleMarker(ll, o) { const m = { bindPopup(h) { log.popups.push(h); re
 export default { map, tileLayer, layerGroup, circleMarker };"""
 
 
+MAPLIBRE_STUB = """(function () {
+  const log = (window.__mlLog = { maps: 0, loaded: false, data: {}, sets: 0, layers: [], vis: {}, fly: [], fit: [], markers: [], removed: 0, handlers: {} });
+  log.features = 0;
+  class Map {
+    constructor(o) { log.maps++; log.style = o.style; this.o = o; o.container.classList.add('maplibregl-map'); o.container.innerHTML = '<canvas class="fake-ml"></canvas>';
+      this.h = {}; setTimeout(() => { log.loaded = true; (this.h.load || []).forEach((f) => f()); }, 30); }
+    on(ev, layer, fn) { if (typeof layer === 'function') { fn = layer; layer = ''; } const k = ev + ':' + layer; (log.handlers[k] ||= []).push(fn); (this.h[ev] ||= []).push(fn); return this; }
+    once(ev, fn) { (this.h[ev] ||= []).push(fn); return this; }
+    isStyleLoaded() { return log.loaded; }
+    addSource(id, src) { log.data[id] = src.data.features.length; const self = this;
+      this['src_' + id] = { setData(d) { log.data[id] = d.features.length; log.sets++; if (id === 'catches') { log.features = d.features.length; log.ids = d.features.map((f) => f.properties.id); } }, getClusterExpansionZoom: () => Promise.resolve(12) }; }
+    getSource(id) { return this['src_' + id]; }
+    addLayer(l) { log.layers.push(l.id); log.vis[l.id] = (l.layout && l.layout.visibility) || 'visible'; }
+    setLayoutProperty(id, k, v) { if (k === 'visibility') log.vis[id] = v; }
+    getCanvas() { return { style: {} }; }
+    getZoom() { return 8; }
+    fitBounds(b) { log.fit.push(b); }
+    flyTo(o) { log.fly.push(o); }
+    easeTo(o) { log.fly.push(o); }
+    resize() {}
+    remove() { log.removed++; }
+  }
+  class Marker { constructor(o) { this.el = o.element; } setLngLat(ll) { this.ll = ll; return this; } addTo() { log.markers.push(this.el.className); return this; } remove() {} }
+  log.fire = (ev, layer, e) => (log.handlers[ev + ':' + layer] || []).forEach((f) => f(e));
+  window.maplibregl = { Map, Marker };
+})();"""
+
+
+def maplibre_route(route):
+    if route.request.url.endswith(".css"):
+        route.fulfill(status=200, content_type="text/css", headers={"Access-Control-Allow-Origin": "*"}, body="")
+    else:
+        route.fulfill(status=200, content_type="text/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=MAPLIBRE_STUB)
+
+
+def maplibre_fail(route):
+    route.abort()
+
+
 def leaflet_route(route):
     if route.request.url.endswith(".css"):
         route.fulfill(status=200, content_type="text/css", headers={"Access-Control-Allow-Origin": "*"}, body="")
@@ -538,28 +577,78 @@ def map_demo_test(page, base):
     page.get_by_role("link", name="Žemėlapis").click()
     expect(page.get_by_role("heading", name="Mano laimikių žemėlapis")).to_be_attached()
     expect(page.get_by_text("Šį žemėlapį matai tik tu.")).to_be_visible()
-    page.wait_for_function("() => window.__leafletLog && window.__leafletLog.markers.length > 0")
-    log = page.evaluate("() => window.__leafletLog")
-    assert log["maps"] == 1 and log["tiles"] == ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], log
-    assert "OpenStreetMap" in log["attribution"]
-    assert all("#/l/" in p for p in log["popups"]), log["popups"]
-    assert any("laimikiai čia" in p for p in log["popups"]), "kelios žuvys toje pačioje vietoje turi būti sugrupuotos"
-    assert log["fit"], "žemėlapis turi priartėti prie taškų"
-    total = len(log["markers"])
+    page.wait_for_function("() => window.__mlLog && window.__mlLog.features > 0")
+    expect(page.locator("[data-map-wrap]")).to_have_attribute("data-engine", "maplibre")
+    log = page.evaluate("() => window.__mlLog")
+    assert log["maps"] == 1 and "openfreemap.org/styles/dark" in log["style"], log["style"]
+    assert {"clusters", "cluster-count", "points", "heat"} <= set(log["layers"]), log["layers"]
+    assert log["fit"] or log["fly"], "žemėlapis turi priartėti prie taškų"
+    total = log["features"]
     expect(page.locator("[data-map-count]")).to_contain_text("Rodoma:")
+    sheet = page.locator("[data-sheet]")
+    expect(sheet).to_contain_text("Mano geriausios vietos")
+    expect(sheet.locator("[data-spot]").first).to_be_visible()
+    # Rūšies filtras
     chip = page.locator("[data-sp]").nth(1)
     chip.click()
     expect(chip).to_have_attribute("aria-pressed", "true")
-    after = page.evaluate("() => window.__leafletLog.markers")
-    assert 0 < len(after) <= total and len({m["color"] for m in after}) == 1, after
-    page.get_by_role("button", name="Visos").click()
-    assert len(page.evaluate("() => window.__leafletLog.markers")) == total
+    assert 0 < page.evaluate("() => window.__mlLog.features") <= total
+    page.locator("[data-sp=all]").click()
+    assert page.evaluate("() => window.__mlLog.features") == total
+    # Paros laikas ir laikotarpis
+    page.locator("[data-daypart]").select_option("night")
+    page.locator("[data-daypart]").select_option("all")
+    page.locator("[data-period]").select_option("30d")
+    assert page.evaluate("() => window.__mlLog.features") <= total
+    page.locator("[data-period]").select_option("all")
+    # Šiluma
+    page.get_by_role("button", name="Šiluma").click()
+    vis = page.evaluate("() => window.__mlLog.vis")
+    assert vis["heat"] == "visible" and vis["points"] == "none", vis
+    page.get_by_role("button", name="Taškai").click()
+    assert page.evaluate("() => window.__mlLog.vis.points") == "visible"
+    # Paspaustas taškas – kortelė su laimikiu
+    cid = page.evaluate("() => window.__mlLog.ids[0]")
+    if True:
+        page.evaluate("(id) => window.__mlLog.fire('click', 'points', { features: [{ properties: { id } }] })", cid)
+        expect(sheet.locator(f"a[href='#/l/{cid}']")).to_be_visible()
+        assert "mp-pulse" in page.evaluate("() => window.__mlLog.markers")
+        shot(page, "18-zemelapis-laimikis")
+        sheet.get_by_role("button", name="Uždaryti").click()
+    expect(sheet).to_contain_text("Mano geriausios vietos")
+    fly_before = len(page.evaluate("() => window.__mlLog.fly"))
+    sheet.locator("[data-spot]").first.click()
+    assert len(page.evaluate("() => window.__mlLog.fly")) > fly_before, "paspaudus vietą žemėlapis turi nuskristi"
+    expect(sheet.get_by_role("link", name="Atidaryti laimikį ›").first).to_be_attached()
+    # Sezono atkūrimas
+    page.get_by_role("button", name="Sezono atkūrimas").click()
+    expect(page.locator("[data-replay-bar]")).to_be_visible()
+    page.wait_for_function("() => document.querySelector('[data-replay-date]').textContent.length > 0")
+    page.get_by_role("button", name="Baigti atkūrimą").click()
+    expect(page.locator("[data-replay-bar]")).to_be_hidden()
+    assert page.evaluate("() => window.__mlLog.features") == total
+    shot(page, "18-zemelapis")
     page.get_by_text("Saugoti vietas mano žemėlapiui ilgiau nei 90 d.").click()
     expect(page.locator("#toast")).to_contain_text("Vietos bus saugomos")
     assert page.evaluate("() => JSON.parse(localStorage.getItem('zt-demo-v1')).keepSpots") is True
     page.goto(base + "#/")
-    page.wait_for_function("() => window.__leafletLog.removed === 1")
-    step("mano laimikių žemėlapis: taškai su grupavimu, filtras pagal rūšį, vietų saugojimas, išvalymas išeinant")
+    page.wait_for_function("() => window.__mlLog.removed === 1")
+    step("naujas žemėlapis: burbulai, filtrai, šiluma, laimikio kortelė, geriausios vietos, sezono atkūrimas")
+
+    # Atsarginis žemėlapis, kai vektorinis neįsikelia
+    page.unroute(re.compile(r"https://cdn\.jsdelivr\.net/npm/maplibre-gl@.*"))
+    page.route(re.compile(r"https://cdn\.jsdelivr\.net/npm/maplibre-gl@.*"), maplibre_fail)
+    page.evaluate("() => { delete window.maplibregl; }")
+    page.goto(base + "#/zemelapis")
+    page.reload()
+    page.wait_for_function("() => window.__leafletLog && window.__leafletLog.markers.length > 0")
+    expect(page.locator("[data-map-wrap]")).to_have_attribute("data-engine", "leaflet")
+    expect(page.locator("[data-mode-seg]")).to_be_hidden()
+    expect(page.locator("[data-sheet]")).to_contain_text("Mano geriausios vietos")
+    page.goto(base + "#/")
+    page.unroute(re.compile(r"https://cdn\.jsdelivr\.net/npm/maplibre-gl@.*"))
+    page.route(re.compile(r"https://cdn\.jsdelivr\.net/npm/maplibre-gl@.*"), maplibre_route)
+    step("žemėlapis: neįsikėlus vektoriniam – atsarginis (Leaflet)")
 
 
 def extra_demo_tests(page, base, meteo_calls):
@@ -842,12 +931,14 @@ def main():
         page = ctx.new_page()
         page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
         page.on("console", lambda m: m.type == "error"
-                and not re.search(r"fonts\.(googleapis|gstatic)", (m.location or {}).get("url", ""))
+                and not re.search(r"fonts\.(googleapis|gstatic)|maplibre-gl@", (m.location or {}).get("url", ""))
                 and errors.append(f"console: {m.text} @ {(m.location or {}).get('url', '')}"))
         page.route(re.compile(r"https://fonts\.(googleapis|gstatic)\.com/.*"), lambda r: r.abort())
         meteo_calls = []
         page.route(METEO, lambda r: (meteo_calls.append(r.request.url), fake_meteo(r)))
         page.route(re.compile(r"https://cdn\.jsdelivr\.net/npm/leaflet@.*"), leaflet_route)
+        page.route(re.compile(r"https://cdn\.jsdelivr\.net/npm/maplibre-gl@.*"), maplibre_route)
+        page.add_init_script("window.__assumeWebgl = true;")
         expect.set_options(timeout=8000)
 
         # 1. Turnyrų sąrašas

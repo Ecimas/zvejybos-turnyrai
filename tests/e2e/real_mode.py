@@ -1057,6 +1057,7 @@ def main():
         ctx.add_init_script(f"window.__appBase = {base!r};")
         ctx.add_init_script(PUSH_STUB)
         ctx.route(re.compile(r"https://cdn\.jsdelivr\.net/npm/leaflet@.*"), base_mod.leaflet_route)
+        ctx.route(re.compile(r"https://cdn\.jsdelivr\.net/npm/maplibre-gl@.*"), base_mod.maplibre_fail)
         ts_state = {"abort": False}
         ctx.route(re.compile(r"https://challenges\.cloudflare\.com/.*"), lambda r: r.abort() if ts_state["abort"] else r.fulfill(
             status=200, content_type="text/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=TURNSTILE_STUB))
@@ -1072,7 +1073,7 @@ def main():
         page = ctx.new_page()
         page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
         page.on("console", lambda m: m.type == "error"
-                and not re.search(r"fonts\.(googleapis|gstatic)|challenges\.cloudflare\.com", (m.location or {}).get("url", ""))
+                and not re.search(r"fonts\.(googleapis|gstatic)|challenges\.cloudflare\.com|maplibre-gl@", (m.location or {}).get("url", ""))
                 and errors.append(f"console: {m.text} @ {(m.location or {}).get('url', '')}"))
         expect.set_options(timeout=8000)
 
