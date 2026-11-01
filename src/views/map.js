@@ -8,7 +8,7 @@ import { backButton, loginPrompt, empty, thumb, hydratePhotos } from '../ui.js';
 import { weatherLine } from '../lib/weather.js';
 import { feat } from '../lib/clubs.js';
 import {
-  loadLeaflet, TILES, colorFor, groupSpots, loadMapLibre, STYLE_DARK, STYLE_LIGHT, LT_CENTER,
+  loadLeaflet, TILES, CARTO_DARK, CARTO_LIGHT, colorFor, groupSpots, loadMapLibre, STYLE_DARK, STYLE_LIGHT, LT_CENTER,
   DAYPARTS, daypartOf, daypartLabel, inPeriod, bestSpots, toGeoJSON
 } from '../lib/map.js';
 
@@ -30,7 +30,8 @@ async function maplibreEngine(box, { onPick }) {
   await new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('style timeout')), 12000);
     map.once('load', () => { clearTimeout(t); resolve(); });
-    map.once('error', (e) => { if (!map.isStyleLoaded()) { clearTimeout(t); reject(e?.error || new Error('style error')); } });
+    // Atskirų plytelių ar šriftų klaidos žemėlapio nesugadina – atsisakom tik jei neįsikelia pats stilius.
+    map.on('error', (e) => { if (!e?.sourceId && !e?.tile && !map.isStyleLoaded() && !map.loaded()) { clearTimeout(t); reject(e?.error || new Error('style error')); } });
   }).catch((e) => { map.remove(); throw e; });
 
   const empty = toGeoJSON([]);
@@ -136,7 +137,19 @@ async function leafletEngine(box, { onPick }) {
   const L = await loadLeaflet();
   box.innerHTML = '';
   const map = L.map(box, { zoomControl: false, attributionControl: true });
-  L.tileLayer(TILES, { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
+  // OpenStreetMap plytelės; jei jos neįsikelia (blokuoja ar nepasiekiamos) – CARTO plytelės.
+  const osm = L.tileLayer(TILES, { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
+  let ok = 0;
+  let bad = 0;
+  osm.on?.('tileload', () => { ok += 1; });
+  osm.on?.('tileerror', () => {
+    bad += 1;
+    if (bad === 4 && ok === 0) {
+      map.removeLayer?.(osm);
+      const light = document.documentElement.dataset.theme === 'light';
+      L.tileLayer(light ? CARTO_LIGHT : CARTO_DARK, { maxZoom: 19, subdomains: 'abcd', attribution: '© OpenStreetMap, © CARTO' }).addTo(map);
+    }
+  });
   requestAnimationFrame(() => map.invalidateSize?.());
   const layer = L.layerGroup().addTo(map);
   let extra = null;
@@ -323,7 +336,7 @@ export async function mapView(ctx) {
         current = filtered();
         engine?.setPoints(current);
         if (fit) engine?.fit(current);
-        root.querySelector('[data-map-count]').textContent = `Rodoma: ${count(current.length, 'laimikis', 'laimikiai', 'laimikių')}, ${count(groupSpots(current).length, 'vieta', 'vietos', 'vietų')}.`;
+        root.querySelector('[data-map-count]').textContent = `Rodoma: ${count(current.length, 'laimikis', 'laimikiai', 'laimikių')}, ${count(groupSpots(current).length, 'vieta', 'vietos', 'vietų')}. Žemėlapis: ${engine?.kind === 'maplibre' ? 'naujas' : 'paprastas'}.`;
         showSpots();
       };
 

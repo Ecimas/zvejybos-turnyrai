@@ -2,6 +2,8 @@
 const LEAFLET = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/+esm';
 const LEAFLET_CSS = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css';
 export const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+export const CARTO_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+export const CARTO_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 
 let loading = null;
 let cssReady = null;

@@ -193,6 +193,7 @@ MAPLIBRE_STUB = """(function () {
     on(ev, layer, fn) { if (typeof layer === 'function') { fn = layer; layer = ''; } const k = ev + ':' + layer; (log.handlers[k] ||= []).push(fn); (this.h[ev] ||= []).push(fn); return this; }
     once(ev, fn) { (this.h[ev] ||= []).push(fn); return this; }
     isStyleLoaded() { return log.loaded; }
+    loaded() { return log.loaded; }
     addSource(id, src) { log.data[id] = src.data.features.length; const self = this;
       this['src_' + id] = { setData(d) { log.data[id] = d.features.length; log.sets++; if (id === 'catches') { log.features = d.features.length; log.ids = d.features.map((f) => f.properties.id); } }, getClusterExpansionZoom: () => Promise.resolve(12) }; }
     getSource(id) { return this['src_' + id]; }
