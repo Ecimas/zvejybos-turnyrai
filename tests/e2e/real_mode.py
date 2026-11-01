@@ -101,10 +101,10 @@ def more_real_tests(page, base):
 
     # Masalo redagavimas: siunčiami tik leistini stulpeliai
     go(page, base + "#/dienorastis")
-    card = page.locator("[data-catch]").first
-    card.get_by_role("button", name="Redaguoti masalą ir pastabas").click()
-    card.get_by_label("Pastabos").fill("Prie nendrių")
-    card.get_by_role("button", name="Išsaugoti").click()
+    page.locator("[data-catch] a.catch-link").first.click()
+    page.get_by_role("button", name="Redaguoti masalą ir pastabas").click()
+    page.locator("[data-extra-form]").get_by_label("Pastabos").fill("Prie nendrių")
+    page.locator("[data-extra-form]").get_by_role("button", name="Išsaugoti").click()
     expect(page.locator("#toast")).to_have_text("Išsaugota")
     upd = calls(page, "from", table="catches", op="update")[-1]
     assert sorted(upd["patch"]) == ["bait", "notes"], upd
@@ -1097,7 +1097,7 @@ def main():
         expect(page.locator("#status")).to_contain_text("1 laimikis laukia")
         page.get_by_role("button", name="Siųsti dabar").click()
         expect(page.locator("#toast")).to_have_text("Laimikis išsiųstas")
-        expect(page.locator(".card", has_text="78 cm")).to_contain_text("Tikrinama")
+        expect(page.locator("[data-catch]", has_text="78 cm")).to_contain_text("Tikrinama")
         ups = calls(page, "upload")
         assert len(ups) == 2 and ups[0]["path"] == ups[1]["path"], ups
         assert ups[0]["type"] == "image/jpeg" and ups[0]["upsert"] is False

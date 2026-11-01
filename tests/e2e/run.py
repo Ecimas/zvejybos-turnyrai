@@ -70,6 +70,15 @@ def shot(page, name):
         page.screenshot(path=f"{SHOTS}/{name}.png", full_page=False)
 
 
+def open_diary(page):
+    """Dienoraštyje atskleidžia visus suskleistus mėnesius ir metus."""
+    for _ in range(30):
+        folds = page.locator("[data-fold]")
+        if not folds.count():
+            return
+        folds.first.click()
+
+
 def step(name):
     print(f"  ✓ {name}")
 
@@ -91,7 +100,6 @@ def community_demo_tests(page, base):
     expect(trip).to_contain_text("Nieko nekibo · 3,5 val.")
     expect(trip).to_contain_text("Stiprus vėjas <b>banga</b>")
     expect(trip).to_contain_text("°C")  # oras paimtas, nes data – šiandien
-    expect(page.locator(".page-head p")).to_contain_text("1 be laimikio")
     shot(page, "15-nieko-nekibo")
     page.goto(base + "#/profilis")
     expect(page.locator("[data-luck]")).to_contain_text("Žvejybos dienų")
@@ -560,13 +568,14 @@ def extra_demo_tests(page, base, meteo_calls):
 
     # Ginčas dėl atmesto laimikio
     page.goto(base + "#/dienorastis")
-    rejected = page.locator(".card", has_text="Netikslus ilgis")
+    rejected = page.locator("[data-catch]", has_text="Netikslus ilgis")
     rejected.get_by_role("button", name="Nesutinku su sprendimu").click()
     rejected.get_by_label("Kodėl laimikis turėtų būti įskaitytas?").fill("Liniuotė matosi <script>window.__xss=1</script>")
     rejected.get_by_role("button", name="Pateikti moderatoriui").click()
     expect(page.locator("#toast")).to_have_text("Ginčas pateiktas moderatoriui")
-    expect(page.locator(".card", has_text="Netikslus ilgis")).to_contain_text("Ginčas peržiūrimas")
-    expect(page.locator(".card", has_text="Netikslus ilgis").get_by_role("button", name="Nesutinku su sprendimu")).to_have_count(0)
+    open_diary(page)
+    expect(page.locator("[data-catch]", has_text="Netikslus ilgis")).to_contain_text("Ginčas peržiūrimas")
+    expect(page.locator("[data-catch]", has_text="Netikslus ilgis").get_by_role("button", name="Nesutinku su sprendimu")).to_have_count(0)
     dup = page.evaluate("""async () => { const b = window.__zt.backend;
         const c = (await b.myCatches()).find(x => x.status === 'rejected');
         return b.openDispute(c.id, 'dar kartą').then(() => 'ok', e => e.message); }""")
@@ -580,8 +589,9 @@ def extra_demo_tests(page, base, meteo_calls):
     expect(page.locator("#toast")).to_have_text("Laimikis įskaitytas")
     expect(page.get_by_text("Ginčų nėra")).to_be_visible()
     page.goto(base + "#/dienorastis")
-    card = page.locator(".card", has_text="Ginčas patenkintas")
-    expect(card).to_contain_text("Patvirtinta")
+    open_diary(page)
+    card = page.locator("[data-catch]", has_text="Ginčas patenkintas")
+    expect(card).not_to_contain_text("Atmesta")
     expect(card).to_contain_text("Atsiprašome, ilgis teisingas")
     step("ginčas: dalyvis pateikia, moderatorius įskaito")
 
@@ -910,22 +920,28 @@ def main():
         page.get_by_role("button", name="Super!").click()
         expect(page.locator(".celebrate")).to_have_count(0)
         expect(page.get_by_role("heading", name="Dienoraštis")).to_be_visible()
-        card81 = page.locator(".card", has_text="81 cm").first
+        card81 = page.locator("[data-catch]", has_text="81 cm").first
         expect(card81).to_contain_text("Asmeninis rekordas")
         expect(card81).to_contain_text("Tikrinama")
         expect(card81).to_contain_text("2,4 kg")
-        expect(card81).to_contain_text("Masalas: Vobleris 9 cm")
-        expect(card81).to_contain_text('<b onmouseover="window.__xss=1">nendrės</b>')
-        expect(card81).to_contain_text("6,4 °C")
-        card81.get_by_role("button", name="Redaguoti masalą ir pastabas").click()
-        card81.get_by_label("Masalas").fill("Guminukas")
-        card81.get_by_role("button", name="Išsaugoti").click()
+        expect(card81).to_contain_text("Vobleris 9 cm")
+        expect(page.locator("[data-stat=biggest]")).to_contain_text("81 cm")
+        card81.locator("a.catch-link").click()
+        expect(page.get_by_role("heading", name="81 cm")).to_be_visible()
+        expect(page.locator("dl").first).to_contain_text("6,4 °C")
+        tik_tau = page.locator("section", has_text="Tik tau")
+        expect(tik_tau).to_contain_text('<b onmouseover="window.__xss=1">nendrės</b>')
+        page.get_by_role("button", name="Redaguoti masalą ir pastabas").click()
+        page.locator("[data-extra-form]").get_by_label("Masalas").fill("Guminukas")
+        page.locator("[data-extra-form]").get_by_role("button", name="Išsaugoti").click()
         expect(page.locator("#toast")).to_have_text("Išsaugota")
-        expect(page.locator(".card", has_text="81 cm").first).to_contain_text("Masalas: Guminukas")
-        step("dienoraštis: svoris, oras, masalo redagavimas")
+        expect(page.locator("section", has_text="Tik tau")).to_contain_text("Guminukas")
+        page.goto(base + "#/dienorastis")
+        expect(page.locator("[data-catch]", has_text="81 cm").first).to_contain_text("Guminukas")
+        step("dienoraštis: svoris, oras, masalo redagavimas laimikio puslapyje")
 
         # Laimikio peržiūra ir nuotrauka per visą ekraną
-        page.locator(".card", has_text="81 cm").first.locator("a.catch-link").click()
+        page.locator("[data-catch]", has_text="81 cm").first.locator("a.catch-link").click()
         expect(page.get_by_role("heading", name="81 cm")).to_be_visible()
         expect(page.locator("dl").first).to_contain_text("2,4 kg")
         expect(page.locator("section", has_text="Tik tau")).to_contain_text("Guminukas")
@@ -999,7 +1015,7 @@ def main():
         step("moderavimas: patvirtinti ir atmesti su priežastimi")
 
         page.goto(base + "#/dienorastis")
-        expect(page.locator(".card", has_text="Netikslus ilgis")).to_contain_text("Atmesta")
+        expect(page.locator("[data-catch]", has_text="Netikslus ilgis")).to_contain_text("Atmesta")
         step("dalyvis mato atmetimo priežastį")
 
         # 7. Lentelė

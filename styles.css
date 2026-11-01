@@ -780,3 +780,42 @@ fieldset[disabled] button { cursor: not-allowed; }
 .l-cta-done { background: transparent; border: 1px solid var(--line-2); color: var(--accent-ink, var(--accent)); }
 .l-more { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 56px; padding: 0 16px; border-radius: 16px;
   border: 1px dashed var(--line-2); background: transparent; color: var(--soft); font: inherit; font-weight: 700; cursor: pointer; text-align: left; }
+
+/* Dienoraštis: santrauka, mėnesių grupės, glaustos eilutės */
+.d-head { align-items: center; }
+.d-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--line-2);
+  background: var(--surface); color: var(--text); font: inherit; font-weight: 700; font-size: 14px; cursor: pointer; flex: none; }
+.d-btn[aria-expanded="true"] { border-color: var(--accent); color: var(--accent-ink, var(--accent)); }
+.d-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.d-stat { padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.d-stat b { font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 26px; line-height: 1; white-space: nowrap; }
+.d-stat span { font-size: 12px; color: var(--muted); font-weight: 600; line-height: 1.25; }
+.d-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.d-sel { position: relative; display: block; }
+.d-sel select { width: 100%; min-height: 44px; padding: 0 34px 0 12px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface);
+  color: var(--text); font: inherit; font-weight: 700; font-size: 14px; appearance: none; -webkit-appearance: none; cursor: pointer; }
+.d-sel::after { content: ""; position: absolute; right: 14px; top: 50%; width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+  transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+.d-month { display: flex; justify-content: space-between; align-items: baseline; margin: 6px 2px 0; font-size: 14px; font-weight: 800; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .05em; }
+.d-year { font-size: 20px; font-weight: 800; margin: 8px 2px 0; }
+.d-list { display: flex; flex-direction: column; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; }
+.d-item + .d-item { border-top: 1px solid var(--line); }
+.d-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; min-height: 72px; color: var(--text); text-decoration: none; }
+a.d-row:active { background: var(--surface-2); }
+.d-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.d-len { font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 24px; font-weight: 700; line-height: 1; white-space: nowrap; }
+.d-sp { font-weight: 700; font-size: 16px; }
+.d-meta { font-size: 13px; color: var(--muted); }
+.d-rec { color: var(--wait); display: inline-flex; align-self: center; }
+.d-chev { color: var(--muted); display: inline-flex; flex: none; }
+.d-row .chip { flex: none; }
+.d-sub { padding: 0 12px 12px 76px; display: flex; flex-direction: column; gap: 8px; }
+.d-sub .btn-sm { align-self: flex-start; min-height: 44px; padding: 0 14px; font-size: 14px; }
+.d-trip { width: 52px; height: 52px; border-radius: 12px; background: var(--queue-bg); color: var(--queue); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.d-fold { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 10px 14px; border-radius: 16px; background: var(--surface);
+  border: 1px solid var(--line); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.d-more { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; border-radius: 14px; border: 1px dashed var(--line-2);
+  background: transparent; color: var(--soft); font: inherit; font-weight: 700; cursor: pointer; }
+@media (max-width: 359px) { .d-sub { padding-left: 12px; } }
+@media (max-width: 359px) { .d-head .display-lg { font-size: 34px; } .d-btn { padding: 0 12px; } }

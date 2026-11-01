@@ -100,7 +100,13 @@ export async function catchView(ctx, [id]) {
             ? html`<a class="link" target="_blank" rel="noopener noreferrer" href="https://www.openstreetmap.org/?mlat=${c.location.lat.toFixed(5)}&amp;mlon=${c.location.lng.toFixed(5)}#map=14/${c.location.lat.toFixed(5)}/${c.location.lng.toFixed(5)}">žemėlapis (±${Math.round(c.location.accuracy ?? 0)} m)</a>`
             : 'nėra'}</dd></div>
         </dl>
-        <p class="small muted">${icon('lock', 14)} Masalo, pastabų ir vietos kiti nemato. Pakeisti masalą ir pastabas gali <a class="link" href="#/dienorastis">dienoraštyje</a>.</p>
+        <button class="btn btn-ghost" data-edit-catch aria-expanded="false">${icon('edit', 18)}Redaguoti masalą ir pastabas</button>
+        <form class="card stack-2" data-extra-form hidden>
+          <label class="field"><span class="small muted strong">Masalas</span><input name="bait" maxlength="80" value="${c.bait || ''}"></label>
+          <label class="field"><span class="small muted strong">Pastabos</span><textarea name="notes" rows="3" maxlength="500">${c.notes || ''}</textarea></label>
+          <div class="row gap-10"><button class="btn btn-primary grow" type="submit">Išsaugoti</button><button class="btn" type="button" data-extra-cancel>Atšaukti</button></div>
+        </form>
+        <p class="small muted">${icon('lock', 14)} Masalo, pastabų ir vietos kiti nemato.</p>
       </section>` : html`<p class="center small muted">${icon('lock', 14)} Laimikio vieta nerodoma</p>`}
 
       ${canCheck ? checkRequestBox(activeCheck) : ''}
@@ -130,6 +136,26 @@ export async function catchView(ctx, [id]) {
         if (img) openPhoto(img.src, img.alt);
         else ctx.toast(c.photo_path ? 'Nuotrauka dar kraunasi' : 'Šis laimikis be nuotraukos');
       });
+      const extra = root.querySelector('[data-extra-form]');
+      if (extra) {
+        const opener = root.querySelector('[data-edit-catch]');
+        const toggle = (show) => { extra.hidden = !show; opener.hidden = show; opener.setAttribute('aria-expanded', String(show)); if (show) extra.bait.focus(); };
+        opener.addEventListener('click', () => toggle(true));
+        root.querySelector('[data-extra-cancel]').addEventListener('click', () => toggle(false));
+        extra.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const btn = extra.querySelector('[type=submit]');
+          btn.disabled = true;
+          try {
+            await backend.updateCatch(c.id, { bait: extra.bait.value.trim(), notes: extra.notes.value.trim() });
+            ctx.toast('Išsaugota');
+            ctx.rerender();
+          } catch (err) {
+            btn.disabled = false;
+            ctx.toast(err.message || 'Nepavyko išsaugoti');
+          }
+        });
+      }
       const form = root.querySelector('[data-report-form]');
       if (form) {
         let reason = null;
