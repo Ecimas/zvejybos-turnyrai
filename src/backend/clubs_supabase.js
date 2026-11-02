@@ -75,6 +75,13 @@ export function clubsPlusSupabase({ sb, check, uid, getUser, friendly }) {
         log: log.map((x) => ({ key: x.key, enabled: x.enabled, at: x.changed_at, by: names.get(x.changed_by) ?? null }))
       };
     },
+    // Vietos skaitiklis: kiek vietos užima failai saugykloje (tik savininkui).
+    async storageUsage() {
+      const { data, error } = await sb.rpc('storage_usage');
+      if (error) throw fail(error, 'Nepavyko įkelti vietos skaitiklio');
+      return (data || []).map((r) => ({ bucket: r.bucket, files: Number(r.files) || 0, bytes: Number(r.bytes) || 0,
+        thumbs: Number(r.thumbs) || 0, thumb_bytes: Number(r.thumb_bytes) || 0 }));
+    },
     async banner() {
       const { data, error } = await sb.from('app_banner').select('body, tone, updated_at').eq('id', 1).maybeSingle();
       if (error || !data?.body) return null;

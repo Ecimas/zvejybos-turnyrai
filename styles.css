@@ -1416,3 +1416,22 @@ body.has-appbar { --top-offset: calc(60px + env(safe-area-inset-top)); }
 .cc-pick { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; padding: 10px 14px; background: transparent; border: 0; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .ibx li + li .cc-pick { border-top: 1px solid var(--line); }
 .cm-empty { padding: 30px 0; }
+
+/* Vietos skaitiklis (admin → Funkcijos) */
+.st-card { display: flex; flex-direction: column; gap: 12px; }
+.st-top { display: flex; align-items: baseline; gap: 8px; }
+.st-big { font-size: 34px; font-weight: 800; letter-spacing: -.5px; line-height: 1; }
+.st-of { color: var(--muted); font-weight: 700; }
+.st-pct { margin-left: auto; font-weight: 800; font-size: 14px; }
+.st-bar { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.st-bar i { display: block; height: 100%; border-radius: 5px; background: var(--ok); }
+.st-warn .st-bar i { background: var(--wait); } .st-warn .st-pct { color: var(--wait); }
+.st-bad .st-bar i { background: var(--bad); } .st-bad .st-pct { color: var(--bad); }
+.st-rows { display: flex; flex-direction: column; }
+.st-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 15px; }
+.st-row:first-child { border-top: 0; }
+.st-row .muted { white-space: nowrap; }
+.st-sub { padding-left: 14px; font-size: 14px; color: var(--muted); }
+.st-note { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--wait-bg); color: var(--text); font-size: 14px; }
+.st-bad .st-note { background: var(--bad-bg); }
+.st-em { color: var(--text); font-weight: 800; }

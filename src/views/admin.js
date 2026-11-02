@@ -8,13 +8,46 @@ import { FEATURE_GROUPS, FEATURES, featureLabel } from '../lib/features.js';
 import { moderationTabs } from './moderation.js';
 
 const BANNER_MAX = 240;
+const STORAGE_LIMIT = 1024 ** 3; // nemokamas Supabase planas – 1 GB failams
+const BUCKET_LT = { 'catch-photos': 'Laimikių nuotraukos', 'sponsor-logos': 'Rėmėjų logotipai', 'tournament-covers': 'Turnyrų viršeliai', 'club-images': 'Klubų nuotraukos' };
+const nf = (n, d = 0) => n.toLocaleString('lt-LT', { maximumFractionDigits: d, minimumFractionDigits: 0 });
+export function fmtBytes(b) {
+  if (b >= 1024 ** 3) return `${nf(b / 1024 ** 3, 2)} GB`;
+  const mb = b / 1024 ** 2;
+  return `${nf(mb, mb < 1 ? 2 : mb < 100 ? 1 : 0)} MB`;
+}
+
+// Vietos skaitiklis: kiek užimta iš 1 GB, kiek dar nuotraukų tilps, kas kiek užima.
+export function storageCard(rows) {
+  const total = rows.reduce((a, r) => a + r.bytes, 0);
+  const pct = Math.min(100, (total / STORAGE_LIMIT) * 100);
+  const level = pct >= 95 ? 'bad' : pct >= 80 ? 'warn' : 'ok';
+  const photos = rows.find((r) => r.bucket === 'catch-photos');
+  const avg = photos && photos.files >= 20 ? photos.bytes / photos.files : 110 * 1024;
+  const fits = Math.max(0, Math.floor((STORAGE_LIMIT - total) / avg / 100) * 100);
+  const sorted = [...rows].sort((a, b) => (a.bucket === 'catch-photos' ? -1 : b.bucket === 'catch-photos' ? 1 : b.bytes - a.bytes));
+  return html`<section class="card st-card st-${level}" data-storage aria-labelledby="st-h">
+    <h2 class="af-h" id="st-h">Vieta serveryje</h2>
+    <div class="st-top"><span class="st-big" data-storage-used>${fmtBytes(total)}</span><span class="st-of">iš 1 GB</span>
+      <span class="st-pct" data-storage-pct>${nf(pct, pct < 10 ? 1 : 0)} %</span></div>
+    <div class="st-bar" role="progressbar" aria-label="Užimta vieta" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}"><i style="width:${Math.max(1.5, pct)}%"></i></div>
+    ${level !== 'ok' ? html`<div class="st-note" role="status" data-storage-warn><b aria-hidden="true">!</b><span>${level === 'bad'
+      ? 'Vieta beveik baigėsi. Pilnai užpildžius nauji laimikiai neįsikels – reikia rinktis Pro planą (25 $/mėn., 100 GB) arba senų turnyrų nuotraukų tvarkymą.'
+      : 'Liko mažiau nei 20 %. Pilnai užpildžius nauji laimikiai neįsikels – laikas rinktis Pro planą (25 $/mėn., 100 GB) arba senų turnyrų nuotraukų tvarkymą.'}</span></div>` : ''}
+    <p class="small muted">Telpa dar apie <b class="st-em" data-storage-fits>${nf(fits)}</b> laimikių nuotraukų (vidutiniškai ~${nf(Math.round(avg / 1024))} KB${photos?.thumbs ? ' su maža kopija' : ''}).</p>
+    <div class="st-rows">${sorted.map((r) => html`<div class="st-row" data-storage-row="${r.bucket}"><span>${BUCKET_LT[r.bucket] || r.bucket}</span><span class="muted">${nf(r.files)} · ${fmtBytes(r.bytes)}</span></div>
+      ${r.bucket === 'catch-photos' ? html`<div class="st-row st-sub"><span>iš jų mažos kopijos sąrašams</span><span class="muted">${nf(r.thumbs)} · ${fmtBytes(r.thumb_bytes)}</span></div>` : ''}`)}</div>
+    <p class="small muted">Atsisiuntimo srautą (nemokamai 5 GB/mėn.) rodo tik Supabase skydelis → <b class="st-em">Usage</b>.</p>
+  </section>`;
+}
 
 export async function adminFeaturesView(ctx) {
   const { backend, state } = ctx;
   if (!can(state, 'roles')) {
     return { nav: 'profilis', html: html`<div class="screen">${backButton('#/profilis')}<h1 class="sr-only" tabindex="-1">Funkcijos</h1>${empty('Šiai skilčiai neturi teisių', 'Funkcijas valdo programėlės savininkas.')}</div>` };
   }
-  const [admin, banner] = await Promise.all([backend.featureAdmin(), backend.banner?.().catch(() => null) ?? null]);
+  const [admin, banner, usage] = await Promise.all([backend.featureAdmin(), backend.banner?.().catch(() => null) ?? null,
+    backend.storageUsage?.().catch(() => null) ?? null]);
   const byKey = new Map(admin.features.map((f) => [f.key, f]));
   const known = FEATURES.filter(([key]) => byKey.has(key));
   const on = known.filter(([key]) => byKey.get(key).enabled).length;
@@ -37,6 +70,8 @@ export async function adminFeaturesView(ctx) {
       <header class="top-bar">${backButton('#/profilis')}<span class="muted strong">Funkcijos</span><span></span></header>
       <h1 class="sr-only" tabindex="-1">Programėlės funkcijos</h1>
       ${moderationTabs(state, 'features')}
+
+      ${usage ? storageCard(usage) : ''}
 
       <section class="card stack-2" data-banner-card aria-labelledby="ban-h">
         <h2 class="h2 row gap-8" id="ban-h">${icon('megaphone', 20)}Skelbimas visiems</h2>

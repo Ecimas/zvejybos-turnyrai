@@ -727,6 +727,17 @@ export function createDemoBackend({ photos } = {}) {
     async userEntries(userId) {
       return db.entries.filter((e) => e.user_id === userId).map(({ tournament_id, joined_at }) => ({ tournament_id, joined_at }));
     },
+    // Demo: skaičiuojamos šiame įrenginyje išsaugotos nuotraukos.
+    async storageUsage() {
+      if (!isOwner()) throw new Error('Neturi teisės');
+      const all = await photoStore.all().catch(() => []);
+      const isThumb = (k) => /\.t\.(jpg|webp)$/.test(k || '');
+      const size = (r) => r?.blob?.size || 0;
+      const orig = all.filter((r) => !isThumb(r.clientId));
+      const thumbs = all.filter((r) => isThumb(r.clientId));
+      return [{ bucket: 'catch-photos', files: orig.length, bytes: [...orig, ...thumbs].reduce((a, r) => a + size(r), 0),
+        thumbs: thumbs.length, thumb_bytes: thumbs.reduce((a, r) => a + size(r), 0) }];
+    },
     async photoUrl(path) {
       if (!path) return null;
       if (urls.has(path)) return urls.get(path);

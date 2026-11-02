@@ -824,6 +824,14 @@ def features_panel_demo_test(page, base):
     expect(page.locator("nav.mod-tabs a[aria-current='page'] .t-tab-l")).to_have_text("Funkcijos")
     expect(page.locator("[data-feature]")).to_have_count(19)
     expect(page.locator("[data-feature-sum] .af-big")).to_have_text("19/19")
+    # Vietos skaitiklis: šiame įrenginyje įkeltos laimikių nuotraukos
+    card = page.locator("[data-storage]")
+    expect(card).to_be_visible()
+    expect(card).to_contain_text("iš 1 GB")
+    expect(card.locator("[data-storage-row='catch-photos']")).to_contain_text("MB")
+    assert int(card.locator("[data-storage-row='catch-photos'] .muted").inner_text().split("·")[0].strip()) >= 1
+    expect(card.locator("[data-storage-warn]")).to_have_count(0)
+    shot(page, "admin-vieta")
 
     def toggle(key, on):
         box = page.locator(f"[data-feature='{key}']")
