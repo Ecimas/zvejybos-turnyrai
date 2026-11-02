@@ -1263,6 +1263,62 @@ def messages_demo_test(page, base):
     step("organizatorius: prizininkai, terminas, žinutė, įteikimas, rašymas visiems ir dalyviui")
 
 
+def participant_demo_test(page, base):
+    """Paspaudus žvejį lentelėje – jo rezultatai tame turnyre, iš ten – į profilį."""
+    page.goto(base + "#/t/t-taure/lentele")
+    page.locator(".podium-col.p1").click()
+    hero = page.locator("[data-pt-hero]")
+    expect(hero).to_be_visible()
+    expect(page).to_have_url(re.compile(r"#/t/t-taure/dalyvis/"))
+    expect(hero.locator("[data-pt-rank]")).to_contain_text("#1")
+    expect(hero.locator("[data-pt-gap]")).to_have_text(re.compile("Pirmauja|nugalėtojas"))
+    expect(page.locator("[data-pt-stat=counted] .stat-value")).to_have_text(re.compile(r"^\d+(/\d+)?$"))
+    cards = page.locator("[data-pt-catch]")
+    assert cards.count() >= 1
+    # Pažymėtų „Rezultate“ tiek, kiek įskaityta
+    stat = page.locator("[data-pt-stat=counted] .stat-value").inner_text().split("/")[0]
+    if page.locator("[data-pt-in]").count():
+        assert page.locator("[data-pt-in]").count() == int(stat), stat
+    shot(page, "dalyvis-turnyre")
+    # Žemiau lentelėje: trūkumas iki aukštesnės vietos
+    page.go_back()
+    expect(page.locator(".podium")).to_be_visible()
+    page.locator(".board-row").last.click()
+    expect(page.locator("[data-pt-hero]")).to_be_visible()
+    expect(page.locator("[data-pt-gap]")).to_contain_text(re.compile("trūksta|Tiek pat"))
+    # Laimikis atsidaro
+    page.locator("[data-pt-catch]").first.click()
+    expect(page).to_have_url(re.compile(r"#/l/"))
+    page.go_back()
+    expect(page.locator("[data-pt-hero]")).to_be_visible()
+    page.locator("[data-to-profile]").click()
+    expect(page).to_have_url(re.compile(r"#/zvejys/"))
+    # Paslėpta lentelė: paprastas žvejys kitų rezultatų nemato
+    other = page.evaluate("""() => { const d = JSON.parse(localStorage.getItem('zt-demo-v1')); const me = '00000000-0000-4000-8000-000000000001';
+        const p = d.profiles[me]; const t = d.tournaments.find(x => x.id === 't-slaptas');
+        const someone = Object.keys(d.profiles).find(k => k !== me);
+        window.__ptSave = { roles: p.roles, is_admin: p.is_admin, org: t.organizer_id, ends: t.ends_at, hid: t.leaderboard_hidden };
+        p.roles = []; p.is_admin = false; t.organizer_id = someone; t.leaderboard_hidden = true; t.ends_at = new Date(Date.now() + 5 * 864e5).toISOString();
+        localStorage.setItem('zt-demo-v1', JSON.stringify(d));
+        return (d.entries.find(e => e.tournament_id === 't-slaptas' && e.user_id !== me) || {}).user_id; }""")
+    saved = page.evaluate("() => window.__ptSave")
+    page.reload()
+    if other:
+        page.goto(base + f"#/t/t-slaptas/dalyvis/{other}")
+        expect(page.locator("[data-pt-hidden]")).to_be_visible()
+        expect(page.locator("[data-pt-catch]")).to_have_count(0)
+        expect(page.locator("[data-to-profile]")).to_be_visible()
+    page.evaluate("""(s) => { const d = JSON.parse(localStorage.getItem('zt-demo-v1')); const p = d.profiles['00000000-0000-4000-8000-000000000001'];
+        p.roles = s.roles; p.is_admin = s.is_admin; const t = d.tournaments.find(x => x.id === 't-slaptas');
+        t.organizer_id = s.org; t.ends_at = s.ends; t.leaderboard_hidden = s.hid;
+        localStorage.setItem('zt-demo-v1', JSON.stringify(d)); }""", saved)
+    page.reload()
+    # Nedalyvaujantis žvejys
+    page.goto(base + "#/t/t-taure/dalyvis/00000000-0000-4000-8000-00000000ffff")
+    expect(page.get_by_text("Žvejys nerastas")).to_be_visible()
+    step("dalyvis turnyre: vieta, statistika, laimikiai, profilis, paslėpta lentelė")
+
+
 def help_demo_test(page, base):
     """Viršutinė juosta visuose puslapiuose, pagalba ir pokalbis su komanda."""
     for route in ["#/", "#/dienorastis", "#/lenteles", "#/profilis", "#/t/t-taure"]:
@@ -1979,9 +2035,11 @@ def main():
         step("lentelė su mano vieta, prizinėmis vietomis ir prizų riba")
 
         page.locator(".podium-col.p1").click()
+        expect(page.locator("[data-pt-hero]")).to_contain_text("Ąžuolas_K")
+        page.locator("[data-to-profile]").click()
         expect(page.get_by_role("heading", name="Ąžuolas_K")).to_be_visible()
         expect(page.locator(".gallery figure").first).to_be_visible()
-        step("kito žvejo profilis")
+        step("kito žvejo profilis (per jo rezultatus turnyre)")
 
         page.locator(".gallery a").first.click()
         expect(page.locator(".card", has_text="Ąžuolas_K")).to_be_visible()
@@ -2053,6 +2111,7 @@ def main():
         features_panel_demo_test(page, base)
         custom_rules_demo_test(page, base)
         diary_plus_demo_test(page, base)
+        participant_demo_test(page, base)
         help_demo_test(page, base)
         club_chat_demo_test(page, base)
 
