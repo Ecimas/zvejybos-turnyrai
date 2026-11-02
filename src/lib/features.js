@@ -32,7 +32,7 @@ export const FEATURE_GROUPS = [
   ]],
   ['Dienoraštis', [
     ['weather', 'Orai', 'Oro duomenys įrašomi registruojant laimikį. Jau įrašyti lieka.'],
-    ['blank_trips', '„Nieko nekibo“', 'Tuščių išvykų žymėjimas dienoraštyje.']
+    ['blank_trips', 'Išvykos', 'Išvykų (ir „Nieko nekibo“) žymėjimas dienoraštyje su vieta ir pastabomis.']
   ]]
 ];
 
