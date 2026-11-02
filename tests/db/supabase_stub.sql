@@ -25,7 +25,8 @@ create table storage.objects (
   id        uuid primary key default gen_random_uuid(),
   bucket_id text references storage.buckets (id),
   name      text not null,
-  owner     uuid
+  owner     uuid,
+  metadata  jsonb
 );
 alter table storage.objects enable row level security;
 create function storage.foldername(name text) returns text[] language sql immutable as $$
