@@ -1,12 +1,14 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { phase, LATE_JOIN, COEFS, coefText, count } from '../lib/format.js';
-import { backButton, loginPrompt, empty, banNotice, featureOffScreen } from '../ui.js';
+import { phase, LATE_JOIN, COEFS, coefText, count, dateTime, cm } from '../lib/format.js';
+import { backButton, loginPrompt, empty, banNotice, featureOffScreen, phaseBadge, avatar } from '../ui.js';
 import { feat } from '../lib/clubs.js';
 import { canCreateTournament } from '../lib/features.js';
 import { PRESETS, eur, parseEur, validateSplit, placeAmounts, sponsorTotal } from '../lib/prizes.js';
 import { can } from '../lib/roles.js';
 import { openRulesBuilder, ruleCard, rulesLines, canCustomRules } from './rules.js';
+import { sponsorEditor } from './sponsors.js';
+import { shrinkCover } from '../lib/sponsors.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 const local = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -25,8 +27,13 @@ const TOPN_LABEL = {
   duels: 'Kiek ilgiausių žuvų sumuoti kiekviename rate'
 };
 
-// Naujas turnyras (#/naujas) ir esamo redagavimas (#/t/:id/redaguoti): organizatorius – iki starto,
-// administratorius – bet kada (prasidėjus – tik tai, kas nekeičia rezultatų; žr. 0026).
+const FORMAT_LT = { biggest: 'Didžiausia žuvis', top_n_sum: 'Kelių ilgių suma', species_points: 'Taškai už rūšį', duels: 'Dvikovos', custom: 'Savos taisyklės' };
+const fmtText = (f, n) => `${FORMAT_LT[f] || f}${['top_n_sum', 'species_points', 'duels'].includes(f) ? ` (${n})` : ''}`;
+const inviteLink = (code) => `${location.origin}${location.pathname}#/kvietimas/${code}`;
+
+// Naujas turnyras (#/naujas) ir turnyro nustatymai (#/t/:id/redaguoti, 0035):
+// organizatorius – iki starto viską, po starto – tik tai, kas nekeičia rezultatų; administratorius – taip pat;
+// savininkas – viską bet kada (taisyklių pakeitimą su priežastimi gauna dalyviai).
 const LOCKED_KEYS = ['title', 'description', 'ends_at', 'visibility', 'leaderboard_hidden', 'late_join_minutes', 'prizes'];
 export async function createView(ctx, [editId] = [], query) {
   const clubId = !editId ? (query?.get?.('klubas') || '').replace(/[^\w-]/g, '') : '';
@@ -43,18 +50,30 @@ export async function createView(ctx, [editId] = [], query) {
   }
   let t = null;
   const admin = can(state, 'tournaments');
+  const owner = can(state, 'roles');
   let asOrganizer = true;
+  let mineT = false;
   if (editId) {
     t = await backend.tournament(editId);
-    asOrganizer = !!t && t.organizer_id === state.user.id && phase(t) === 'soon';
-    if (!t || (!asOrganizer && !admin)) {
+    mineT = !!t && t.organizer_id === state.user.id;
+    asOrganizer = mineT && phase(t) === 'soon';
+    if (!t || (!mineT && !admin)) {
       return { nav: 'turnyrai', html: html`<div class="screen">${backButton(`#/t/${editId}`)}<h1 class="sr-only" tabindex="-1">${heading}</h1>
-        ${empty('Redaguoti negalima', 'Turnyrą gali keisti tik organizatorius ir tik iki starto.')}</div>` };
+        ${empty('Redaguoti negalima', 'Turnyrą gali keisti tik jo organizatorius.')}</div>` };
     }
   }
-  // Vykstančio ar pasibaigusio turnyro taisyklės užrakintos – keičia tik administratorius ir tik tai, kas nekeičia rezultatų.
-  const locked = !!t && phase(t) !== 'soon';
+  // Prasidėjusio turnyro taisyklės užrakintos – keisti jas gali tik savininkas (ir tada lentelė perskaičiuojama).
+  const started = !!t && phase(t) !== 'soon';
+  const locked = started && !owner;
+  const rulesLive = started && owner;
   const dis = locked ? 'disabled' : '';
+  const edit = !!t;
+  // Nustatymų puslapiui: dalyviai ir jų vietos, rėmėjų redaktorius.
+  const [people, board] = edit ? await Promise.all([
+    backend.participantsAdmin ? backend.participantsAdmin(t.id).catch(() => null) : null,
+    backend.leaderboard(t.id).catch(() => [])
+  ]) : [null, []];
+  const spEditor = edit ? sponsorEditor(ctx, t) : null;
   const start = t ? new Date(t.starts_at) : new Date(Date.now() + 60 * 60e3);
   if (!t) start.setMinutes(0, 0, 0);
   const end = t ? new Date(t.ends_at) : new Date(start.getTime() + 2 * 24 * 60 * 60e3);
@@ -87,35 +106,17 @@ export async function createView(ctx, [editId] = [], query) {
   const orgCooling = orgReq?.status === 'rejected' && orgReq.decided_at && Date.parse(orgReq.decided_at) + 7 * 24 * 3600e3 > Date.now();
   const back = t ? `#/t/${t.id}` : '#/';
 
-  return {
-    nav: 'turnyrai',
-    title: heading,
-    html: html`<div class="screen has-cta">
-      <header class="top-bar">${backButton(back)}<span class="muted strong">${heading}</span><span></span></header>
-      <h1 class="display-lg" tabindex="-1">${t ? 'Keisk turnyrą' : 'Sukurk turnyrą'}</h1>
-      <p class="muted">${t ? 'Keisti galima iki starto. Dalyviai matys naujas taisykles.' : 'Keturi laukai – ir turnyras paruoštas. Kol kas visi turnyrai nemokami.'}</p>
-      ${clubId ? html`<p class="card small row gap-8" data-club-note>${icon('users', 18)}Klubo turnyras: sukūrus, klubo nariai gaus kvietimą su nuoroda.</p>` : ''}
-      ${canPublic ? '' : html`<div class="card stack-2 private-note" data-private-note>
-        <p class="strong row gap-8">${icon('lock', 18, 2.6)}Turnyras bus tik su kvietimu</p>
-        <p class="small muted">Jis nebus rodomas bendrame turnyrų sąraše. Sukūręs gausi nuorodą ir ja pakviesi draugus, klubo narius ar kitus žvejus.</p>
-        <p class="small muted">Viešus turnyrus, kuriuos mato visi, kuria patvirtinti organizatoriai.</p>
-        ${orgReq?.status === 'pending'
-          ? html`<p class="small row gap-8 strong" data-org-status>${icon('clock', 16)}Tavo prašymas tapti organizatoriumi laukia patvirtinimo. Kai patvirtinsime, šį turnyrą iki starto galėsi padaryti viešą.</p>`
-          : orgCooling ? html`<p class="small muted" data-org-status>Prašymas tapti organizatoriumi kol kas nepatvirtintas – pakartotinai paprašyti galėsi vėliau.</p>`
-          : html`<a class="btn btn-ghost" href="#/organizatorius" data-org-request>${icon('trophy', 18)}Noriu viešo turnyro – tapti organizatoriumi</a>`}
-      </div>`}
-      ${t && !asOrganizer ? html`<div class="card stack-1 admin-note" data-admin-note>
-        <p class="strong row gap-8">${icon('shield', 18)}Redaguoji kaip administratorius</p>
-        <p class="small muted">${locked
-          ? 'Turnyras jau prasidėjo, todėl formato, rūšių, pradžios, minimalaus ilgio, divizionų ir prizinio fondo keisti negalima. Gali taisyti pavadinimą, aprašymą, prizus, rėmėjus, matomumą ir pabaigos laiką.'
-          : 'Gali keisti viską, kaip organizatorius.'} Pakeitimai įrašomi į žurnalą, organizatorius gaus pranešimą.</p>
-      </div>` : ''}
+  // ---------------- Laukų fragmentai (tie patys kuriant ir redaguojant)
+  const lockChip = rulesLive ? html`<span class="lockchip" data-lockchip>${icon('lock', 11, 2.6)}keičia rezultatus</span>`
+    : locked ? html`<span class="lockchip muted-chip" data-lockchip>${icon('lock', 11, 2.6)}užrakinta</span>` : '';
+  // Redaguojant – suskleidžiama eilutė „Pavadinimas … reikšmė ›“, kuriant – laukas kaip anksčiau.
+  const row = (key, label, body) => (edit ? html`<details class="set-row" data-set-row="${key}">
+      <summary><span class="strong">${label}</span><span class="set-v" data-sum="${key}"></span><span class="set-chev" aria-hidden="true">${icon('chevron', 16)}</span></summary>
+      <div class="set-body">${body}</div></details>` : body);
 
-      <form class="stack-lg" data-form novalidate>
-        <label class="field"><span class="small muted strong">Pavadinimas</span>
-          <input name="title" required minlength="3" maxlength="80" placeholder="pvz. Rudens lydekų taurė" value="${t?.title || ''}"></label>
-
-        <fieldset class="field" ${dis}>
+  const titleF = html`<label class="field"><span class="small muted strong">Pavadinimas</span>
+          <input name="title" required minlength="3" maxlength="80" placeholder="pvz. Rudens lydekų taurė" value="${t?.title || ''}"></label>`;
+  const formatF = html`<fieldset class="field" ${dis}>
           <legend class="small muted strong">Formatas</legend>
           <div class="seg seg-grid">
             <button type="button" data-format="biggest" aria-pressed="${format === 'biggest'}">Didžiausia žuvis</button>
@@ -127,32 +128,27 @@ export async function createView(ctx, [editId] = [], query) {
           <p class="small muted" data-format-hint>${FORMAT_HINT[format]}</p>
           <label class="field" data-topn ${format === 'biggest' || format === 'custom' ? 'hidden' : ''}><span class="small muted" data-topn-label>${TOPN_LABEL[format] || ''}</span>
             <select name="top_n">${[1, 2, 3, 4, 5].map((n) => html`<option value="${n}" ${n === (t?.top_n || 3) ? 'selected' : ''}>${n}</option>`)}</select></label>
-        </fieldset>
-
-        ${canCustom ? html`<fieldset class="field stack-2" data-custom ${format === 'custom' ? '' : 'hidden'} ${dis}>
+        </fieldset>`;
+  const customF = canCustom ? html`<fieldset class="field stack-2" data-custom ${format === 'custom' ? '' : 'hidden'} ${dis}>
           <legend class="small muted strong">Taškų taisyklės</legend>
           <div class="stack-2" data-rule-list></div>
           ${locked ? '' : html`<button type="button" class="btn btn-ghost" data-rule-new>${icon('plus', 18, 2.6)}Kurti naujas taisykles</button>`}
           <ul class="plain small muted rb-desc" data-rule-desc></ul>
-        </fieldset>` : ''}
-
-        <fieldset class="field" data-species-box ${format === 'custom' ? 'hidden' : ''} ${dis}>
+        </fieldset>` : '';
+  const speciesF = html`<fieldset class="field" data-species-box ${format === 'custom' ? 'hidden' : ''} ${dis}>
           <legend class="small muted strong">Rūšys <span class="muted">(nieko nepažymėjus – visos)</span></legend>
           <div class="chips">${popular.map((s) => html`<button type="button" class="sp-chip" data-sp="${s.id}" aria-pressed="${picked.has(s.id)}">${s.name_lt}</button>`)}</div>
           <div class="list" data-coefs ${format === 'species_points' ? '' : 'hidden'}></div>
-        </fieldset>
-
-        <div class="grid-2">
-          <label class="field"><span class="small muted strong">Pradžia</span>
+        </fieldset>`;
+  const datesF = html`<div class="grid-2">
+          <label class="field"><span class="small muted strong">Pradžia ${edit && started ? lockChip : ''}</span>
             <input type="datetime-local" name="starts_at" required value="${local(start)}" ${dis}></label>
           <label class="field"><span class="small muted strong">Pabaiga</span>
             <input type="datetime-local" name="ends_at" required value="${local(end)}"></label>
-        </div>
-
-        <label class="field" data-min-box ${format === 'custom' ? 'hidden' : ''}><span class="small muted strong">Minimalus ilgis, cm (nebūtina)</span>
-          <input type="number" name="min_cm" min="0" max="200" inputmode="numeric" placeholder="0" value="${t?.min_length_mm ? t.min_length_mm / 10 : ''}" ${dis}></label>
-
-        <fieldset class="field">
+        </div>`;
+  const minF = html`<label class="field" data-min-box ${format === 'custom' ? 'hidden' : ''}><span class="small muted strong">Minimalus ilgis, cm (nebūtina)</span>
+          <input type="number" name="min_cm" min="0" max="200" inputmode="numeric" placeholder="0" value="${t?.min_length_mm ? t.min_length_mm / 10 : ''}" ${dis}></label>`;
+  const visF = html`<fieldset class="field">
           <legend class="small muted strong">Kas gali dalyvauti</legend>
           <div class="seg">
             <button type="button" data-vis="public" aria-pressed="${visibility === 'public'}" ${canPublic ? '' : 'disabled'}>Visi</button>
@@ -160,31 +156,27 @@ export async function createView(ctx, [editId] = [], query) {
           </div>
           <span class="small muted" data-vis-hint>${visibility === 'private' ? 'Turnyras nerodomas sąraše. Po sukūrimo gausi kvietimo nuorodą.' : 'Turnyras matomas visiems sąraše.'}</span>
           ${canPublic ? '' : html`<p class="small public-hint" data-public-hint>${icon('lock', 14, 2.6)} Viešus turnyrus (matomus visų sąraše) kuria patvirtinti organizatoriai. <a class="link" href="#/organizatorius">Tapti organizatoriumi</a></p>`}
-        </fieldset>
-
-        <label class="field" data-not-duels ${format === 'duels' ? 'hidden' : ''}><span class="small muted strong">Registracija po starto</span>
+        </fieldset>`;
+  const lateF = html`<label class="field" data-not-duels ${format === 'duels' ? 'hidden' : ''}><span class="small muted strong">Registracija po starto</span>
           <select name="late_join">${LATE_JOIN.map(([v, label]) => html`<option value="${v === null ? '' : v}" ${(t?.late_join_minutes ?? null) === v ? 'selected' : ''}>${label}</option>`)}</select>
-          <span class="small muted">Kiek laiko po starto dar galima prisijungti prie turnyro.</span></label>
-
-        <label class="check-row" data-not-duels ${format === 'duels' ? 'hidden' : ''}><input type="checkbox" name="team_mode" ${t?.team_mode ? 'checked' : ''} ${dis}>
-          <span class="stack-1"><span class="strong">Komandinė įskaita (klubai)</span><span class="small muted">Dalyviai atstovauja savo klubams; klubo rezultatas – 3 geriausių narių suma.</span></span></label>
-
-        <label class="check-row" data-not-duels ${format === 'duels' ? 'hidden' : ''}><input type="checkbox" name="leaderboard_hidden" ${t?.leaderboard_hidden ? 'checked' : ''}>
-          <span class="stack-1"><span class="strong">Slėpti lentelę iki pabaigos</span><span class="small muted">Dalyviai mato tik savo rezultatą – intriga iki paskutinės minutės.</span></span></label>
-
-        <fieldset class="field stack" ${dis}>
+          <span class="small muted">Kiek laiko po starto dar galima prisijungti prie turnyro.</span></label>`;
+  const teamF = html`<label class="check-row" data-not-duels ${format === 'duels' ? 'hidden' : ''}><input type="checkbox" name="team_mode" ${t?.team_mode ? 'checked' : ''} ${dis}>
+          <span class="stack-1"><span class="strong">Komandinė įskaita (klubai)</span><span class="small muted">Dalyviai atstovauja savo klubams; klubo rezultatas – 3 geriausių narių suma.</span></span></label>`;
+  const hiddenF = html`<label class="check-row" data-not-duels ${format === 'duels' ? 'hidden' : ''}><input type="checkbox" name="leaderboard_hidden" ${t?.leaderboard_hidden ? 'checked' : ''}>
+          <span class="stack-1"><span class="strong">Slėpti lentelę iki pabaigos</span><span class="small muted">Dalyviai mato tik savo rezultatą – intriga iki paskutinės minutės.</span></span></label>`;
+  const divF = html`<fieldset class="field stack" ${dis}>
           <legend class="small muted strong">Divizionai (nebūtina, iki 8)</legend>
           <span class="small muted">Atskiros įskaitos tame pačiame turnyre, pvz. „Jaunimas“, „Moterys“, „Valtis“. Dalyvis pasirenka divizioną registruodamasis.</span>
           <div class="stack-2" data-div-rows></div>
           <button type="button" class="btn btn-ghost" data-add-div>${icon('plus', 18, 2.6)}Pridėti divizioną</button>
-        </fieldset>
-
-        ${!feat(state, 'leagues') && !t?.league_id ? '' : myLeagues.length || t?.league_id ? html`<label class="field"><span class="small muted strong">Sezono lyga</span>
-          <select name="league_id" ${dis}><option value="">Be lygos</option>${myLeagues.map((l) => html`<option value="${l.id}" ${t?.league_id === l.id ? 'selected' : ''}>${l.name} · ${l.season}</option>`)}</select>
+        </fieldset>`;
+  const leagueSelect = (feat(state, 'leagues') || t?.league_id) && (myLeagues.length || t?.league_id);
+  const leagueF = !feat(state, 'leagues') && !t?.league_id ? '' : leagueSelect ? html`<label class="field"><span class="small muted strong">Sezono lyga</span>
+          <select name="league_id" ${dis}><option value="">Be lygos</option>${myLeagues.map((l) => html`<option value="${l.id}" ${t?.league_id === l.id ? 'selected' : ''}>${l.name} · ${l.season}</option>`)}
+            ${t?.league_id && !myLeagues.some((l) => l.id === t.league_id) && t.league ? html`<option value="${t.league_id}" selected>${t.league.name} · ${t.league.season}</option>` : ''}</select>
           <span class="small muted">Vietos šiame turnyre duos taškų lygos lentelėje.</span></label>`
-        : html`<p class="small muted">Rengi kelis etapus per sezoną? <a class="link" href="#/lygos">Sukurk sezono lygą</a> ir įtrauk į ją turnyrus.</p>`}
-
-        <fieldset class="field card stack" ${dis}>
+    : html`<p class="small muted">Rengi kelis etapus per sezoną? <a class="link" href="#/lygos">Sukurk sezono lygą</a> ir įtrauk į ją turnyrus.</p>`;
+  const fundF = html`<fieldset class="field ${edit ? '' : 'card'} stack" ${dis}>
           <legend class="small muted strong">Prizinis fondas (nebūtina)</legend>
           <label class="field"><span class="small muted strong">Fondo suma, €</span>
             <input name="prize_fund" inputmode="decimal" maxlength="10" autocomplete="off" placeholder="pvz. 500"
@@ -197,11 +189,8 @@ export async function createView(ctx, [editId] = [], query) {
             <p class="small" data-split-msg aria-live="polite"></p>
           </div>
           <p class="small muted">Pinigų programėlė neperveda – fondą išmoka organizatorius arba rėmėjai.</p>
-        </fieldset>
-
-        ${t ? html`<a class="card card-link row gap-10" href="#/t/${t.id}/remejai" data-sponsors-link>${icon('star', 20)}
-          <span class="grow stack-1"><span class="strong">Rėmėjai ir jų logotipai</span><span class="small muted">${t.sponsors?.length ? count(t.sponsors.length, 'rėmėjas', 'rėmėjai', 'rėmėjų') : 'Dar nėra'} · tvarkoma atskirai, galima ir vykstant turnyrui</span></span>${icon('chevron', 18)}</a>` : ''}
-        <fieldset class="field stack" ${t ? 'hidden' : ''}>
+        </fieldset>`;
+  const sponsorsCreateF = html`<fieldset class="field stack" ${t ? 'hidden' : ''}>
           <legend class="small muted strong">Rėmėjai (nebūtina, iki 10)</legend>
           <span class="small muted">Logotipus, generalinį rėmėją ir pasiūlymus dalyviams pridėsi sukūręs turnyrą – skiltyje „Rėmėjai“.</span>
           <div class="stack" data-sponsor-rows></div>
@@ -210,26 +199,178 @@ export async function createView(ctx, [editId] = [], query) {
             <span class="small muted" data-sponsor-sum-text></span>
             <button type="button" class="btn-text" data-use-sum>Naudoti kaip fondą</button>
           </div>
-        </fieldset>
-
-        <label class="field"><span class="small muted strong">Daiktiniai prizai (nebūtina)</span>
-          <textarea name="prizes" rows="3" maxlength="500" placeholder="pvz. 1 vieta – spiningas, 2 vieta – ritė">${t?.prizes || ''}</textarea></label>
-
-        <label class="field"><span class="small muted strong">Aprašymas (nebūtina)</span>
-          <textarea name="description" rows="3" maxlength="2000" placeholder="Papildomos taisyklės">${t?.description || ''}</textarea></label>
-
-        <p class="form-error bad small" data-error hidden role="alert"></p>
-        ${t ? html`<button type="button" class="btn btn-ghost bad" data-delete aria-expanded="false">${icon('x', 18, 2.4)}${asOrganizer ? 'Ištrinti turnyrą' : 'Pašalinti turnyrą'}</button>` : ''}
-        ${t && !asOrganizer ? html`<div class="card stack-2" data-del-box hidden>
+        </fieldset>`;
+  const prizesF = html`<label class="field"><span class="small muted strong">Daiktiniai prizai (nebūtina)</span>
+          <textarea name="prizes" rows="3" maxlength="500" placeholder="pvz. 1 vieta – spiningas, 2 vieta – ritė">${t?.prizes || ''}</textarea></label>`;
+  const descF = html`<label class="field"><span class="small muted strong">Aprašymas (nebūtina)</span>
+          <textarea name="description" rows="3" maxlength="2000" placeholder="Papildomos taisyklės">${t?.description || ''}</textarea></label>`;
+  const errorF = html`<p class="form-error bad small" data-error hidden role="alert"></p>`;
+  // Ištrinti: organizatorius – iki starto; administratorius – pašalinti su priežastimi bet kada.
+  const canDelete = t && (asOrganizer || admin);
+  const deleteF = canDelete ? html`<button type="button" class="btn btn-ghost bad" data-delete aria-expanded="false">${icon('x', 18, 2.4)}${asOrganizer ? 'Ištrinti turnyrą' : 'Pašalinti turnyrą'}</button>
+        ${!asOrganizer ? html`<div class="card stack-2" data-del-box hidden>
           <label class="field"><span class="small muted strong">Pašalinimo priežastis</span>
             <textarea data-del-reason rows="2" maxlength="300" placeholder="pvz. Netikras turnyras, dalyvių skundai"></textarea>
             <span class="small muted">Priežastį pranešimu gaus ${count(Number(t.participants) || 0, 'dalyvis', 'dalyviai', 'dalyvių')} ir organizatorius. Laimikiai liks žvejų dienoraščiuose, bet turnyro, jo lentelės ir pranešimų nebeliks.</span></label>
           <button type="button" class="btn bad" data-del-confirm>${icon('x', 18, 2.4)}Pašalinti galutinai</button>
-        </div>` : ''}
+        </div>` : ''}` : '';
+
+  const privateNote = canPublic ? '' : html`<div class="card stack-2 private-note" data-private-note>
+        <p class="strong row gap-8">${icon('lock', 18, 2.6)}Turnyras bus tik su kvietimu</p>
+        <p class="small muted">Jis nebus rodomas bendrame turnyrų sąraše. Sukūręs gausi nuorodą ir ja pakviesi draugus, klubo narius ar kitus žvejus.</p>
+        <p class="small muted">Viešus turnyrus, kuriuos mato visi, kuria patvirtinti organizatoriai.</p>
+        ${orgReq?.status === 'pending'
+          ? html`<p class="small row gap-8 strong" data-org-status>${icon('clock', 16)}Tavo prašymas tapti organizatoriumi laukia patvirtinimo. Kai patvirtinsime, šį turnyrą iki starto galėsi padaryti viešą.</p>`
+          : orgCooling ? html`<p class="small muted" data-org-status>Prašymas tapti organizatoriumi kol kas nepatvirtintas – pakartotinai paprašyti galėsi vėliau.</p>`
+          : html`<a class="btn btn-ghost" href="#/organizatorius" data-org-request>${icon('trophy', 18)}Noriu viešo turnyro – tapti organizatoriumi</a>`}
+      </div>`;
+
+  // ---------------- Kūrimas: viena forma, kaip anksčiau
+  if (!edit) {
+    return {
+      nav: 'turnyrai',
+      title: heading,
+      html: html`<div class="screen has-cta">
+      <header class="top-bar">${backButton(back)}<span class="muted strong">${heading}</span><span></span></header>
+      <h1 class="display-lg" tabindex="-1">Sukurk turnyrą</h1>
+      <p class="muted">Keturi laukai – ir turnyras paruoštas. Kol kas visi turnyrai nemokami.</p>
+      ${clubId ? html`<p class="card small row gap-8" data-club-note>${icon('users', 18)}Klubo turnyras: sukūrus, klubo nariai gaus kvietimą su nuoroda.</p>` : ''}
+      ${privateNote}
+      <form class="stack-lg" data-form novalidate>
+        ${titleF}${formatF}${customF}${speciesF}${datesF}${minF}${visF}${lateF}${teamF}${hiddenF}${divF}${leagueF}${fundF}${sponsorsCreateF}${prizesF}${descF}${errorF}
       </form>
     </div>
-    <div class="cta-bar"><button class="btn btn-primary btn-lg" data-submit>${icon('check', 22, 3)}${t ? 'Išsaugoti pakeitimus' : 'Sukurti turnyrą'}</button></div>`,
-    mount(root) {
+    <div class="cta-bar"><button class="btn btn-primary btn-lg" data-submit>${icon('check', 22, 3)}Sukurti turnyrą</button></div>`,
+      mount: (root) => mountForm(root)
+    };
+  }
+
+  // ---------------- Turnyro nustatymai
+  const notice = rulesLive ? html`<div class="owner-note" data-owner-note><span class="accent-ink">${icon('shield', 20)}</span><span class="stack-1">
+        <b>Turnyras ${phase(t) === 'done' ? 'baigėsi' : 'vyksta'} – keiti kaip savininkas</b>
+        <span class="small muted">Gali keisti viską. Taisyklių pakeitimus parodysime prieš išsaugant, lentelė bus perskaičiuota, dalyviai gaus pranešimą.</span></span></div>`
+    : started ? html`<div class="card stack-1 admin-note" data-admin-note>
+        <p class="strong row gap-8">${icon('lock', 18, 2.6)}Turnyras jau prasidėjo</p>
+        <p class="small muted">Formato, rūšių, pradžios, minimalaus ilgio, divizionų ir prizinio fondo keisti negalima. Gali taisyti pavadinimą, aprašymą, prizus, pabaigą, matomumą, viršelį, rėmėjus, dalyvius ir kvietimą.${mineT ? '' : ' Pakeitimai įrašomi į žurnalą, organizatorius gaus pranešimą.'}</p></div>`
+    : !mineT ? html`<div class="card stack-1 admin-note" data-admin-note>
+        <p class="strong row gap-8">${icon('shield', 18)}Redaguoji kaip administratorius</p>
+        <p class="small muted">Gali keisti viską, kaip organizatorius. Pakeitimai įrašomi į žurnalą, organizatorius gaus pranešimą.</p></div>`
+    : html`<p class="small muted">Iki starto gali keisti viską. Dalyviai matys naujas taisykles.</p>`;
+
+  const SECTIONS = [['set-main', 'Pagrindinis'], ['set-rules', 'Taisyklės'], ['set-prizes', 'Prizai'], ['set-sponsors', 'Rėmėjai'], ['set-people', 'Dalyviai'], ['set-invite', 'Kvietimas']];
+  const divName = (id) => (t.divisions || []).find((d) => d.id === id)?.name || '';
+  const boardBy = new Map((board || []).map((r) => [r.user_id, r]));
+
+  return {
+    nav: 'turnyrai',
+    title: `Nustatymai · ${t.title}`,
+    html: html`<div class="screen has-cta settings">
+      <header class="top-bar">${backButton(back, 'Atgal į turnyrą')}<span class="muted strong">Turnyro nustatymai</span>${phaseBadge(t)}</header>
+      <h1 class="sr-only" tabindex="-1">Turnyro nustatymai · ${t.title}</h1>
+      <div class="set-cover ${t.cover_url ? 'has-img' : ''}" data-cover>
+        ${t.cover_url ? html`<img src="${t.cover_url}" alt="">` : ''}
+        <span class="cv-t">${t.title}</span>
+        <span class="cv-acts">
+          ${t.cover_url ? html`<button type="button" class="cv-btn" data-cover-off aria-label="Pašalinti viršelį">${icon('x', 16, 2.6)}</button>` : ''}
+          <label class="cv-btn">${icon('camera', 16)}<span>${t.cover_url ? 'Keisti viršelį' : 'Pridėti viršelį'}</span><input type="file" accept="image/*" data-cover-input hidden></label>
+        </span>
+      </div>
+      ${notice}
+      <nav class="stabs" data-stabs aria-label="Nustatymų skiltys">${SECTIONS.map(([id, label], i) => html`<button type="button" data-goto="${id}" aria-pressed="${i === 0}">${label}</button>`)}</nav>
+
+      <form class="stack-lg" data-form novalidate>
+        <section class="set-sec" id="set-main">
+          <h2 class="h2">Pagrindinis</h2>
+          ${titleF}${datesF}${descF}${visF}
+          ${privateNote}
+        </section>
+        <section class="set-sec" id="set-rules">
+          <div class="row-between"><h2 class="h2">Taisyklės</h2>${lockChip}</div>
+          <div class="set-list">
+            ${row('format', 'Formatas', html`${formatF}${customF}`)}
+            ${row('species', 'Rūšys', speciesF)}
+            ${row('min', 'Min. ilgis', minF)}
+            ${row('div', 'Divizionai', divF)}
+            ${leagueSelect ? row('league', 'Sezono lyga', leagueF) : ''}
+            ${row('team', 'Komandinė įskaita', teamF)}
+          </div>
+          ${leagueSelect ? '' : leagueF}
+          <h3 class="h3">Eiga</h3>
+          <div class="set-list">
+            ${row('late', 'Registracija po starto', lateF)}
+            ${row('hidden', 'Slėpti lentelę iki pabaigos', hiddenF)}
+          </div>
+        </section>
+        <section class="set-sec" id="set-prizes">
+          <div class="row-between"><h2 class="h2">Prizai</h2>${lockChip}</div>
+          <div class="set-list">
+            ${row('fund', 'Prizų fondas', fundF)}
+            ${row('prizes', 'Daiktiniai prizai', prizesF)}
+          </div>
+        </section>
+        ${errorF}
+      </form>
+
+      <section class="set-sec" id="set-sponsors">
+        <div class="row-between"><h2 class="h2">Rėmėjai</h2><a class="link small" href="#/t/${t.id}/remejai" data-sponsors-link>Statistika${icon('chevron', 14)}</a></div>
+        <p class="small muted">Logotipai rodomi turnyro puslapyje, sąraše, lentelėje ir dideliame ekrane. Išsaugoma kartu su kitais pakeitimais.</p>
+        ${spEditor.html}
+      </section>
+
+      <section class="set-sec" id="set-people">
+        <div class="row-between"><h2 class="h2">Dalyviai · <span data-people-count>${people ? people.length : t.participants}</span></h2>
+          ${(t.divisions || []).length && people ? html`<span class="small muted">${t.divisions.map((d) => `${d.name} ${people.filter((x) => x.division_id === d.id).length}`).join(' · ')}</span>` : ''}</div>
+        ${people ? html`
+          ${people.length > 6 ? html`<label class="search-box"><span class="sr-only">Ieškoti dalyvio</span><input type="search" data-people-q placeholder="Ieškoti dalyvio" autocomplete="off"></label>` : ''}
+          <ul class="plain set-people" data-people>${people.slice().sort((a, b) => (boardBy.get(a.user_id)?.rank ?? 1e9) - (boardBy.get(b.user_id)?.rank ?? 1e9) || a.nickname.localeCompare(b.nickname, 'lt')).map((x) => {
+            const r = boardBy.get(x.user_id);
+            const self = x.user_id === t.organizer_id;
+            return html`<li class="p-row" data-person="${x.user_id}" data-nick="${x.nickname.toLowerCase()}">
+              <div class="p-main">${avatar(x.nickname)}
+                <span class="grow stack-1"><span class="strong ellipsis">${x.nickname}${self ? html` <span class="small muted">· organizatorius</span>` : ''}</span>
+                  <span class="small muted">${r ? `${count(Number(r.counted) || 0, 'žuvis', 'žuvys', 'žuvų')}${r.rank ? ` · #${r.rank}` : ''}` : 'Įskaitytų laimikių nėra'}</span></span>
+                ${divName(x.division_id) ? html`<span class="dchip" data-p-divname>${divName(x.division_id)}</span>` : html`<span data-p-divname></span>`}
+                <button type="button" class="icon-btn p-more" data-p-more aria-expanded="false" aria-label="Veiksmai: ${x.nickname}">⋯</button></div>
+              <div class="p-menu" data-p-menu hidden>
+                ${(t.divisions || []).length ? html`<label class="field"><span class="small muted strong">Divizionas</span>
+                  <select data-p-div aria-label="${x.nickname} divizionas"><option value="">Nepasirinktas</option>${t.divisions.map((d) => html`<option value="${d.id}" ${x.division_id === d.id ? 'selected' : ''}>${d.name}</option>`)}</select></label>` : ''}
+                <a class="btn btn-ghost" href="#/zvejys/${x.user_id}">${icon('user', 16)}Profilis</a>
+                ${self ? '' : html`<button type="button" class="btn btn-ghost bad" data-p-remove>${icon('x', 16, 2.4)}Pašalinti iš turnyro</button>
+                <div class="stack-2" data-p-confirm hidden>
+                  <label class="field"><span class="small muted strong">Priežastis (gaus pranešime, nebūtina)</span>
+                    <textarea data-p-reason rows="2" maxlength="300" placeholder="pvz. Nesilaikė taisyklių"></textarea></label>
+                  <span class="small muted">Žvejo laimikiai liks jo dienoraštyje, bet šiame turnyre nebebus skaičiuojami.</span>
+                  <button type="button" class="btn bad" data-p-remove-ok>Pašalinti ${x.nickname}</button>
+                </div>`}
+              </div>
+            </li>`;
+          })}</ul>
+          ${people.length ? '' : html`<p class="small muted">Dalyvių dar nėra.</p>`}`
+        : html`<p class="small muted">Dalyvių sąrašo nepavyko įkelti.</p>`}
+      </section>
+
+      <section class="set-sec" id="set-invite">
+        <h2 class="h2">Kvietimas</h2>
+        <div class="card stack-2">
+          <p class="small muted">${t.visibility === 'private' ? 'Turnyras privatus – prisijungti galima tik su šia nuoroda.' : 'Su šia nuoroda draugai iškart patenka į turnyrą.'}</p>
+          <code class="link-box" data-invite-link>${t.invite_code ? inviteLink(t.invite_code) : '—'}</code>
+          <div class="grid-2"><button type="button" class="btn" data-invite-copy>Kopijuoti</button><button type="button" class="btn" data-invite-share>${icon('share', 16)}Dalintis</button></div>
+          <button type="button" class="btn-text bad small" data-invite-new aria-expanded="false">Sukurti naują nuorodą</button>
+          <div class="stack-2" data-invite-confirm hidden>
+            <p class="small">Senoji nuoroda nustos veikti. Jau prisijungę dalyviai lieka turnyre.</p>
+            <button type="button" class="btn bad" data-invite-new-ok>Sukurti naują nuorodą</button>
+          </div>
+        </div>
+      </section>
+
+      ${canDelete ? html`<section class="set-sec stack-2" data-danger><h2 class="h2">Pavojinga zona</h2>${deleteF}</section>` : ''}
+    </div>
+    <div class="cta-bar"><button class="btn btn-primary btn-lg" data-submit>${icon('check', 22, 3)}Išsaugoti pakeitimus</button></div>`,
+    mount: (root) => mountForm(root)
+  };
+
+  function mountForm(root) {
+
       const form = root.querySelector('[data-form]');
       const coefBox = root.querySelector('[data-coefs]');
       const renderCoefs = () => {
@@ -390,6 +531,7 @@ export async function createView(ctx, [editId] = [], query) {
       }));
       const sponsorRows = root.querySelector('[data-sponsor-rows]');
       function renderSponsors() {
+        if (edit) return;
         sponsorRows.innerHTML = String(html`${sponsors.map((sp, i) => html`<div class="card stack-2 sponsor-row" data-sponsor="${i}">
           <div class="row-between"><span class="small muted strong">Rėmėjas ${i + 1}</span>
             <button type="button" class="btn-text bad" data-remove-sponsor="${i}" aria-label="Pašalinti rėmėją ${i + 1}">Pašalinti</button></div>
@@ -401,6 +543,7 @@ export async function createView(ctx, [editId] = [], query) {
         updateSponsorSum();
       }
       function updateSponsorSum() {
+        if (edit) return;
         const total = sponsorTotal(sponsors.map((x) => ({ amount_cents: parseEur(x.amount) || 0 })));
         const box = root.querySelector('[data-sponsor-sum]');
         box.hidden = !total;
@@ -411,22 +554,22 @@ export async function createView(ctx, [editId] = [], query) {
           : `Rėmėjų įnašai: ${eur(total)}`;
         root.querySelector('[data-use-sum]').hidden = fund === total;
       }
-      sponsorRows.addEventListener('input', (e) => {
+      sponsorRows?.addEventListener('input', (e) => {
         const row = e.target.closest('[data-sponsor]');
         if (!row || !e.target.dataset.f) return;
         sponsors[Number(row.dataset.sponsor)][e.target.dataset.f] = e.target.value;
         if (e.target.dataset.f === 'amount') updateSponsorSum();
       });
-      sponsorRows.addEventListener('click', (e) => {
+      sponsorRows?.addEventListener('click', (e) => {
         const b = e.target.closest('[data-remove-sponsor]');
         if (b) { sponsors.splice(Number(b.dataset.removeSponsor), 1); renderSponsors(); }
       });
-      root.querySelector('[data-add-sponsor]').addEventListener('click', () => {
+      root.querySelector('[data-add-sponsor]')?.addEventListener('click', () => {
         sponsors.push({ name: '', url: '', amount: '' });
         renderSponsors();
         sponsorRows.querySelector(`[data-sponsor="${sponsors.length - 1}"] [data-f=name]`).focus();
       });
-      root.querySelector('[data-use-sum]').addEventListener('click', () => {
+      root.querySelector('[data-use-sum]')?.addEventListener('click', () => {
         const total = sponsorTotal(sponsors.map((x) => ({ amount_cents: parseEur(x.amount) || 0 })));
         fundInput.value = String(total / 100).replace('.', ',');
         fundInput.dispatchEvent(new Event('input'));
@@ -436,14 +579,15 @@ export async function createView(ctx, [editId] = [], query) {
       const delBox = root.querySelector('[data-del-box]');
       root.querySelector('[data-del-confirm]')?.addEventListener('click', async (e) => {
         const reason = root.querySelector('[data-del-reason]').value.trim();
+        const delBtn = e.currentTarget;
         if (reason.length < 5) return fail('Nurodyk pašalinimo priežastį (bent 5 simboliai).');
-        e.currentTarget.disabled = true;
+        delBtn.disabled = true;
         try {
           await backend.adminDeleteTournament(t.id, reason);
           ctx.toast('Turnyras pašalintas');
           ctx.navigate('#/');
         } catch (err) {
-          e.currentTarget.disabled = false;
+          delBtn.disabled = false;
           fail(err.message || 'Nepavyko pašalinti');
         }
       });
@@ -466,10 +610,265 @@ export async function createView(ctx, [editId] = [], query) {
         }
       });
 
+      // ---------------- Nustatymų puslapis: skiltys, santraukos, viršelis, dalyviai, kvietimas, rėmėjai
+      const spApi = spEditor ? spEditor.mount(root) : null;
+      const cleanup = edit ? mountSettings() : null;
+
+      // Kas keičiasi taisyklėse (savininkui po starto): [pavadinimas, buvo, bus]
+      function ruleChanges(data) {
+        const out = [];
+        const sp = (ids) => (ids.length ? ids.map((id) => state.species.find((x) => x.id === id)?.name_lt ?? id).join(', ') : 'Visos');
+        const eq = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+        if (data.format !== t.format || (data.format !== 'biggest' && data.format !== 'custom' && Number(data.top_n) !== Number(t.top_n))) {
+          out.push(['Formatas', fmtText(t.format, t.top_n), fmtText(data.format, data.top_n)]);
+        }
+        if (data.format === 'custom' && t.format === 'custom' && !eq(data.scoring, t.scoring)) out.push(['Taškų taisyklės', 'ankstesnės', chosenRule?.name || 'naujos']);
+        const before = (t.species_ids || []).slice().sort((a, b) => a - b);
+        const after = (data.species_ids || []).slice().sort((a, b) => a - b);
+        if (!eq(before, after)) out.push(['Rūšys', sp(before), sp(after)]);
+        else if (data.format === 'species_points' && !eq(
+          Object.fromEntries(Object.entries(t.species_pct || {}).map(([k, v]) => [String(k), Number(v)])),
+          Object.fromEntries(Object.entries(data.species_pct || {}).map(([k, v]) => [String(k), Number(v)])))) out.push(['Rūšių koeficientai', 'ankstesni', 'pakeisti']);
+        if (Number(data.min_length_mm) !== Number(t.min_length_mm || 0)) out.push(['Min. ilgis', t.min_length_mm ? cm(t.min_length_mm) : 'nėra', data.min_length_mm ? cm(data.min_length_mm) : 'nėra']);
+        if (data.starts_at !== t.starts_at) out.push(['Pradžia', dateTime(t.starts_at), dateTime(data.starts_at)]);
+        const dn = (list) => (list || []).map((d) => d.name).join(', ') || 'nėra';
+        if (dn(data.divisions) !== dn(t.divisions)) out.push(['Divizionai', dn(t.divisions), dn(data.divisions)]);
+        if (!!data.team_mode !== !!t.team_mode) out.push(['Komandinė įskaita', t.team_mode ? 'taip' : 'ne', data.team_mode ? 'taip' : 'ne']);
+        if ('league_id' in data && (data.league_id || null) !== (t.league_id || null)) out.push(['Sezono lyga', t.league?.name || 'be lygos', form.league_id.selectedOptions[0]?.textContent || 'be lygos']);
+        if (Number(data.prize_fund_cents || 0) !== Number(t.prize_fund_cents || 0) || !eq(data.prize_split, t.prize_fund_cents ? t.prize_split : null)) {
+          const f = (c, sp) => (c ? `${eur(c)} · ${count((sp || []).length, 'vieta', 'vietos', 'vietų')}` : 'nėra');
+          out.push(['Prizų fondas', f(t.prize_fund_cents, t.prize_split), f(data.prize_fund_cents, data.prize_split)]);
+        }
+        return out;
+      }
+
+      // Patvirtinimo langas: grąžina priežastį arba null (atšaukta).
+      function confirmRules(changes) {
+        return new Promise((resolve) => {
+          const box = document.createElement('div');
+          box.className = 'sheet-wrap';
+          box.setAttribute('role', 'dialog');
+          box.setAttribute('aria-modal', 'true');
+          box.setAttribute('aria-label', 'Taisyklių pakeitimas');
+          box.dataset.rulesConfirm = '';
+          box.innerHTML = String(html`<div class="sheet-bg" data-cancel></div>
+            <div class="sheetx stack">
+              <span class="grab" aria-hidden="true"></span>
+              <h2 class="h2">Keiti ${phase(t) === 'done' ? 'pasibaigusio' : 'vykstančio'} turnyro taisykles</h2>
+              <div class="chg-list">${changes.map(([k, a, b]) => html`<div class="chg"><span class="small muted strong">${k}</span><span><s class="muted">${a}</s> → <b>${b}</b></span></div>`)}</div>
+              <p class="warnbox">${icon('alert', 18)}<span><b>Lentelė bus perskaičiuota</b> pagal naujas taisykles – gali pasikeisti dalyvių vietos ir įskaitytos žuvys.</span></p>
+              <label class="field"><span class="small muted strong">Priežastis dalyviams (bus pranešime)</span>
+                <textarea data-reason rows="2" maxlength="300" placeholder="pvz. Klaidingai nurodytas formatas"></textarea></label>
+              <p class="small bad" data-reason-err hidden role="alert">Nurodyk priežastį (bent 5 simboliai).</p>
+              <p class="small muted">${count(Number(t.participants) || 0, 'dalyvis gaus', 'dalyviai gaus', 'dalyvių gaus')} pranešimą. Pakeitimas įrašomas į žurnalą.</p>
+              <div class="grid-2"><button type="button" class="btn" data-cancel>Atšaukti</button><button type="button" class="btn btn-primary" data-ok>Keisti taisykles</button></div>
+            </div>`);
+          const prev = document.activeElement;
+          const close = (val) => { box.remove(); document.removeEventListener('keydown', onKey); prev?.focus?.({ preventScroll: true }); resolve(val); };
+          const onKey = (e) => { if (e.key === 'Escape') close(null); };
+          box.addEventListener('click', (e) => {
+            if (e.target.closest('[data-cancel]')) close(null);
+            if (e.target.closest('[data-ok]')) {
+              const v = box.querySelector('[data-reason]').value.trim();
+              if (v.length < 5) { box.querySelector('[data-reason-err]').hidden = false; box.querySelector('[data-reason]').focus(); return; }
+              close(v);
+            }
+          });
+          document.addEventListener('keydown', onKey);
+          document.body.append(box);
+          box.querySelector('[data-reason]').focus();
+        });
+      }
+
+      function mountSettings() {
+        // Skilčių juosta: nušoka į skiltį ir pažymi ją
+        const tabs = [...root.querySelectorAll('[data-goto]')];
+        tabs.forEach((b) => b.addEventListener('click', () => {
+          tabs.forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+          root.querySelector(`#${b.dataset.goto}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }));
+        // Slenkant pažymima matoma skiltis
+        let io = null;
+        if (typeof IntersectionObserver !== 'undefined') {
+          const strip = root.querySelector('[data-stabs]');
+          io = new IntersectionObserver((entries) => entries.forEach((en) => {
+            if (!en.isIntersecting) return;
+            const on = tabs.find((x) => x.dataset.goto === en.target.id);
+            if (!on || on.getAttribute('aria-pressed') === 'true') return;
+            tabs.forEach((x) => x.setAttribute('aria-pressed', String(x === on)));
+            strip.scrollTo({ left: Math.max(0, on.offsetLeft - 16), behavior: 'smooth' });
+          }), { rootMargin: '-35% 0px -60% 0px' });
+          root.querySelectorAll('.set-sec[id]').forEach((sec) => io.observe(sec));
+        }
+
+        // Santraukos suskleistose eilutėse
+        const setSum = (key, text) => { const el = root.querySelector(`[data-sum="${key}"]`); if (el) el.textContent = text; };
+        const refresh = () => {
+          setSum('format', `${fmtText(format, form.top_n.value)}${format === 'custom' && chosenRule ? ` · ${chosenRule.name}` : ''}`);
+          setSum('species', format === 'custom' ? 'Pagal taisykles' : picked.size ? popular.filter((x) => picked.has(x.id)).map((x) => x.name_lt).join(', ') : 'Visos');
+          const m = Number(form.min_cm.value || 0);
+          setSum('min', m > 0 ? `${String(m).replace('.', ',')} cm` : 'Nėra');
+          const dn = divisions.map((d) => d.name.trim()).filter(Boolean);
+          setSum('div', dn.length ? dn.join(', ') : 'Nėra');
+          if (form.league_id) setSum('league', form.league_id.selectedOptions[0]?.textContent.trim() || 'Be lygos');
+          setSum('team', form.team_mode.checked ? 'Taip' : 'Ne');
+          setSum('late', form.late_join.selectedOptions[0]?.textContent.trim() || '');
+          setSum('hidden', form.leaderboard_hidden.checked ? 'Taip' : 'Ne');
+          const f = fundCents();
+          setSum('fund', Number.isFinite(f) && f > 0 ? `${eur(f)} · ${count(split.length, 'vieta', 'vietos', 'vietų')}` : 'Nėra');
+          const pz = form.prizes.value.trim();
+          setSum('prizes', pz ? (pz.length > 28 ? `${pz.slice(0, 27)}…` : pz) : 'Nėra');
+          // Eilutės, kurių laukas paslėptas (pvz. rūšys su savomis taisyklėmis), nerodomos
+          root.querySelectorAll('[data-set-row]').forEach((d) => {
+            const body = d.querySelector('.set-body')?.firstElementChild;
+            d.hidden = !!body?.hidden;
+          });
+        };
+        form.addEventListener('input', refresh);
+        form.addEventListener('change', refresh);
+        form.addEventListener('click', () => setTimeout(refresh, 0));
+        refresh();
+
+        // Viršelis – įkeliamas iš karto
+        const coverBox = root.querySelector('[data-cover]');
+        const setCover = (url) => {
+          coverBox.classList.toggle('has-img', !!url);
+          coverBox.querySelector('img')?.remove();
+          if (url) { const img = document.createElement('img'); img.alt = ''; img.src = url; coverBox.prepend(img); }
+          coverBox.querySelector('label.cv-btn span').textContent = url ? 'Keisti viršelį' : 'Pridėti viršelį';
+          let off = coverBox.querySelector('[data-cover-off]');
+          if (url && !off) {
+            coverBox.querySelector('.cv-acts').insertAdjacentHTML('afterbegin', String(html`<button type="button" class="cv-btn" data-cover-off aria-label="Pašalinti viršelį">${icon('x', 16, 2.6)}</button>`));
+            off = coverBox.querySelector('[data-cover-off]');
+          } else if (!url) off?.remove();
+        };
+        coverBox.addEventListener('change', async (e) => {
+          const input = e.target.closest('[data-cover-input]');
+          const file = input?.files?.[0];
+          if (!file) return;
+          coverBox.classList.add('busy');
+          try {
+            const blob = await shrinkCover(file);
+            const { path, url } = await backend.uploadTournamentCover(t.id, blob);
+            await backend.setTournamentCover(t.id, path, t.cover_path);
+            t.cover_path = path;
+            setCover(url);
+            ctx.toast('Viršelis atnaujintas');
+          } catch (err) {
+            ctx.toast(err.message || 'Nepavyko įkelti viršelio');
+          } finally {
+            coverBox.classList.remove('busy');
+            input.value = '';
+          }
+        });
+        coverBox.addEventListener('click', async (e) => {
+          if (!e.target.closest('[data-cover-off]')) return;
+          try {
+            await backend.setTournamentCover(t.id, null, t.cover_path);
+            t.cover_path = null;
+            setCover(null);
+            ctx.toast('Viršelis pašalintas');
+          } catch (err) {
+            ctx.toast(err.message || 'Nepavyko pašalinti viršelio');
+          }
+        });
+
+        // Dalyviai: paieška, divizionas, pašalinimas
+        const list = root.querySelector('[data-people]');
+        root.querySelector('[data-people-q]')?.addEventListener('input', (e) => {
+          const q = e.target.value.trim().toLowerCase();
+          list.querySelectorAll('[data-person]').forEach((li) => { li.hidden = !!q && !li.dataset.nick.includes(q); });
+        });
+        list?.addEventListener('click', async (e) => {
+          const li = e.target.closest('[data-person]');
+          if (!li) return;
+          const uid = li.dataset.person;
+          const more = e.target.closest('[data-p-more]');
+          if (more) {
+            const menu = li.querySelector('[data-p-menu]');
+            menu.hidden = !menu.hidden;
+            more.setAttribute('aria-expanded', String(!menu.hidden));
+            return;
+          }
+          if (e.target.closest('[data-p-remove]')) {
+            const c = li.querySelector('[data-p-confirm]');
+            c.hidden = !c.hidden;
+            if (!c.hidden) li.querySelector('[data-p-reason]').focus();
+            return;
+          }
+          const ok = e.target.closest('[data-p-remove-ok]');
+          if (ok) {
+            ok.disabled = true;
+            try {
+              await backend.removeParticipant(t.id, uid, li.querySelector('[data-p-reason]').value.trim());
+              li.remove();
+              const n = root.querySelector('[data-people-count]');
+              n.textContent = String(Math.max(0, Number(n.textContent) - 1));
+              ctx.toast('Dalyvis pašalintas');
+            } catch (err) {
+              ok.disabled = false;
+              ctx.toast(err.message || 'Nepavyko pašalinti');
+            }
+          }
+        });
+        list?.addEventListener('change', async (e) => {
+          const sel = e.target.closest('[data-p-div]');
+          if (!sel) return;
+          const li = sel.closest('[data-person]');
+          try {
+            await backend.setParticipantDivision(t.id, li.dataset.person, sel.value || null);
+            const tag = li.querySelector('[data-p-divname]');
+            const name = sel.value ? sel.selectedOptions[0].textContent : '';
+            tag.textContent = name;
+            tag.className = name ? 'dchip' : '';
+            ctx.toast(name ? `Divizionas: ${name}` : 'Divizionas nuimtas');
+          } catch (err) {
+            ctx.toast(err.message || 'Nepavyko pakeisti diviziono');
+          }
+        });
+
+        // Kvietimas
+        const linkEl = root.querySelector('[data-invite-link]');
+        const link = () => (t.invite_code ? inviteLink(t.invite_code) : '');
+        root.querySelector('[data-invite-copy]').addEventListener('click', async () => {
+          try { await navigator.clipboard.writeText(link()); ctx.toast('Nuoroda nukopijuota'); } catch { ctx.toast('Nepavyko nukopijuoti – pažymėk nuorodą ir nukopijuok'); }
+        });
+        root.querySelector('[data-invite-share]').addEventListener('click', async () => {
+          try {
+            if (navigator.share) await navigator.share({ title: t.title, text: `Prisijunk prie turnyro „${t.title}“`, url: link() });
+            else { await navigator.clipboard.writeText(link()); ctx.toast('Nuoroda nukopijuota'); }
+          } catch { /* atšaukta */ }
+        });
+        const newBtn = root.querySelector('[data-invite-new]');
+        newBtn.addEventListener('click', () => {
+          const c = root.querySelector('[data-invite-confirm]');
+          c.hidden = !c.hidden;
+          newBtn.setAttribute('aria-expanded', String(!c.hidden));
+        });
+        root.querySelector('[data-invite-new-ok]').addEventListener('click', async (e) => {
+          const okBtn = e.currentTarget;
+          okBtn.disabled = true;
+          try {
+            t.invite_code = await backend.regenerateInvite(t.id);
+            linkEl.textContent = link();
+            root.querySelector('[data-invite-confirm]').hidden = true;
+            newBtn.setAttribute('aria-expanded', 'false');
+            ctx.toast('Nauja kvietimo nuoroda sukurta');
+          } catch (err) {
+            ctx.toast(err.message || 'Nepavyko sukurti naujos nuorodos');
+          } finally {
+            okBtn.disabled = false;
+          }
+        });
+        return () => io?.disconnect();
+      }
+
       root.querySelector('[data-submit]').addEventListener('click', async (e) => {
         errorEl.hidden = true;
         const title = form.title.value.trim();
         let startsAt = locked ? new Date(t.starts_at) : new Date(form.starts_at.value);
+        const spClean = spApi ? spApi.collect() : [];
+        if (!spClean) return;
         const endsAt = new Date(form.ends_at.value);
         const minCm = Number(form.min_cm.value || 0);
         const fund = fundCents();
@@ -477,7 +876,7 @@ export async function createView(ctx, [editId] = [], query) {
         if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) return fail('Nurodyk pradžią ir pabaigą.');
         if (endsAt <= startsAt) return fail('Pabaiga turi būti vėliau nei pradžia.');
         if (endsAt - startsAt > 120 * 24 * 3600e3) return fail('Turnyras gali trukti ne ilgiau kaip 120 dienų.');
-        if (locked) {
+        if (started) {
           if (endsAt < Date.now() - 60e3) return fail('Pabaiga negali būti praeityje.');
         } else {
           if (startsAt < Date.now() - 5 * 60e3) return fail('Pradžia negali būti praeityje.');
@@ -538,8 +937,20 @@ export async function createView(ctx, [editId] = [], query) {
         btn.disabled = true;
         try {
           if (t) {
+            // Savininkas keičia prasidėjusio turnyro taisykles – parodom, kas keičiasi, ir paprašom priežasties.
+            const changes = rulesLive ? ruleChanges(data) : [];
+            let reason = null;
+            if (changes.length) {
+              reason = await confirmRules(changes);
+              if (reason === null) { btn.disabled = false; return; }
+            }
             await backend.updateTournament(t.id, locked ? Object.fromEntries(LOCKED_KEYS.map((k) => [k, data[k]])) : data);
-            ctx.toast('Pakeitimai išsaugoti');
+            if (changes.length) {
+              await backend.notifyRuleChange(t.id, reason, changes.map(([k, , after]) => `${k}: ${after}`).join('; '))
+                .catch((err) => ctx.toast(`Taisyklės pakeistos, bet pranešimo išsiųsti nepavyko: ${err.message || ''}`));
+            }
+            if (spApi?.dirty()) await spApi.save(spClean);
+            ctx.toast(changes.length ? 'Taisyklės pakeistos – dalyviai gaus pranešimą' : 'Pakeitimai išsaugoti');
             ctx.navigate(`#/t/${t.id}`);
           } else {
             const id = await backend.createTournament(data);
@@ -565,6 +976,6 @@ export async function createView(ctx, [editId] = [], query) {
             : /limit|prasid|parą|praeity|taisykl/i.test(err.message || '') ? err.message : `Nepavyko ${t ? 'išsaugoti' : 'sukurti turnyro'}. Bandyk dar kartą.`);
         }
       });
-    }
-  };
+      return cleanup;
+  }
 }

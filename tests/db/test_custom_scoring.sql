@@ -155,10 +155,15 @@ begin
   assert got = 'Aras:1 Benas:2 Dovas:3 Cezis:4', got;
 end $$;
 
--- Prasidėjusiam turnyrui taisyklių keisti nebegalima (organizatoriui neleidžia jau RLS; sargas – net administratoriui)
+-- Prasidėjusiam turnyrui taisyklių keisti nebegalima (organizatorių sustabdo sargas; keisti gali tik savininkas, 0035)
 set role authenticated;
 set request.jwt.claim.sub = '98000000-0000-4000-8000-000000000098';
-update public.tournaments set scoring = jsonb_set(scoring, '{aggregate,n}', '5') where id = '0c0c0000-0000-4000-8000-00000000000c';
+do $$ begin
+  update public.tournaments set scoring = jsonb_set(scoring, '{aggregate,n}', '5') where id = '0c0c0000-0000-4000-8000-00000000000c';
+  raise exception 'FAIL: organizatorius pakeitė taisykles';
+exception when raise_exception then
+  if sqlerrm not like '%scoring_locked%' and sqlerrm not like '%started_rules_locked%' then raise; end if;
+end $$;
 reset role;
 do $$ begin
   assert (select scoring->'aggregate'->>'n' from public.tournaments where id = '0c0c0000-0000-4000-8000-00000000000c') = '3', 'organizatorius pakeitė prasidėjusio turnyro taisykles';

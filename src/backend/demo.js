@@ -228,10 +228,18 @@ export function createDemoBackend({ photos } = {}) {
     || db.entries.some((e) => e.tournament_id === t.id && e.user_id === ME);
   const isOrganizerBeforeStart = (t) => t && t.organizer_id === ME && Date.now() < new Date(t.starts_at).getTime();
   const isTournamentAdmin = () => permsOf(db.profiles[ME]).has('tournaments');
+  const isOwner = () => permsOf(db.profiles[ME]).has('roles');
+  const asStarted = (t) => Date.now() >= new Date(t.starts_at).getTime();
+  const canManage = (t) => !!t && (t.organizer_id === ME || isTournamentAdmin());
+  const logAdmin = (t, changes, reason = null) => {
+    db.admin_log.unshift({ id: Date.now() + Math.random(), tournament_id: t.id, title: t.title, organizer_id: t.organizer_id, action: 'update',
+      changes, reason, created_at: new Date().toISOString(), actor_nick: db.profiles[ME].nickname });
+  };
   const RULE_KEYS = ['format', 'top_n', 'min_length_mm', 'starts_at', 'team_mode', 'league_id', 'prize_fund_cents', 'prize_split'];
   const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
   const decorate = (t) => ({
     ...t,
+    cover_url: t.cover_path ? (db.covers || {})[t.cover_path] || null : null,
     species_ids: db.tournament_species.filter((x) => x.tournament_id === t.id).map((x) => x.species_id),
     species_pct: Object.fromEntries(db.tournament_species.filter((x) => x.tournament_id === t.id).map((x) => [x.species_id, x.points_pct ?? 100])),
     divisions: db.divisions.filter((d) => d.tournament_id === t.id).sort((a, b) => a.sort - b.sort),
@@ -355,26 +363,25 @@ export function createDemoBackend({ photos } = {}) {
     async updateTournament(id, data) {
       const t = db.tournaments.find((x) => x.id === id);
       const asOrganizer = isOrganizerBeforeStart(t);
-      if (!t || (!asOrganizer && !isTournamentAdmin())) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
+      // 0035: organizatorius – bet kada (po starto – tik saugūs laukai), administratorius – bet kada, savininkas – viską.
+      if (!canManage(t)) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
       const { species_ids, species_pct = {}, sponsors, divisions, ...rest } = data;
       if (rest.format === 'duels' && t.format !== 'duels') mustFeature('duels');
       if (rest.format === 'custom' && (t.format !== 'custom' || JSON.stringify(rest.scoring) !== JSON.stringify(t.scoring))) mustCustom('custom');
       if (rest.league_id && rest.league_id !== t.league_id) mustFeature('leagues');
       const started = Date.now() >= new Date(t.starts_at).getTime();
-      if (started && (t.format === 'custom' || rest.format === 'custom') && (('scoring' in rest && JSON.stringify(rest.scoring ?? null) !== JSON.stringify(t.scoring ?? null))
+      const owner = isOwner();
+      if (started && !owner && (t.format === 'custom' || rest.format === 'custom') && (('scoring' in rest && JSON.stringify(rest.scoring ?? null) !== JSON.stringify(t.scoring ?? null))
         || ('format' in rest && rest.format !== t.format))) throw new Error('Prasidėjusio turnyro taisyklių keisti negalima');
       if (!asOrganizer && started) {
-        if (RULE_KEYS.some((k) => k in rest && !same(rest[k], t[k])) || species_ids || divisions) throw new Error('Prasidėjusio turnyro taisyklių keisti negalima');
+        if (!owner && (RULE_KEYS.some((k) => k in rest && !same(rest[k], t[k])) || species_ids || divisions)) throw new Error('Prasidėjusio turnyro taisyklių keisti negalima');
         if ('ends_at' in rest && new Date(rest.ends_at) < Date.now() - 60e3) throw new Error('Pabaiga negali būti praeityje');
       }
       if (rest.league_id && rest.league_id !== t.league_id) checkLeague(rest.league_id);
       if (rest.visibility === 'public' && t.visibility !== 'public' && !permsOf(db.profiles[ME]).has('publish')) throw new Error('Viešus turnyrus kuria patvirtinti organizatoriai');
       if (!asOrganizer) {
         const changes = Object.fromEntries(Object.keys(rest).filter((k) => !same(rest[k], t[k])).map((k) => [k, [t[k] ?? null, rest[k] ?? null]]));
-        if (Object.keys(changes).length) {
-          db.admin_log.unshift({ id: Date.now(), tournament_id: id, title: rest.title || t.title, organizer_id: t.organizer_id, action: 'update',
-            changes, reason: null, created_at: new Date().toISOString(), actor_nick: db.profiles[ME].nickname });
-        }
+        if (Object.keys(changes).length) logAdmin({ ...t, title: rest.title || t.title }, changes);
       }
       formatRules(Object.assign(t, rest));
       if (divisions) saveDivisions(id, divisions);
@@ -387,6 +394,71 @@ export function createDemoBackend({ photos } = {}) {
           .concat(species_ids.map((species_id) => ({ tournament_id: id, species_id, points_pct: species_pct[species_id] ?? 100 })));
       }
       save();
+    },
+    // Turnyro nustatymai (0035)
+    async uploadTournamentCover(id, blob) {
+      const t = db.tournaments.find((x) => x.id === id);
+      if (!canManage(t)) throw new Error('Neturi teisės keisti viršelio');
+      const url = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = () => reject(new Error('Nepavyko įkelti viršelio'));
+        r.readAsDataURL(blob);
+      });
+      const path = `${id}/cover-${Date.now().toString(36)}.webp`;
+      db.covers ||= {};
+      db.covers[path] = url;
+      save();
+      return { path, url };
+    },
+    async setTournamentCover(id, path, previous) {
+      const t = db.tournaments.find((x) => x.id === id);
+      if (!canManage(t)) throw new Error('Neturi teisės keisti šio turnyro');
+      if (path && !String(path).startsWith(`${id}/cover-`)) throw new Error('Netinkamas viršelio failas');
+      if (asStarted(t) || t.organizer_id !== ME) logAdmin(t, { cover_path: [t.cover_path ?? null, path || null] });
+      t.cover_path = path || null;
+      if (previous && previous !== path && db.covers) delete db.covers[previous];
+      save();
+    },
+    async participantsAdmin(id) {
+      return db.entries.filter((e) => e.tournament_id === id).map((e) => ({ user_id: e.user_id, division_id: e.division_id ?? null, joined_at: e.joined_at,
+        nickname: db.profiles[e.user_id]?.nickname ?? '–', region: db.profiles[e.user_id]?.region ?? null }));
+    },
+    async removeParticipant(tournamentId, userId, reason) {
+      const t = db.tournaments.find((x) => x.id === tournamentId);
+      if (!canManage(t)) throw new Error('Neturi teisės šalinti dalyvių');
+      const before = db.entries.length;
+      db.entries = db.entries.filter((e) => !(e.tournament_id === tournamentId && e.user_id === userId));
+      if (db.entries.length === before) throw new Error('Dalyvis jau pašalintas');
+      logAdmin(t, { participant_removed: [db.profiles[userId]?.nickname ?? userId, null] }, reason || null);
+      save();
+    },
+    async setParticipantDivision(tournamentId, userId, divisionId) {
+      const t = db.tournaments.find((x) => x.id === tournamentId);
+      if (!canManage(t)) throw new Error('Neturi teisės');
+      if (divisionId && !db.divisions.some((d) => d.id === divisionId && d.tournament_id === tournamentId)) throw new Error('Tokio diviziono nėra');
+      const e = db.entries.find((x) => x.tournament_id === tournamentId && x.user_id === userId);
+      if (!e) throw new Error('Dalyvio nebėra');
+      e.division_id = divisionId || null;
+      save();
+    },
+    async regenerateInvite(id) {
+      const t = db.tournaments.find((x) => x.id === id);
+      if (!canManage(t)) throw new Error('Neturi teisės');
+      t.invite_code = crypto.randomUUID().replace(/-/g, '').slice(0, 10);
+      if (asStarted(t) || t.organizer_id !== ME) logAdmin(t, { invite_code: ['…', 'nauja nuoroda'] });
+      save();
+      return t.invite_code;
+    },
+    async notifyRuleChange(id, reason, summary) {
+      if (!isOwner()) throw new Error('Pranešti gali tik savininkas');
+      const why = String(reason || '').trim();
+      if (why.length < 5) throw new Error('Nurodyk priežastį (bent 5 simboliai)');
+      const t = db.tournaments.find((x) => x.id === id);
+      if (!t) throw new Error('Turnyras nerastas');
+      logAdmin(t, { rules_notice: [null, String(summary || '').slice(0, 300)] }, why.slice(0, 300));
+      save();
+      return new Set(db.entries.filter((e) => e.tournament_id === id && e.user_id !== ME).map((e) => e.user_id).concat(t.organizer_id === ME ? [] : [t.organizer_id])).size;
     },
     async deleteTournament(id) {
       const t = db.tournaments.find((x) => x.id === id);

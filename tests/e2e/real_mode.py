@@ -426,6 +426,9 @@ def more_real_tests(page, base):
     # Turnyro redagavimas ir ištrynimas (savo, iki starto); svetimo – ne
     tid = fake(page, "return db.tournaments.find(t => t.title === 'Ešerių savaitgalis').id;")
     go(page, base + f"#/t/{tid}/redaguoti")
+    page.wait_for_selector("[data-form]")
+    page.evaluate("() => document.querySelectorAll('details.set-row').forEach(d => { d.open = true; })")
+    expect(page.locator("[data-person]")).to_have_count(1)  # organizatorius – pirmas dalyvis
     page.get_by_label("Pavadinimas", exact=True).fill("Ešerių savaitgalis+")
     page.get_by_role("button", name="Tik su kvietimu").click()
     page.get_by_label("Daiktiniai prizai (nebūtina)").fill("Kepurė")
@@ -783,6 +786,9 @@ def formats_real_test(page, base, me):
     assert fake(page, "return db.entries.find(e => e.tournament_id === arg[0] && e.user_id === arg[1]).division_id;", [tid, me]) == valtis
     # Redagavimas: „Krantas“ pašalinamas, „Valtis“ pervadinama – dalyvio pasirinkimas išlieka (tas pats ID)
     page.get_by_role("link", name="Redaguoti").click()
+    page.wait_for_selector("[data-form]")
+    page.locator("[data-set-row=div] summary").click()
+    expect(page.locator("[data-sum=div]")).to_have_text("Krantas, Valtis")
     page.locator("[data-div-remove='0']").click()
     page.locator("[data-div-name]").nth(0).fill("Valtys")
     page.locator("[data-submit]").click()

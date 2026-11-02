@@ -269,7 +269,7 @@ export async function tournamentView(ctx, [id], query) {
 
       ${organizer || (t.visibility === 'private' && t.joined) || tAdmin ? html`<section class="row gap-8 wrap t-actions">
         ${t.invite_code && p !== 'done' && (organizer || (t.visibility === 'private' && t.joined)) ? html`<button class="btn" data-invite>${icon('users', 18)}Kviesti draugus</button>` : ''}
-        ${organizer && p === 'soon' ? html`<a class="btn" href="#/t/${t.id}/redaguoti">${icon('edit', 18)}Redaguoti</a>`
+        ${organizer ? html`<a class="btn" href="#/t/${t.id}/redaguoti">${icon('edit', 18)}${p === 'soon' ? 'Redaguoti' : 'Nustatymai'}</a>`
           : tAdmin ? html`<a class="btn" href="#/t/${t.id}/redaguoti" data-admin-edit>${icon('shield', 18)}Tvarkyti</a>` : ''}
         ${organizer || tAdmin ? html`<a class="btn" href="#/t/${t.id}/remejai" data-sponsors-manage>${icon('star', 18)}Rėmėjai</a>` : ''}
       </section>` : ''}
@@ -370,6 +370,7 @@ export async function tournamentView(ctx, [id], query) {
         <button class="icon-btn" data-share aria-label="Dalintis turnyru">${icon('share', 20)}</button>
       </header>
 
+      ${t.cover_url ? html`<div class="t-cover" data-t-cover><img src="${t.cover_url}" alt=""></div>` : ''}
       <section class="stack-2 t-head">
         <div class="row gap-8 wrap">${phaseBadge(t)}${t.joined ? html`<span class="badge badge-mine">Dalyvauji</span>` : ''}${t.visibility === 'private' ? html`<span class="badge">${icon('lock', 12, 2.6)}Privatus</span>` : ''}${organizer ? html`<span class="badge">Organizuoji</span>` : ''}</div>
         <h1 class="display-md t-title-lg" tabindex="-1">${t.title}</h1>

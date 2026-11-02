@@ -120,3 +120,30 @@ export function reportText({ tournament: t, report, sponsor, url, dateFmt = (d) 
   if (url) lines.push(`Turnyras: ${url}`);
   return lines.join('\n');
 }
+
+// Turnyro viršelis (0035): iki 1280×640, WebP (arba JPEG), ne daugiau 480 KB.
+export const COVER_MAX_BYTES = 480 * 1024;
+export async function shrinkCover(file, { doc = globalThis.document } = {}) {
+  if (!file || !/^image\/(png|jpe?g|webp|gif|bmp|avif|heic|heif)$/i.test(file.type || '')) throw new Error('Pasirink nuotrauką (JPG, PNG arba WebP).');
+  if (file.size > 25 * 1024 * 1024) throw new Error('Failas per didelis (daugiau nei 25 MB).');
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error('Nepavyko atidaryti nuotraukos. Pabandyk JPG.');
+  }
+  const encode = async (box, type, quality) => {
+    const { w, h } = fitBox(bitmap.width, bitmap.height, box);
+    const canvas = doc.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+    return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+  };
+  for (const [box, q] of [[{ w: 1280, h: 1280 }, 0.82], [{ w: 1280, h: 1280 }, 0.7], [{ w: 960, h: 960 }, 0.7], [{ w: 720, h: 720 }, 0.65]]) {
+    let blob = await encode(box, 'image/webp', q);
+    if (!blob || blob.type !== 'image/webp') blob = await encode(box, 'image/jpeg', q);
+    if (blob && blob.size <= COVER_MAX_BYTES) return blob;
+  }
+  throw new Error('Nuotrauka per didelė – pabandyk kitą.');
+}

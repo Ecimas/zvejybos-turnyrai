@@ -54,8 +54,12 @@ export async function createSupabaseBackend(url, anonKey) {
 
   const LOGOS = 'sponsor-logos';
   const logoUrl = (path) => (path ? sb.storage.from(LOGOS).getPublicUrl(path).data.publicUrl : null);
+  const COVERS = 'tournament-covers';
+  const coverUrl = (path) => (path ? sb.storage.from(COVERS).getPublicUrl(path).data.publicUrl : null);
+  const NEEDS_0035 = [/does not exist|schema cache|could not find/i, 'Ši funkcija dar neįdiegta serveryje (reikia 0035 migracijos)'];
   const decorate = (t, mine) => ({
     ...t,
+    cover_url: coverUrl(t.cover_path),
     species_ids: (t.tournament_species || []).map((x) => x.species_id),
     species_pct: Object.fromEntries((t.tournament_species || []).map((x) => [x.species_id, x.points_pct ?? 100])),
     divisions: (t.tournament_divisions || []).slice().sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name)),
@@ -217,7 +221,8 @@ export async function createSupabaseBackend(url, anonKey) {
         [/tournaments_scoring_check|valid_scoring/, 'Netinkamos taškų taisyklės'],
         [/league_owner/, 'Į lygą gali įtraukti tik lygos savininkas'],
         [/started_rules_locked/, 'Prasidėjusio turnyro taisyklių keisti negalima'], [/ends_in_past/, 'Pabaiga negali būti praeityje'],
-        [/public_not_allowed/, 'Viešus turnyrus kuria patvirtinti organizatoriai']]);
+        [/public_not_allowed/, 'Viešus turnyrus kuria patvirtinti organizatoriai'],
+        [/row-level security|permission denied/i, 'Neturi teisės keisti šio turnyro']]);
       if (!rows?.length) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
       if (species_ids) {
         check(await sb.from('tournament_species').delete().eq('tournament_id', id));
@@ -232,6 +237,44 @@ export async function createSupabaseBackend(url, anonKey) {
           check(await sb.from('tournament_sponsors').insert(sponsors.map((s, i) => ({ ...s, tournament_id: id, sort: i }))));
         }
       }
+    },
+    // Turnyro nustatymai (0035): viršelis, dalyviai, kvietimas, pranešimas apie taisyklių pakeitimą.
+    async uploadTournamentCover(id, blob) {
+      const ext = blob.type === 'image/jpeg' ? 'jpg' : 'webp';
+      const path = `${id}/cover-${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}.${ext}`;
+      const { error } = await sb.storage.from(COVERS).upload(path, blob, { contentType: blob.type, upsert: false, cacheControl: '31536000' });
+      if (error) throw friendly(error, [[/row-level security|403|Unauthorized/i, 'Neturi teisės keisti viršelio'], [/size|too large|413/i, 'Nuotrauka per didelė'],
+        [/bucket not found|not found/i, 'Viršelių saugykla dar nesukurta (reikia 0035 migracijos)']], 'Nepavyko įkelti viršelio');
+      return { path, url: coverUrl(path) };
+    },
+    async setTournamentCover(id, path, previous) {
+      const { data, error } = await sb.from('tournaments').update({ cover_path: path || null }).eq('id', id).select('id');
+      if (error) throw friendly(error, [NEEDS_0035, [/cover_path_check/, 'Netinkamas viršelio failas']], 'Nepavyko išsaugoti viršelio');
+      if (!data?.length) throw new Error('Neturi teisės keisti šio turnyro');
+      if (previous && previous !== path) await sb.storage.from(COVERS).remove([previous]).catch(() => {});
+    },
+    async participantsAdmin(id) {
+      const rows = check(await sb.from('entries').select('user_id, division_id, joined_at, profiles(nickname, region)').eq('tournament_id', id));
+      return rows.map((r) => ({ user_id: r.user_id, division_id: r.division_id ?? null, joined_at: r.joined_at,
+        nickname: r.profiles?.nickname ?? '–', region: r.profiles?.region ?? null }));
+    },
+    async removeParticipant(tournamentId, userId, reason) {
+      const { error } = await sb.rpc('remove_participant', { p_tournament: tournamentId, p_user: userId, p_reason: reason || null });
+      if (error) throw friendly(error, [NEEDS_0035, [/not allowed/, 'Neturi teisės šalinti dalyvių'], [/not_found/, 'Dalyvis jau pašalintas']], 'Nepavyko pašalinti');
+    },
+    async setParticipantDivision(tournamentId, userId, divisionId) {
+      const { error } = await sb.rpc('set_participant_division', { p_tournament: tournamentId, p_user: userId, p_division: divisionId || null });
+      if (error) throw friendly(error, [NEEDS_0035, [/not allowed/, 'Neturi teisės'], [/division_invalid/, 'Tokio diviziono nėra'], [/not_found/, 'Dalyvio nebėra']], 'Nepavyko išsaugoti');
+    },
+    async regenerateInvite(id) {
+      const { data, error } = await sb.rpc('regenerate_invite', { p_id: id });
+      if (error) throw friendly(error, [NEEDS_0035, [/not allowed/, 'Neturi teisės']], 'Nepavyko sukurti naujos nuorodos');
+      return data;
+    },
+    async notifyRuleChange(id, reason, summary) {
+      const { data, error } = await sb.rpc('notify_rule_change', { p_id: id, p_reason: reason, p_summary: summary });
+      if (error) throw friendly(error, [NEEDS_0035, [/reason_required/, 'Nurodyk priežastį (bent 5 simboliai)'], [/not allowed/, 'Pranešti gali tik savininkas']], 'Nepavyko išsiųsti pranešimo');
+      return data;
     },
     async deleteTournament(id) {
       const rows = check(await sb.from('tournaments').delete().eq('id', id).select('id'));

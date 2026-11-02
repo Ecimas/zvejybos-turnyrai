@@ -200,6 +200,10 @@ def main():
                         page.get_by_role("button", name="Fotografuoti").click()
                         page.wait_for_selector("[data-step=details]:not([hidden])")
                         page.locator("details.more summary").click()
+                    if r == "#/t/t-taure/redaguoti":  # nustatymai: atidarom visas eilutes, dalyvio meniu ir patvirtinimo langą
+                        page.evaluate("() => document.querySelectorAll('details.set-row').forEach(d => { d.open = true; })")
+                        page.locator("[data-p-more]").first.click()
+                        page.get_by_role("button", name="Sukurti naują nuorodą").first.click()
                     if r == "#/laimikis?baigta=1":  # šventinis ekranas po išsaugojimo
                         page.get_by_role("button", name="Fotografuoti").click()
                         page.get_by_role("button", name="Išsaugoti").click()

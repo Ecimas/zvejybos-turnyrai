@@ -216,7 +216,8 @@ insert into pg_temp.attempts (who, sql, kind) values
   ('B', $$update public.catches set captured_at_device = now() where user_id = 'b0000000-0000-4000-8000-00000000000b'$$, 'nochange'),
   ('B', $$update public.disputes set status = 'accepted' where user_id = 'b0000000-0000-4000-8000-00000000000b'$$, 'nochange'),
   ('B', $$update public.tournaments set fee_cents = 500 where organizer_id = 'b0000000-0000-4000-8000-00000000000b'$$, 'error'),
-  ('B', $$update public.tournaments set title = 'pakeista po starto' where id = (select id from fx where k = 'b_priv')$$, 'nochange'),
+  -- 0035: organizatorius po starto gali keisti pavadinimą, bet ne taisykles
+  ('B', $$update public.tournaments set min_length_mm = 999 where id = (select id from fx where k = 'b_priv')$$, 'error'),
   ('B', $$delete from public.tournament_species where tournament_id = (select id from fx where k = 'b_priv')$$, 'nochange');
 
 -- ---------------------------------------------------------------

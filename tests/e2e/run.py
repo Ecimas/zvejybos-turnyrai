@@ -79,6 +79,22 @@ def open_diary(page):
         folds.first.click()
 
 
+def _png(w=64, h=32):
+    import struct, zlib
+    raw = b"".join(b"\x00" + bytes([30, 90, 120]) * w for _ in range(h))
+    chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+
+
+COVER_PNG = _png()
+
+
+def open_rows(page):
+    """Turnyro nustatymuose (0035) taisyklės ir prizai – suskleistose eilutėse; testams atidarom visas."""
+    page.wait_for_selector("[data-form]")
+    page.evaluate("() => document.querySelectorAll('details.set-row').forEach(d => { d.open = true; })")
+
+
 def step(name):
     print(f"  ✓ {name}")
 
@@ -511,6 +527,7 @@ def formats_demo_test(page, base):
     assert got == {"pct": [[1, 100], [3, 200]], "league": "Mano sezono lyga", "div": "Moterys"}, got
     # Redagavimas: koeficientai ir divizionai išlieka; pervadinus divizioną dalyvio pasirinkimas nedingsta
     page.get_by_role("link", name="Redaguoti").click()
+    open_rows(page)
     expect(page.locator("[data-coef='3']")).to_have_value("200")
     expect(page.locator("[data-div-name]")).to_have_count(2)
     page.locator("[data-div-name]").nth(1).fill("Moterų")
@@ -659,7 +676,7 @@ def sponsors_demo_test(page, base):
     expect(page.locator("[data-row='0'] [data-f=name]")).to_have_value("Valčių nuoma „Banga“")
     page.locator("[data-row='1'] [data-f=url]").fill("http://nesaugu.lt")
     page.get_by_role("button", name="Išsaugoti rėmėjus").click()
-    expect(page.locator("[data-error]")).to_contain_text("https://")
+    expect(page.locator("[data-sp-error]")).to_contain_text("https://")
     page.locator("[data-row='1'] [data-f=url]").fill("https://example.com")
     shot(page, "remejai-tvarkymas")
     page.get_by_role("button", name="Išsaugoti rėmėjus").click()
@@ -693,8 +710,15 @@ def organizer_demo_test(page, base):
 def admin_demo_test(page, base):
     # Demo žvejys – savininkas, todėl turi teisę tvarkyti bet kurį turnyrą (0026)
     page.goto(base + "#/t/t-sezonas?skiltis=apzvalga")
+    # Administratorius (ne savininkas): prasidėjusio turnyro taisyklės užrakintos
+    set_roles = """(roles) => { const k = 'zt-demo-v1'; const db = JSON.parse(localStorage.getItem(k));
+        db.profiles['00000000-0000-4000-8000-000000000001'].roles = roles; localStorage.setItem(k, JSON.stringify(db)); }"""
+    page.evaluate(set_roles, ["admin"])
+    page.reload()
     page.get_by_role("link", name="Tvarkyti").click()
+    open_rows(page)
     expect(page.locator("[data-admin-note]")).to_contain_text("Turnyras jau prasidėjo")
+    expect(page.locator("#set-rules [data-lockchip]")).to_contain_text("užrakinta")
     expect(page.get_by_role("button", name="Dvikovos")).to_be_disabled()
     expect(page.get_by_role("button", name="Pridėti divizioną")).to_be_disabled()
     expect(page.locator("input[name=starts_at]")).to_be_disabled()
@@ -708,7 +732,67 @@ def admin_demo_test(page, base):
     expect(page.get_by_role("heading", name="Sezono iššūkis 2026")).to_be_visible()
     t = page.evaluate("() => JSON.parse(localStorage.getItem('zt-demo-v1')).tournaments.find(t => t.id === 't-sezonas')")
     assert t["format"] == "biggest" and t["team_mode"] is True, f"užrakintos taisyklės pasikeitė: {t}"
+    page.evaluate(set_roles, ["owner"])
+    page.reload()
     step("administratorius taiso vykstantį turnyrą – taisyklės užrakintos")
+
+    # Savininkas: keičia vykstančio turnyro taisykles – pakeitimai parodomi, būtina priežastis, dalyviams pranešama
+    page.goto(base + "#/t/t-sezonas/redaguoti")
+    open_rows(page)
+    expect(page.locator("[data-owner-note]")).to_contain_text("keiti kaip savininkas")
+    expect(page.locator("#set-rules [data-lockchip]")).to_contain_text("keičia rezultatus")
+    expect(page.locator("input[name=min_cm]")).to_be_enabled()
+    page.locator("input[name=min_cm]").fill("45")
+    expect(page.locator("[data-sum=min]")).to_have_text("45 cm")
+    page.get_by_role("button", name="Išsaugoti pakeitimus").click()
+    sheet = page.locator("[data-rules-confirm]")
+    expect(sheet).to_contain_text("Min. ilgis")
+    expect(sheet).to_contain_text("45 cm")
+    shot(page, "savininkas-taisykles")
+    sheet.get_by_role("button", name="Keisti taisykles").click()
+    expect(sheet.locator("[data-reason-err]")).to_be_visible()
+    sheet.get_by_role("button", name="Atšaukti").click()
+    expect(page.locator("[data-rules-confirm]")).to_have_count(0)
+    t = page.evaluate("() => JSON.parse(localStorage.getItem('zt-demo-v1')).tournaments.find(t => t.id === 't-sezonas')")
+    assert t["min_length_mm"] != 450, "atšaukus taisyklės pasikeitė"
+    page.get_by_role("button", name="Išsaugoti pakeitimus").click()
+    sheet.locator("[data-reason]").fill("Pagal nuostatus minimumas 45 cm")
+    sheet.get_by_role("button", name="Keisti taisykles").click()
+    expect(page.locator("#toast")).to_have_text("Taisyklės pakeistos – dalyviai gaus pranešimą")
+    db = page.evaluate("() => JSON.parse(localStorage.getItem('zt-demo-v1'))")
+    assert next(x for x in db["tournaments"] if x["id"] == "t-sezonas")["min_length_mm"] == 450
+    assert any(x["tournament_id"] == "t-sezonas" and "rules_notice" in (x.get("changes") or {}) and x["reason"].startswith("Pagal nuostatus") for x in db["admin_log"]), db["admin_log"][:3]
+    step("savininkas keičia vykstančio turnyro taisykles su priežastimi")
+
+    # Dalyviai, kvietimas, viršelis
+    page.goto(base + "#/t/t-sezonas/redaguoti")
+    people = page.locator("[data-person]")
+    n0 = people.count()
+    assert n0 >= 2, n0
+    first = people.filter(has_not_text="organizatorius").first
+    nick = first.locator(".strong").first.inner_text().strip()
+    first.locator("[data-p-more]").click()
+    first.get_by_role("button", name="Pašalinti iš turnyro").click()
+    first.locator("[data-p-reason]").fill("Nesilaikė taisyklių")
+    first.get_by_role("button", name=re.compile("^Pašalinti ")).last.click()
+    expect(page.locator("#toast")).to_have_text("Dalyvis pašalintas")
+    expect(page.locator("[data-person]")).to_have_count(n0 - 1)
+    expect(page.locator("[data-people-count]")).to_have_text(str(n0 - 1))
+    old_code = page.evaluate("() => JSON.parse(localStorage.getItem('zt-demo-v1')).tournaments.find(t => t.id === 't-sezonas').invite_code")
+    page.get_by_role("button", name="Sukurti naują nuorodą").first.click()
+    page.locator("[data-invite-new-ok]").click()
+    expect(page.locator("#toast")).to_have_text("Nauja kvietimo nuoroda sukurta")
+    new_code = page.evaluate("() => JSON.parse(localStorage.getItem('zt-demo-v1')).tournaments.find(t => t.id === 't-sezonas').invite_code")
+    assert new_code != old_code and re.fullmatch(r"[0-9a-f]{10}", new_code), (old_code, new_code)
+    expect(page.locator("[data-invite-link]")).to_contain_text(new_code)
+    page.locator("[data-cover-input]").set_input_files(files=[{"name": "cover.png", "mimeType": "image/png", "buffer": COVER_PNG}])
+    expect(page.locator("#toast")).to_have_text("Viršelis atnaujintas")
+    expect(page.locator("[data-cover] img")).to_have_count(1)
+    shot(page, "nustatymai")
+    page.goto(base + "#/t/t-sezonas?skiltis=apzvalga")
+    expect(page.locator("[data-t-cover] img")).to_be_visible()
+    assert nick, nick
+    step("turnyro nustatymai: dalyvio pašalinimas, nauja kvietimo nuoroda, viršelis")
 
     page.goto(base + "#/t/t-plesrunai?skiltis=apzvalga")
     page.get_by_role("link", name="Tvarkyti").click()
@@ -723,9 +807,12 @@ def admin_demo_test(page, base):
     page.goto(base + "#/moderavimas/turnyrai")
     expect(page.locator("[data-log-row=delete]")).to_contain_text("Rugsėjo plėšrūnai")
     expect(page.locator("[data-log-row=delete]")).to_contain_text("Bandomasis turnyras, dalyvių skundai")
-    expect(page.locator("[data-log-row=update]")).to_contain_text("Sezono iššūkis 2026")
-    expect(page.locator("[data-log-row=update]")).to_contain_text("Pavadinimas")
-    expect(page.locator("[data-log-row=update]")).not_to_contain_text("Pabaiga")  # nepakeistas laikas – ne pakeitimas
+    title_row = page.locator("[data-log-row=update]", has_text="Pavadinimas").last
+    expect(title_row).to_contain_text("Sezono iššūkis 2026")
+    expect(title_row).not_to_contain_text("Pabaiga")  # nepakeistas laikas – ne pakeitimas
+    expect(page.locator("[data-log-row=update]", has_text="Pranešta dalyviams")).to_contain_text("Pagal nuostatus minimumas 45 cm")
+    expect(page.locator("[data-log-row=update]", has_text="Pašalintas dalyvis")).to_contain_text("Nesilaikė taisyklių")
+    expect(page.locator("[data-log-row=update]", has_text="Kvietimo nuoroda")).to_contain_text("nauja nuoroda")
     shot(page, "admin-zurnalas")
     step("administratorius pašalina turnyrą su priežastimi, žurnalas")
 
@@ -939,10 +1026,18 @@ def custom_rules_demo_test(page, base):
     assert top["score_mm"] > 0 and top["rank"] == 1, top
     step("turnyras su savomis taisyklėmis: pasirinkimas, aprašymas, kopija turnyre, lentelė taškais")
 
-    # Prasidėjusio turnyro taisyklių keisti negalima
+    # Prasidėjusio turnyro taisyklių keisti negalima (administratoriui; savininkas gali – 0035)
+    page.evaluate("""() => { const d = JSON.parse(localStorage.getItem('zt-demo-v1')); d.profiles['00000000-0000-4000-8000-000000000001'].roles = ['admin'];
+      localStorage.setItem('zt-demo-v1', JSON.stringify(d)); }""")
+    page.reload()
+    page.wait_for_function("() => window.__zt?.backend")
     err = page.evaluate("""async () => { try { await window.__zt.backend.updateTournament('t-taure', { scoring: { v: 1, base: 'fish', species: [], bonuses: [],
       aggregate: { mode: 'all', n: 1 }, tiebreak: [] } }); return ''; } catch (e) { return e.message; } }""")
     assert "taisykl" in err or "prasidėjo" in err, err
+    page.evaluate("""() => { const d = JSON.parse(localStorage.getItem('zt-demo-v1')); d.profiles['00000000-0000-4000-8000-000000000001'].roles = ['owner'];
+      localStorage.setItem('zt-demo-v1', JSON.stringify(d)); }""")
+    page.reload()
+    page.wait_for_function("() => window.__zt?.backend")
 
     # Ištrynimas – turnyras lieka su kopija
     page.goto(base + "#/tasku-taisykles")
@@ -1277,15 +1372,15 @@ def extra_demo_tests(page, base, meteo_calls):
 
     # Redagavimas ir ištrynimas iki starto
     page.get_by_role("link", name="Redaguoti").click()
+    open_rows(page)
     expect(page.get_by_label("Pavadinimas", exact=True)).to_have_value("Klubo taurė")
     expect(page.get_by_role("button", name="Tik su kvietimu")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("[name=leaderboard_hidden]")).to_be_checked()
     expect(page.get_by_label("Registracija po starto")).to_have_value("180")
     page.get_by_label("Registracija po starto").select_option(label="Tik iki starto")
     expect(page.get_by_label("Fondo suma, €")).to_have_value("1000")
-    # Esamo turnyro rėmėjai tvarkomi atskiroje skiltyje (su logotipais) – formoje tik nuoroda
-    expect(page.locator("[data-sponsors-link]")).to_contain_text("2 rėmėjai")
-    expect(page.get_by_label("Rėmėjo 2 įnašas, €")).to_be_hidden()
+    # Esamo turnyro rėmėjai – tame pačiame nustatymų puslapyje (su logotipais)
+    expect(page.locator("#set-sponsors [data-row]")).to_have_count(2)
     page.get_by_label("Fondo suma, €").fill("600")
     page.get_by_role("button", name="Tik nugalėtojui").click()
     page.get_by_label("Pavadinimas", exact=True).fill("Klubo taurė 2026")
@@ -1311,7 +1406,7 @@ def extra_demo_tests(page, base, meteo_calls):
     assert page.evaluate("(id) => JSON.parse(localStorage.getItem('zt-demo-v1')).tournaments.some(t => t.id === id)", tid) is False
     # Demo žvejys – savininkas: svetimą vykstantį turnyrą gali tvarkyti tik kaip administratorius (taisyklės užrakintos)
     page.goto(base + "#/t/t-taure/redaguoti")
-    expect(page.locator("[data-admin-note]")).to_contain_text("Redaguoji kaip administratorius")
+    expect(page.locator("[data-owner-note]")).to_contain_text("keiti kaip savininkas")
     step("turnyro redagavimas ir ištrynimas iki starto, prasidėjusio – ne")
 
     # Kvietimai

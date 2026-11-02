@@ -60,12 +60,11 @@ do $$ declare n int; begin
   begin insert into public.tournament_admin_log (tournament_id, title, action) values (gen_random_uuid(), 'x', 'update'); raise exception 'FAIL: įrašas į žurnalą';
   exception when insufficient_privilege then null; end;
 end $$;
--- Organizatorius vykstančio turnyro keisti negali (kaip ir anksčiau)
+-- Organizatorius vykstančio turnyro taisyklių keisti negali (saugius laukus – gali, žr. 0035 testus)
 set request.jwt.claim.sub = 'ad100000-0000-4000-8000-0000000000a1';
 do $$ declare n int; begin
-  update public.tournaments set title = 'Kitas' where id = (select id from ax where k = 'live');
-  get diagnostics n = row_count;
-  assert n = 0, 'organizatorius pakeitė vykstantį';
+  begin update public.tournaments set format = 'biggest' where id = (select id from ax where k = 'live'); raise exception 'FAIL: organizatorius pakeitė formatą';
+  exception when raise_exception then if sqlerrm <> 'started_rules_locked' then raise; end if; end;
   -- Iki starto – keičia kaip anksčiau, į žurnalą nerašoma
   update public.tournaments set title = 'Būsima privati taurė' where id = (select id from ax where k = 'soon');
   get diagnostics n = row_count;

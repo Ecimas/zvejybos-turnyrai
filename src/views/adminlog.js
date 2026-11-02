@@ -10,7 +10,9 @@ export const FIELD_LT = {
   title: 'Pavadinimas', description: 'Aprašymas', ends_at: 'Pabaiga', starts_at: 'Pradžia', visibility: 'Matomumas',
   leaderboard_hidden: 'Lentelės slėpimas', late_join_minutes: 'Registracija po starto', prizes: 'Prizai',
   format: 'Formatas', top_n: 'Įskaitomų žuvų', min_length_mm: 'Minimalus ilgis', team_mode: 'Komandos',
-  league_id: 'Lyga', prize_fund_cents: 'Prizinis fondas', prize_split: 'Fondo padalijimas', sponsor_name: 'Rėmėjas', sponsor_url: 'Rėmėjo svetainė'
+  league_id: 'Lyga', prize_fund_cents: 'Prizinis fondas', prize_split: 'Fondo padalijimas', sponsor_name: 'Rėmėjas', sponsor_url: 'Rėmėjo svetainė',
+  cover_path: 'Viršelis', invite_code: 'Kvietimo nuoroda', rules_notice: 'Pranešta dalyviams', participant_removed: 'Pašalintas dalyvis',
+  scoring: 'Taškų taisyklės', scoring_rule_id: 'Taisyklių rinkinys'
 };
 
 // Vienos reikšmės tekstas žurnale: datos – lietuviškai, ilgi tekstai sutrumpinami.
@@ -19,6 +21,9 @@ export function valueText(key, v) {
   if (key === 'ends_at' || key === 'starts_at') return dateTime(v);
   if (key === 'visibility') return v === 'private' ? 'tik su kvietimu' : 'visi';
   if (typeof v === 'boolean') return v ? 'taip' : 'ne';
+  if (key === 'cover_path') return 'nuotrauka';
+  if (key === 'min_length_mm') return `${Number(v) / 10} cm`;
+  if (key === 'prize_fund_cents') return `${(Number(v) / 100).toLocaleString('lt-LT')} €`;
   const s = typeof v === 'string' ? v : JSON.stringify(v);
   return s.length > 80 ? `${s.slice(0, 77)}…` : s;
 }
@@ -42,7 +47,7 @@ export async function adminLogView(ctx) {
       <header class="top-bar">${backButton('#/profilis')}<span class="muted strong">Turnyrų žurnalas</span><span></span></header>
       <h1 class="sr-only" tabindex="-1">Turnyrų žurnalas</h1>
       ${moderationTabs(state, 'tlog')}
-      <p class="small muted">Administratorių pakeitimai ir pašalinti turnyrai. Organizatorių įprasti pakeitimai iki starto čia nerodomi.</p>
+      <p class="small muted">Administratorių pakeitimai, prasidėjusių turnyrų pakeitimai, pašalinti dalyviai ir turnyrai. Organizatorių įprasti pakeitimai iki starto čia nerodomi.</p>
       ${rows.length ? html`<div class="stack" data-log>${rows.map((r) => {
         const lines = r.action === 'update' ? changeLines(r.changes) : [];
         return html`<article class="card stack-2" data-log-row="${r.action}">

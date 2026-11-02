@@ -73,6 +73,7 @@ function promoCard(t, me) {
   const dm = dayMonth(d);
   const own = me && t.organizer_id === me;
   return html`<a class="card-link l-promo t-card" href="${href(t)}">
+    ${t.cover_url ? html`<span class="l-cover" aria-hidden="true"><img src="${t.cover_url}" alt="" loading="lazy"></span>` : ''}
     <span class="row gap-12 l-top">
       <span class="l-date" aria-hidden="true"><b>${dm.day}</b><span>${dm.month}</span></span>
       <span class="grow stack-1">
