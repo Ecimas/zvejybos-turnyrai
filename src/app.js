@@ -28,6 +28,7 @@ import { clubsView, clubView, clubLeagueView, clubMapView } from './views/clubs.
 import { loginView } from './views/login.js';
 import { inviteView, takeInvite } from './views/invite.js';
 import { privacyView, rulesView } from './views/pages.js';
+import { inboxView, chatView, reportedMessagesView } from './views/messages.js';
 
 const ROUTES = [
   [/^\/$/, tournamentsView],
@@ -69,6 +70,9 @@ const ROUTES = [
   [/^\/klubu-lyga$/, clubLeagueView],
   [/^\/privatumas$/, privacyView],
   [/^\/taisykles$/, rulesView],
+  [/^\/zinutes$/, inboxView],
+  [/^\/zinutes\/([\w-]+)$/, chatView],
+  [/^\/moderavimas\/zinutes$/, reportedMessagesView],
   [/^\/prisijungti$/, loginView]
 ];
 
@@ -275,10 +279,23 @@ async function main() {
       }
     }
     hydrateModTabs(main, backend);
+    hydrateUnread();
     showBanner();
     if (!keepScroll) main.querySelector('h1')?.focus({ preventScroll: true });
     refreshStatus();
   }
+
+  // Neperskaitytų žinučių skaičius ant žinučių mygtuko (0036).
+  function hydrateUnread() {
+    const els = document.querySelectorAll('[data-unread]');
+    if (!els.length || !ctx.state.user || !backend.unreadCount) return;
+    backend.unreadCount().then((n) => els.forEach((el) => {
+      el.textContent = n > 99 ? '99+' : String(n);
+      el.hidden = !n;
+      el.closest('[data-inbox-btn]')?.setAttribute('aria-label', n ? `Žinutės, neperskaitytų: ${n}` : 'Žinutės');
+    })).catch(() => {});
+  }
+  setInterval(() => { if (!document.hidden) hydrateUnread(); }, 60000);
 
   function renderNav(active) {
     const nav = $('#nav');

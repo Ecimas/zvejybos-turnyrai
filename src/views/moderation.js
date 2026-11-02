@@ -358,6 +358,7 @@ export async function reportsView(ctx) {
       <header class="top-bar">${backButton('#/profilis')}<span class="muted strong">Pranešimai: ${groups.length}</span><span></span></header>
       <h1 class="sr-only" tabindex="-1">Pranešimai apie laimikius</h1>
       ${tabs('reports')}
+      ${can(state, 'ban') ? html`<a class="card card-link row gap-10" href="#/moderavimas/zinutes" data-msg-reports-link>${icon('chat', 20)}<span class="grow strong">Pranešimai apie žinutes</span>${icon('chevron', 18)}</a>` : ''}
       ${groups.length ? groups.map((g) => html`<article class="card stack" data-group="${g.catchId}">
         <div class="row tight">
           <button class="thumb-btn" data-zoom aria-label="Rodyti nuotrauką per visą ekraną">${thumb(g.catch?.photo_path, 72)}</button>

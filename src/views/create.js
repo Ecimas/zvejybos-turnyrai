@@ -9,6 +9,7 @@ import { can } from '../lib/roles.js';
 import { openRulesBuilder, ruleCard, rulesLines, canCustomRules } from './rules.js';
 import { sponsorEditor } from './sponsors.js';
 import { shrinkCover } from '../lib/sponsors.js';
+import { prizersSection, bindPrizers } from './messages.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 const local = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -74,6 +75,8 @@ export async function createView(ctx, [editId] = [], query) {
     backend.leaderboard(t.id).catch(() => [])
   ]) : [null, []];
   const spEditor = edit ? sponsorEditor(ctx, t) : null;
+  // Pasibaigusio turnyro prizininkai (0036): kam išsiųsta žinutė, ar organizatorius parašė, ar prizas įteiktas.
+  const prizers = edit && phase(t) === 'done' && backend.prizeStatus ? await backend.prizeStatus(t.id).catch(() => []) : [];
   const start = t ? new Date(t.starts_at) : new Date(Date.now() + 60 * 60e3);
   if (!t) start.setMinutes(0, 0, 0);
   const end = t ? new Date(t.ends_at) : new Date(start.getTime() + 2 * 24 * 60 * 60e3);
@@ -257,7 +260,7 @@ export async function createView(ctx, [editId] = [], query) {
         <p class="small muted">Gali keisti viską, kaip organizatorius. Pakeitimai įrašomi į žurnalą, organizatorius gaus pranešimą.</p></div>`
     : html`<p class="small muted">Iki starto gali keisti viską. Dalyviai matys naujas taisykles.</p>`;
 
-  const SECTIONS = [['set-main', 'Pagrindinis'], ['set-rules', 'Taisyklės'], ['set-prizes', 'Prizai'], ['set-sponsors', 'Rėmėjai'], ['set-people', 'Dalyviai'], ['set-invite', 'Kvietimas']];
+  const SECTIONS = [...(prizers.length ? [['set-prizers', 'Prizininkai']] : []), ['set-main', 'Pagrindinis'], ['set-rules', 'Taisyklės'], ['set-prizes', 'Prizai'], ['set-sponsors', 'Rėmėjai'], ['set-people', 'Dalyviai'], ['set-invite', 'Kvietimas']];
   const divName = (id) => (t.divisions || []).find((d) => d.id === id)?.name || '';
   const boardBy = new Map((board || []).map((r) => [r.user_id, r]));
 
@@ -277,6 +280,7 @@ export async function createView(ctx, [editId] = [], query) {
       </div>
       ${notice}
       <nav class="stabs" data-stabs aria-label="Nustatymų skiltys">${SECTIONS.map(([id, label], i) => html`<button type="button" data-goto="${id}" aria-pressed="${i === 0}">${label}</button>`)}</nav>
+      ${prizersSection(t, prizers, { organizer: mineT })}
 
       <form class="stack-lg" data-form novalidate>
         <section class="set-sec" id="set-main">
@@ -334,6 +338,7 @@ export async function createView(ctx, [editId] = [], query) {
               <div class="p-menu" data-p-menu hidden>
                 ${(t.divisions || []).length ? html`<label class="field"><span class="small muted strong">Divizionas</span>
                   <select data-p-div aria-label="${x.nickname} divizionas"><option value="">Nepasirinktas</option>${t.divisions.map((d) => html`<option value="${d.id}" ${x.division_id === d.id ? 'selected' : ''}>${d.name}</option>`)}</select></label>` : ''}
+                ${mineT && x.user_id !== state.user.id ? html`<button type="button" class="btn btn-ghost" data-p-write>${icon('chat', 16)}Rašyti žinutę</button>` : ''}
                 <a class="btn btn-ghost" href="#/zvejys/${x.user_id}">${icon('user', 16)}Profilis</a>
                 ${self ? '' : html`<button type="button" class="btn btn-ghost bad" data-p-remove>${icon('x', 16, 2.4)}Pašalinti iš turnyro</button>
                 <div class="stack-2" data-p-confirm hidden>
@@ -681,6 +686,7 @@ export async function createView(ctx, [editId] = [], query) {
       }
 
       function mountSettings() {
+        bindPrizers(root, ctx, prizers);
         // Skilčių juosta: nušoka į skiltį ir pažymi ją
         const tabs = [...root.querySelectorAll('[data-goto]')];
         tabs.forEach((b) => b.addEventListener('click', () => {
@@ -788,6 +794,15 @@ export async function createView(ctx, [editId] = [], query) {
             const menu = li.querySelector('[data-p-menu]');
             menu.hidden = !menu.hidden;
             more.setAttribute('aria-expanded', String(!menu.hidden));
+            return;
+          }
+          if (e.target.closest('[data-p-write]')) {
+            try {
+              const cid = await backend.startConversation(t.id, uid);
+              ctx.navigate(`#/zinutes/${cid}`);
+            } catch (err) {
+              ctx.toast(err.message || 'Nepavyko pradėti pokalbio');
+            }
             return;
           }
           if (e.target.closest('[data-p-remove]')) {

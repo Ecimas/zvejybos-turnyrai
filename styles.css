@@ -1253,3 +1253,68 @@ dd .rb-desc { font-weight: 600; }
 .t-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .l-cover { display: block; height: 110px; margin: -16px -16px 0; border-radius: 19px 19px 0 0; overflow: hidden; background: var(--surface-2); }
 .l-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ---------- Žinutės (0036) ---------- */
+.ic-badge { position: relative; width: 44px; height: 44px; border-radius: 22px; border: 1px solid var(--line-2); display: inline-grid; place-items: center; color: var(--text); flex: none; }
+.ic-badge b { position: absolute; top: -5px; right: -5px; min-width: 20px; height: 20px; border-radius: 10px; background: var(--accent); color: var(--on-accent);
+  font-size: 12px; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; }
+.ic-badge b[hidden] { display: none; }
+.inbox { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+.inbox li + li { border-top: 1px solid var(--line); }
+.th { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; color: var(--text); text-decoration: none; min-height: 72px; }
+.th .avatar { width: 44px; height: 44px; border-radius: 22px; background: var(--surface-2); }
+.th-sys { background: var(--accent) !important; color: var(--on-accent); }
+.th-nm { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.th-t { font-size: 12.5px; color: var(--accent-ink); font-weight: 700; }
+.th-p { font-size: 14px; color: var(--muted); }
+.th.unread .th-p { color: var(--text); font-weight: 600; }
+.th-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; font-size: 12px; color: var(--muted); }
+.dotn { min-width: 22px; height: 22px; border-radius: 11px; background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 800;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0 6px; }
+.chat-screen { padding-bottom: 110px; }
+.chat-top .chat-name { margin: 0; font-size: 17px; font-weight: 800; }
+.link-plain { color: var(--muted); text-decoration: none; }
+.chat-menu { position: relative; }
+.chat-ctx { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.btn-sm { min-height: 40px; padding: 0 12px; font-size: 14px; border-radius: 12px; }
+.btn-ok { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.chat { display: flex; flex-direction: column; gap: 8px; }
+.chat .day { align-self: center; font-size: 12px; color: var(--muted); font-weight: 700; margin-top: 6px; }
+.msg-li { display: flex; flex-direction: column; }
+.b { max-width: 82%; padding: 10px 14px; border-radius: 18px; font-size: 15px; line-height: 1.38; white-space: pre-wrap; overflow-wrap: anywhere; }
+.b small { display: block; font-size: 11px; opacity: .75; margin-top: 4px; }
+.b.them { align-self: flex-start; background: var(--surface-2); color: var(--text); border-bottom-left-radius: 6px; }
+.b.me { align-self: flex-end; background: var(--accent); color: var(--on-accent); border-bottom-right-radius: 6px; }
+.b-auto { opacity: .9; font-size: 14px; }
+.b-actions { align-self: flex-start; padding: 0 6px; }
+.b-actions[hidden] { display: none; }
+.b-event { align-self: center; margin: 0; font-size: 13px; color: var(--ok); font-weight: 700; display: inline-flex; gap: 4px; align-items: center; }
+.who { font-size: 12px; color: var(--muted); font-weight: 700; margin: 4px 0 2px 6px; }
+.sysmsg { border: 1.5px solid var(--line-2); border-radius: 20px; padding: 14px 16px; background: var(--surface); display: flex; flex-direction: column; gap: 10px; }
+.sysmsg.prize { border-color: var(--accent); background-color: var(--surface);
+  background-image: linear-gradient(160deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), var(--surface) 70%); }
+.sys-pl { font-family: 'Barlow Condensed', sans-serif; font-size: 44px; font-weight: 800; line-height: .9; color: var(--accent-ink); }
+.sys-title { font-size: 17px; }
+.big-chip { align-self: flex-start; font-size: 14px; padding: 6px 12px; }
+.sys-note { display: flex; gap: 8px; margin: 0; font-size: 14px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
+.sys-note svg { flex: none; margin-top: 2px; }
+.chat-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--bg); border-top: 1px solid var(--line);
+  padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); }
+.chat-bar > * { max-width: 616px; margin: 0 auto; }
+.composer { display: flex; gap: 8px; align-items: flex-end; }
+.composer textarea { flex: 1; min-height: 48px; max-height: 140px; resize: none; border-radius: 24px; border: 1px solid var(--line-2); background: var(--surface);
+  color: var(--text); padding: 12px 16px; font-size: 16px; line-height: 1.3; }
+.send-btn { width: 48px; height: 48px; border-radius: 24px; border: 0; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; flex: none; cursor: pointer; }
+.send-btn svg { transform: rotate(0deg); }
+.send-btn:disabled { opacity: .5; }
+.chat-foot { text-align: center; }
+.dl-note { display: flex; gap: 10px; margin: 0; border-radius: 16px; padding: 12px 14px; border: 1.5px solid var(--wait); background: var(--wait-bg); color: var(--text); font-size: 14px; }
+.dl-note.late { border-color: var(--bad); background: var(--bad-bg); }
+.dl-note svg { flex: none; margin-top: 2px; }
+.prz { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+.pr-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-width: 0; }
+.pr-row + .pr-row { border-top: 1px solid var(--line); }
+.pr-r { width: 32px; flex: none; text-align: center; font-family: 'Barlow Condensed', sans-serif; font-size: 26px; font-weight: 800; color: var(--accent-ink); }
+.st-chip { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 800; padding: 3px 9px; border-radius: 999px; }
+.st-chip.ok { background: var(--ok-bg); color: var(--ok); }
+.b-quote { margin: 0; padding: 10px 12px; border-left: 3px solid var(--line-2); background: var(--surface-2); border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -274,6 +274,8 @@ export async function tournamentView(ctx, [id], query) {
         ${organizer || tAdmin ? html`<a class="btn" href="#/t/${t.id}/remejai" data-sponsors-manage>${icon('star', 18)}Rėmėjai</a>` : ''}
       </section>` : ''}
 
+      ${me && t.joined && !organizer ? html`<button type="button" class="btn btn-ghost" data-msg-org>${icon('chat', 18)}Rašyti organizatoriui</button>` : ''}
+
       ${showMine ? html`<section class="card hero stack">
         <div class="row-between">
           <div class="row gap-8 baseline">
@@ -394,6 +396,17 @@ export async function tournamentView(ctx, [id], query) {
     ${cta ? html`<div class="cta-bar">${cta}</div>` : ''}`,
     mount(root) {
       hydratePhotos(root, backend);
+      root.querySelector('[data-msg-org]')?.addEventListener('click', async (e) => {
+        const b = e.currentTarget;
+        b.disabled = true;
+        try {
+          const cid = await backend.startConversation(t.id);
+          ctx.navigate(`#/zinutes/${cid}`);
+        } catch (err) {
+          b.disabled = false;
+          ctx.toast(err.message || 'Nepavyko pradėti pokalbio');
+        }
+      });
       trackViews(backend, t.sponsors);
       bindSponsorClicks(root, backend);
       // Skiltys: perjungiama be perkrovimo; pasirinkimas prisimenamas šiam turnyrui (sesijai).

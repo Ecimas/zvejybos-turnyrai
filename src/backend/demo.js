@@ -8,6 +8,7 @@ import { phase, registrationOpen } from '../lib/format.js';
 import { banActive } from '../lib/bans.js';
 import { rolesOf, ASSIGNABLE, permsOf, STAFF_ROLES } from '../lib/roles.js';
 import { seedClubsPlus, clubsPlusDemo } from './clubs_demo.js';
+import { messagesDemo } from './messages_demo.js';
 import { validateRules } from '../lib/custom_scoring.js';
 
 const KEY = 'zt-demo-v1';
@@ -1285,5 +1286,6 @@ export function createDemoBackend({ photos } = {}) {
       return db.entries.filter((e) => e.user_id === userId).length;
     }
   };
-  return Object.assign(api, clubsPlusDemo({ getDb: () => db, save, ME, perms: () => permsOf(db.profiles[ME]) }));
+  return Object.assign(api, clubsPlusDemo({ getDb: () => db, save, ME, perms: () => permsOf(db.profiles[ME]) }),
+    messagesDemo({ getDb: () => db, save, ME, perms: () => permsOf(db.profiles[ME]), leaderboard: (id) => api.leaderboard(id) }));
 }

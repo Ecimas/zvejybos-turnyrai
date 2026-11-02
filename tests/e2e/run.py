@@ -1160,6 +1160,91 @@ def diary_plus_demo_test(page, base):
     step("išvyka su vieta: tos dienos laimikiai priskiriami automatiškai")
 
 
+def messages_demo_test(page, base):
+    """Vidinės žinutės (0036): rezultato žinutė prizininkui, pokalbis, blokavimas, prizininkai organizatoriui."""
+    page.goto(base + "#/")
+    badge = page.locator("[data-inbox-btn] [data-unread]")
+    expect(badge).to_have_text("1")
+    page.locator("[data-inbox-btn]").click()
+    th = page.locator("[data-thread]").first
+    expect(th).to_contain_text("Ąžuolas_K · organizatorius")
+    expect(th).to_contain_text("Rugsėjo plėšrūnai · 1 vieta")
+    expect(th.locator(".dotn")).to_have_text("1")
+    shot(page, "zinutes")
+    th.click()
+    card = page.locator("[data-result]")
+    expect(card).to_contain_text("Sveikiname! Užėmei 1 vietą")
+    expect(card).to_contain_text("Prizas: 60 €")
+    expect(card).to_contain_text("3 darbo dienas")
+    page.get_by_label("Žinutė").fill("Ačiū! Kada galėsiu atsiimti prizą?")
+    page.get_by_role("button", name="Siųsti").click()
+    expect(page.locator(".b.me")).to_contain_text("Ačiū! Kada galėsiu atsiimti prizą?")
+    expect(page.get_by_label("Žinutė")).to_have_value("")
+    shot(page, "pokalbis-laimetojas")
+    # Blokavimas
+    page.get_by_role("button", name="Daugiau veiksmų").click()
+    page.get_by_role("button", name="Blokuoti pokalbį").click()
+    expect(page.locator("[data-blocked]")).to_contain_text("Užblokavai")
+    expect(page.get_by_label("Žinutė")).to_have_count(0)
+    page.get_by_role("button", name="Atblokuoti").click()
+    expect(page.get_by_label("Žinutė")).to_be_visible()
+    page.goto(base + "#/")
+    expect(badge).to_be_hidden()
+    step("žinutės: rezultatas prizininkui, atsakymas, blokavimas, neperskaitytų skaičius")
+
+    # Dalyvis rašo vykstančio turnyro organizatoriui
+    page.goto(base + "#/t/t-dvikovos?skiltis=apzvalga")
+    page.get_by_role("button", name="Rašyti organizatoriui").click()
+    expect(page.locator(".chat-name")).to_be_visible()
+    page.get_by_label("Žinutė").fill("Ar galima žvejoti iš valties?")
+    page.get_by_role("button", name="Siųsti").click()
+    expect(page.locator(".b.me")).to_have_count(1)
+    step("dalyvis rašo organizatoriui iš turnyro puslapio")
+
+    # Organizatorius: turnyras baigėsi -> prizininkų sąrašas, rašymas, įteikimas
+    page.evaluate("""() => { const k = 'zt-demo-v1'; const d = JSON.parse(localStorage.getItem(k));
+      const t = d.tournaments.find(x => x.id === 't-slaptas'); t.ends_at = new Date(Date.now() - 3600e3).toISOString();
+      t.prize_fund_cents = 20000; t.prize_split = [60, 40]; localStorage.setItem(k, JSON.stringify(d)); }""")
+    page.reload()
+    page.goto(base + "#/t/t-slaptas/redaguoti")
+    pz = page.locator("[data-prizers]")
+    expect(pz).to_contain_text("Prizininkai · 2")
+    expect(pz.locator("[data-deadline]")).to_contain_text("3 darbo dienos")
+    expect(pz.locator("[data-prizer]").first).to_contain_text("Nemuno_Jonas · 120 €")
+    expect(pz.locator("[data-prizer]").first).to_contain_text("Dar neparašei")
+    expect(page.locator("[data-goto=set-prizers]")).to_have_text("Prizininkai")
+    shot(page, "prizininkai")
+    pz.get_by_role("link", name="Rašyti Nemuno_Jonas").click()
+    expect(page.locator("[data-prize-ctx]")).to_contain_text("1 vieta · 120 €")
+    expect(page.locator(".b-auto")).to_contain_text("Automatinė žinutė išsiųsta")
+    page.get_by_label("Žinutė").fill("Sveikinu! Prizą perduosiu šeštadienį.")
+    page.get_by_role("button", name="Siųsti").click()
+    expect(page.locator(".b.me")).to_contain_text("Sveikinu!")
+    page.get_by_role("button", name="Pažymėti: įteiktas").click()
+    expect(page.locator("#toast")).to_have_text("Pažymėta: prizas įteiktas")
+    expect(page.locator(".b-event")).to_contain_text("prizas įteiktas")
+    page.goto(base + "#/t/t-slaptas/redaguoti")
+    expect(pz.locator("[data-prizer]").first).to_contain_text("Įteikta")
+    # Rašyti visiems prizininkams
+    pz.get_by_role("button", name="Rašyti visiems prizininkams").click()
+    pz.locator("[data-write-all-text]").fill("Ačiū visiems už turnyrą!")
+    pz.get_by_role("button", name="Siųsti 2 prizininkams").click()
+    expect(page.locator("#toast")).to_have_text("Žinutė išsiųsta visiems prizininkams")
+    # Organizatorius rašo bet kuriam dalyviui iš dalyvių sąrašo
+    person = page.locator("[data-person]", has_text="MariųVilkas")
+    person.locator("[data-p-more]").click()
+    person.get_by_role("button", name="Rašyti žinutę").click()
+    expect(page.locator(".chat-name")).to_have_text("MariųVilkas")
+    # Organizatoriaus paties rezultatas – sisteminė žinutė, atsakyti negalima
+    page.goto(base + "#/zinutes")
+    sys_th = page.locator("[data-thread]", has_text="Žvejybos turnyrai").first
+    expect(sys_th).to_contain_text("Draugų iššūkis")
+    sys_th.click()
+    expect(page.locator("[data-result]")).to_contain_text("Užėmei 3 vietą iš 3")
+    expect(page.locator("[data-sys-foot]")).to_contain_text("atsakyti į ją negalima")
+    step("organizatorius: prizininkai, terminas, žinutė, įteikimas, rašymas visiems ir dalyviui")
+
+
 def map_demo_test(page, base):
     page.goto(base + "#/profilis?skiltis=zvejyba")
     page.get_by_role("link", name="Žemėlapis").click()
@@ -1849,6 +1934,7 @@ def main():
         features_panel_demo_test(page, base)
         custom_rules_demo_test(page, base)
         diary_plus_demo_test(page, base)
+        messages_demo_test(page, base)
 
         ctx.close()
 
