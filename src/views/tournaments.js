@@ -68,7 +68,7 @@ function mineRow(t, rank) {
 }
 
 // Artėjantis turnyras – reklaminė kortelė: data, startas, fondas, rėmėjai, kvietimas registruotis.
-function promoCard(t, me) {
+export function promoCard(t, me) {
   const d = new Date(t.starts_at);
   const dm = dayMonth(d);
   const own = me && t.organizer_id === me;
@@ -93,7 +93,7 @@ function promoCard(t, me) {
 }
 
 // Vykstantis ar pasibaigęs – glausta kortelė.
-function rowCard(t, rank) {
+export function rowCard(t, rank) {
   const p = phase(t);
   return html`<a class="card-link l-row t-card" href="${href(t)}">
     <span class="grow stack-1">

@@ -1486,3 +1486,41 @@ body.has-appbar { --top-offset: calc(60px + env(safe-area-inset-top)); }
 /* Kvietimas tapti rėmėju (turnyro prizų skiltyje) */
 .sponsor-invite { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 10px 14px; border-radius: 14px; border: 1px dashed var(--line-2); color: var(--muted); text-decoration: none; font-size: 14px; }
 .sponsor-invite b { color: var(--accent-ink); }
+
+/* Pradinis puslapis svečiams (#/sveiki) */
+.lp { padding: 0 16px calc(32px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px;
+  background: radial-gradient(700px 520px at 85% 0%, rgba(255,166,43,.12), transparent 60%); }
+.lp-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: calc(12px + env(safe-area-inset-top)) 0 4px; }
+.lp-brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 23px; white-space: nowrap; }
+.lp-brand img { border-radius: 9px; }
+.lp-brand b { color: var(--accent-ink); }
+.lp-login { min-height: 44px; padding: 0 16px; }
+.lp-hero { display: flex; flex-direction: column; gap: 14px; padding: 18px 0 8px; }
+.lp-kicker { font-size: 13px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; color: var(--accent-ink); }
+.lp-h1 { margin: 0; font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: clamp(50px, 14vw, 72px); line-height: .92; }
+.lp-h1 b, .lp-h2 b { color: var(--accent-ink); }
+.lp-lead { margin: 0; font-size: 17px; color: var(--soft); }
+.lp-btns { display: flex; flex-direction: column; gap: 10px; }
+.lp-note { margin: 0; font-size: 13px; color: var(--muted); text-align: center; }
+.lp-phone { width: min(280px, 74vw); margin: 10px auto 0; border-radius: 40px; padding: 10px; background: #02060A; box-shadow: 0 0 0 2px var(--line), 0 30px 80px rgba(0,0,0,.5), 0 0 100px rgba(255,166,43,.10); }
+.lp-phone video { display: block; width: 100%; aspect-ratio: 9 / 16; border-radius: 31px; object-fit: cover; background: #0A1822; }
+.lp-sec { display: flex; flex-direction: column; gap: 14px; padding: 26px 0 6px; }
+.lp-sec-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.lp-h2 { margin: 0; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 36px; line-height: 1; }
+.lp-steps { display: flex; flex-direction: column; gap: 10px; }
+.lp-step { display: flex; gap: 14px; align-items: flex-start; padding: 16px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); }
+.lp-step-n { flex: none; width: 38px; height: 38px; border-radius: 19px; background: var(--accent); color: var(--on-accent); font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+.lp-step-h { display: inline-flex; align-items: center; gap: 6px; font-size: 17px; }
+.lp-step-h svg { color: var(--accent-ink); }
+.lp-feats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.lp-feat { display: flex; flex-direction: column; gap: 6px; padding: 16px 14px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); }
+.lp-ic { width: 42px; height: 42px; border-radius: 13px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-ink); display: inline-flex; align-items: center; justify-content: center; }
+.lp-duo { gap: 10px; }
+.lp-card { display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); color: var(--text); text-decoration: none; }
+.lp-card > svg:first-child { color: var(--accent-ink); flex: none; }
+.lp-final { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; margin-top: 22px; padding: 28px 18px; border-radius: 24px;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 50%, transparent); background: radial-gradient(420px 220px at 50% 0%, rgba(255,166,43,.16), transparent 70%), var(--surface); }
+.lp-final p { margin: 0; }
+.lp-final .btn { align-self: stretch; }
+.lp-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; padding: 22px 0 6px; font-size: 14px; }
+.lp-foot a { color: var(--muted); }

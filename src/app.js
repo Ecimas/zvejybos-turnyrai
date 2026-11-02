@@ -33,9 +33,12 @@ import { privacyView, rulesView } from './views/pages.js';
 import { inboxView, chatView, reportedMessagesView } from './views/messages.js';
 import { helpView } from './views/help.js';
 import { clubChatView } from './views/clubchat.js';
+import { landingView, landingSeen } from './views/landing.js';
 
 const ROUTES = [
-  [/^\/$/, tournamentsView],
+  // Neprisijungęs svečias pirmą kartą mato pradinį puslapį; paspaudus „Žiūrėti turnyrus“ – sąrašą.
+  [/^\/$/, (ctx, p, q) => (!ctx.state.user && !landingSeen() ? landingView(ctx) : tournamentsView(ctx, p, q))],
+  [/^\/sveiki$/, landingView],
   [/^\/t\/([\w-]+)$/, tournamentView],
   [/^\/t\/([\w-]+)\/lentele$/, boardView],
   [/^\/t\/([\w-]+)\/dalyvis\/([\w-]+)$/, participantView],
