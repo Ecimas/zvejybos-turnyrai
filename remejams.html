@@ -4,113 +4,296 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Rėmėjams – Žvejybos turnyrai</title>
-  <meta name="description" content="Kaip rėmėjų logotipai ir pasiūlymai matomi „Žvejybos turnyrų“ programėlėje: turnyro puslapis, sąrašas, rezultatų lentelė, didysis ekranas ir statistika.">
+  <meta name="description" content="Jūsų prekės ženklas ten, kur žvejai žiūri kiekvieną turnyro dieną: turnyro puslapis, rezultatų lentelė, didysis ekranas, prizai. Su parodymų ir paspaudimų ataskaita.">
   <meta property="og:title" content="Rėmėjams – Žvejybos turnyrai">
   <meta property="og:description" content="Jūsų logotipas ten, kur žvejai žiūri dažniausiai: turnyro puslapyje, rezultatų lentelėje ir renginio ekrane. Su parodymų ir paspaudimų ataskaita.">
-  <meta property="og:image" content="store/remejams/remejai-turnyras.webp">
+  <meta property="og:image" content="store/remejams/v2-turnyras.webp">
+  <meta name="theme-color" content="#06121B">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="store/static.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Manrope:wght@400;600;700;800&display=swap">
   <style>
-    .hero { padding: 18px 20px; border-radius: 16px; background: rgba(255, 166, 43, .1); border: 1px solid rgba(255, 166, 43, .4); margin: 16px 0 8px; }
-    .hero p { margin: 6px 0; }
-    .shot { display: grid; gap: 16px; align-items: center; margin: 12px 0 8px; }
-    @media (min-width: 640px) { .shot { grid-template-columns: 260px 1fr; } }
-    .shot img { width: 100%; max-width: 300px; height: auto; border-radius: 18px; border: 1px solid rgba(160, 180, 195, .3); display: block; }
-    .shot.wide img { max-width: 360px; }
-    .tiers { display: grid; gap: 12px; margin-top: 10px; }
-    @media (min-width: 640px) { .tiers { grid-template-columns: 1fr 1fr; } }
-    .tier { padding: 14px 16px; border-radius: 14px; border: 1px solid rgba(160, 180, 195, .3); }
-    .tier h3 { margin: 0 0 6px; font-size: 17px; }
-    .tier ul { margin: 0; padding-left: 18px; }
-    .cta { display: inline-block; margin-top: 8px; padding: 12px 18px; border-radius: 12px; background: var(--accent); color: #0A1822; font-weight: 700; text-decoration: none; }
+    :root { --bg: #06121B; --bg2: #0A1822; --surface: #0F2230; --surface2: #132A3A; --line: #1E3A50; --text: #EEF4F7; --soft: #C9D7E0; --muted: #A3B8C6;
+      --accent: #FFA62B; --on-accent: #1A1206; --ok: #5BE3A6; --display: 'Barlow Condensed', 'Arial Narrow', sans-serif; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 'Manrope', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: var(--accent); }
+    img, video { max-width: 100%; height: auto; display: block; }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+    section { padding: 56px 0; }
+    h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: .3px; margin: 0; }
+    h2 { font-size: clamp(36px, 7vw, 54px); line-height: 1; }
+    h2 b, h1 b { color: var(--accent); font-weight: 800; }
+    .kicker { display: inline-flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+    .kicker::before { content: ''; width: 34px; height: 3px; border-radius: 2px; background: var(--accent); }
+    .lead { font-size: 19px; color: var(--soft); max-width: 640px; }
+    .muted { color: var(--muted); }
+    .small { font-size: 14px; }
+
+    /* Viršus */
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0; }
+    .brand { white-space: nowrap; display: inline-flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-family: var(--display); font-weight: 700; font-size: 24px; }
+    .brand img { width: 36px; height: 36px; border-radius: 10px; }
+    .brand b { color: var(--accent); }
+    .hero { padding: 24px 0 56px; background: radial-gradient(900px 600px at 70% 20%, rgba(255,166,43,.10), transparent 60%), radial-gradient(800px 700px at 10% 80%, rgba(91,227,166,.05), transparent 60%); }
+    .hero-grid { display: grid; gap: 36px; align-items: center; }
+    @media (min-width: 860px) { .hero-grid { grid-template-columns: 1.15fr .85fr; } }
+    .hero h1 { font-size: clamp(48px, 11vw, 84px); line-height: .95; font-weight: 800; }
+    .hero .lead { margin: 18px 0 26px; }
+    .btns { display: flex; flex-wrap: wrap; gap: 12px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 54px; padding: 0 24px; border-radius: 16px; font-weight: 800; font-size: 17px; text-decoration: none; border: 2px solid transparent; }
+    .btn-primary { background: var(--accent); color: var(--on-accent); }
+    .btn-ghost { border-color: var(--line); color: var(--text); background: rgba(15,34,48,.6); }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+    .chips span { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: rgba(15,34,48,.7); font-size: 14px; font-weight: 700; color: var(--soft); }
+    .phone { width: min(320px, 78vw); margin: 0 auto; border-radius: 44px; padding: 12px; background: #02060A; box-shadow: 0 0 0 2px var(--line), 0 40px 100px rgba(0,0,0,.6), 0 0 120px rgba(255,166,43,.10); }
+    .phone video, .phone img { width: 100%; border-radius: 34px; aspect-ratio: 9 / 16; object-fit: cover; background: #0A1822; }
+
+    /* Kur matomas */
+    .places { display: grid; gap: 18px; margin-top: 30px; }
+    @media (min-width: 720px) { .places { grid-template-columns: 1fr 1fr; } }
+    .place { background: var(--surface); border: 1px solid var(--line); border-radius: 24px; overflow: hidden; display: flex; flex-direction: column; }
+    .place .pic { background: linear-gradient(180deg, #0B1D29, #08151E); padding: 20px 20px 0; display: flex; justify-content: center; align-items: flex-end; min-height: 280px; }
+    .place .pic img { width: min(270px, 100%); border-radius: 18px 18px 0 0; border: 1px solid var(--line); border-bottom: 0; box-shadow: 0 -10px 40px rgba(0,0,0,.35); }
+    .place .pic.wide { padding: 24px; align-items: center; }
+    .place .pic.wide img { width: 100%; border-radius: 14px; border-bottom: 1px solid var(--line); }
+    .place .txt { padding: 20px 22px 24px; }
+    .place h3 { font-size: 30px; display: flex; align-items: center; gap: 12px; }
+    .num { flex: none; width: 36px; height: 36px; border-radius: 18px; background: var(--accent); color: var(--on-accent); font-family: 'Manrope', sans-serif; font-size: 17px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+    .place p { margin: 8px 0 0; color: var(--soft); }
+    .place.feature { border-color: rgba(255,166,43,.55); }
+    @media (min-width: 720px) { .place.span2 { grid-column: span 2; } .place.span2 .pic.wide img { max-width: 760px; } }
+
+    /* Nauda */
+    .benefits { display: grid; gap: 14px; margin-top: 30px; }
+    @media (min-width: 640px) { .benefits { grid-template-columns: 1fr 1fr; } }
+    @media (min-width: 960px) { .benefits { grid-template-columns: 1fr 1fr 1fr; } }
+    .ben { padding: 22px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); }
+    .ben .ic { width: 48px; height: 48px; border-radius: 14px; background: rgba(255,166,43,.14); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px; }
+    .ben h3 { font-size: 26px; }
+    .ben p { margin: 6px 0 0; color: var(--soft); font-size: 16px; }
+
+    /* Ataskaita */
+    .report { display: grid; gap: 28px; align-items: center; margin-top: 26px; }
+    @media (min-width: 860px) { .report { grid-template-columns: 1fr 1fr; } }
+    .report img { border-radius: 20px; border: 1px solid var(--line); }
+    .report ul { margin: 14px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; }
+    .report li { display: flex; gap: 12px; align-items: flex-start; color: var(--soft); }
+    .report li b { color: var(--text); }
+    .tick { flex: none; width: 26px; height: 26px; border-radius: 13px; background: #123A2E; color: var(--ok); display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; margin-top: 2px; }
+
+    /* Lygiai */
+    .tiers { display: grid; gap: 16px; margin-top: 30px; }
+    @media (min-width: 720px) { .tiers { grid-template-columns: 1fr 1fr; } }
+    .tier { padding: 26px; border-radius: 24px; background: var(--surface); border: 1px solid var(--line); }
+    .tier.main { border: 2px solid var(--accent); background: linear-gradient(180deg, rgba(255,166,43,.08), var(--surface) 45%); }
+    .tier .badge { display: inline-block; padding: 6px 12px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 13px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
+    .tier h3 { font-size: 34px; }
+    .tier ul { margin: 14px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .tier li { display: flex; gap: 10px; align-items: flex-start; color: var(--soft); }
+    .tier li.off { opacity: .45; }
+    .note { margin-top: 18px; padding: 16px 18px; border-radius: 16px; background: var(--surface2); color: var(--soft); font-size: 15px; }
+
+    /* Žingsniai */
+    .steps { display: grid; gap: 14px; margin-top: 30px; counter-reset: s; }
+    @media (min-width: 760px) { .steps { grid-template-columns: repeat(3, 1fr); } }
+    .step { padding: 24px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); }
+    .step h3 { font-size: 26px; margin-top: 10px; }
+    .step p { margin: 6px 0 0; color: var(--soft); font-size: 16px; }
+
+    /* DUK */
+    .faq { margin-top: 26px; display: flex; flex-direction: column; gap: 10px; }
+    details { border-radius: 16px; border: 1px solid var(--line); background: var(--surface); }
+    summary { cursor: pointer; padding: 18px 20px; font-weight: 800; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: '+'; color: var(--accent); font-size: 22px; line-height: 1; }
+    details[open] summary::after { content: '−'; }
+    details p { margin: 0; padding: 0 20px 18px; color: var(--soft); }
+
+    /* Pabaiga */
+    .cta-band { margin: 20px 0 0; padding: 40px 24px; border-radius: 28px; text-align: center; background: radial-gradient(600px 300px at 50% 0%, rgba(255,166,43,.18), transparent 70%), var(--surface); border: 1px solid rgba(255,166,43,.4); }
+    .cta-band h2 { font-size: clamp(38px, 8vw, 60px); }
+    .cta-band p { color: var(--soft); max-width: 560px; margin: 12px auto 24px; }
+    .cta-band .btns { justify-content: center; }
+    footer { padding: 34px 0 48px; color: var(--muted); font-size: 14px; text-align: center; }
   </style>
 </head>
 <body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="top">
+      <a class="brand" href="./"><img src="icons/icon.svg" alt="" width="36" height="36"><span>Žvejybos <b>turnyrai</b></span></a>
+      <a class="small" href="./#/" style="white-space:nowrap">Programėlė →</a>
+    </div>
+    <div class="hero-grid">
+      <div>
+        <div class="kicker">Rėmėjams</div>
+        <h1>Jūsų ženklas ten, kur žvejai <b>žiūri kiekvieną dieną</b></h1>
+        <p class="lead">„Žvejybos turnyrai“ – programėlė, kurioje žvejai varžosi telefonu: fotografuoja laimikį prie liniuotės, stebi gyvą lentelę ir kovoja dėl prizų. Jūsų logotipas – turnyro puslapyje, lentelėje, prizuose ir didžiajame renginio ekrane.</p>
+        <div class="btns">
+          <a class="btn btn-primary" href="mailto:zvejybosturnyrai@gmail.com?subject=R%C4%97mimas%20%E2%80%93%20%C5%BDvejybos%20turnyrai">Tapti rėmėju</a>
+          <a class="btn btn-ghost" href="#kur">Kur matomas logotipas</a>
+        </div>
+        <div class="chips"><span>Turnyro puslapis</span><span>Rezultatų lentelė</span><span>Didysis ekranas</span><span>Prizai</span><span>Ataskaita</span></div>
+      </div>
+      <div class="phone">
+        <video src="store/remejams/video.mp4" poster="store/remejams/video-poster.jpg" autoplay muted loop playsinline preload="metadata" aria-label="Programėlės pristatymo vaizdo įrašas"></video>
+      </div>
+    </div>
+  </div>
+</header>
+
 <main>
-  <p><a href="./">← Žvejybos turnyrai</a></p>
-  <h1>Rėmėjams: kaip jūsų vardas matomas</h1>
-  <p class="muted">„Žvejybos turnyrai“ – programėlė, kurioje žvejai dalyvauja varžybose telefonu: kiekvieną laimikį fotografuoja programėlės kamera su liniuote, teisėjas patvirtina, o lentelė atsinaujina realiu laiku.</p>
-
-  <div class="hero">
-    <p><strong>Kodėl tai veikia rėmėjui:</strong> turnyro metu dalyviai programėlę atidaro daug kartų per dieną – pažiūrėti, kas pirmauja, ir užregistruoti laimikį. Jūsų logotipas yra būtent ten, kur jie žiūri.</p>
-    <p>Po turnyro gaunate <strong>ataskaitą</strong>: kiek kartų logotipas parodytas ir kiek žmonių paspaudė jūsų nuorodą.</p>
-  </div>
-
-  <h2>1. Turnyro puslapis – generalinis rėmėjas</h2>
-  <div class="shot">
-    <img src="store/remejams/remejai-turnyras.webp" alt="Turnyro puslapis su generalinio rėmėjo logotipu ir pasiūlymu dalyviams" width="300" height="649" loading="lazy">
-    <div>
-      <p>Pačiame turnyro viršuje – didelis generalinio rėmėjo logotipas, pavadinimas ir nuoroda į jūsų svetainę.</p>
-      <p>Galima pridėti <strong>pasiūlymą dalyviams</strong>, pvz. „−10 % visiems dalyviams su kodu TAURE“ – taip rėmimas virsta tiesioginiais pirkimais.</p>
-      <p>Kiti rėmėjai rodomi logotipų tinklelyje „Taip pat remia“.</p>
+  <section id="kur">
+    <div class="wrap">
+      <div class="kicker">Matomumas</div>
+      <h2>Kur matomas <b>jūsų logotipas</b></h2>
+      <p class="lead">Visur, kur dalyviai žiūri turnyro metu. Logotipą organizatorius įkelia per minutę – jis iškart matomas visiems, net jei turnyras jau vyksta.</p>
+      <div class="places">
+        <article class="place feature">
+          <div class="pic"><img src="store/remejams/v2-turnyras.webp" alt="Turnyro puslapis su generalinio rėmėjo logotipu ir pasiūlymu dalyviams" width="270" height="367" loading="lazy"></div>
+          <div class="txt"><h3><span class="num">1</span>Turnyro puslapis</h3>
+            <p>Pačiame viršuje – generalinio rėmėjo logotipas, pavadinimas, nuoroda į jūsų svetainę ir <b>pasiūlymas dalyviams</b>, pvz. „−10 % su kodu TAURE“.</p></div>
+        </article>
+        <article class="place">
+          <div class="pic"><img src="store/remejams/v2-lentele.webp" alt="Rezultatų lentelė su užrašu „Lentelę remia“ ir logotipais" width="270" height="367" loading="lazy"></div>
+          <div class="txt"><h3><span class="num">2</span>Rezultatų lentelė</h3>
+            <p>Dažniausiai atidaromas ekranas – dalyviai tikrina, kas pirmauja. Virš lentelės – „Lentelę remia“ ir jūsų logotipas.</p></div>
+        </article>
+        <article class="place">
+          <div class="pic"><img src="store/remejams/v2-prizai.webp" alt="Prizų skiltis su rėmėjų įnašais į prizų fondą ir generaliniu rėmėju" width="270" height="584" loading="lazy" style="object-fit:cover;object-position:bottom;aspect-ratio:270/420;height:auto"></div>
+          <div class="txt"><h3><span class="num">3</span>Prizai</h3>
+            <p>Prizų skiltyje rodomas jūsų įnašas į prizų fondą ir didelė generalinio rėmėjo kortelė – žvejai mato, kas dovanoja prizus.</p></div>
+        </article>
+        <article class="place">
+          <div class="pic wide"><img src="store/remejams/v2-sarasas.webp" alt="Turnyro kortelė turnyrų sąraše su rėmėjų logotipais" width="358" height="100" loading="lazy"></div>
+          <div class="txt"><h3><span class="num">4</span>Turnyrų sąrašas</h3>
+            <p>Logotipai matomi jau turnyrų sąraše – dar prieš žvejui atidarant turnyrą ir užsiregistruojant.</p></div>
+        </article>
+        <article class="place span2">
+          <div class="pic wide"><img src="store/remejams/v2-ekranas.webp" alt="Didysis renginio ekranas: rezultatų lentelė ir rėmėjų logotipai apačioje" width="1280" height="720" loading="lazy"></div>
+          <div class="txt"><h3><span class="num">5</span>Didysis renginio ekranas</h3>
+            <p>Organizatorius rodo lentelę per televizorių ar projektorių stovykloje ir apdovanojimuose. Rėmėjų logotipai visada matomi apačioje, generalinio – didžiausias.</p></div>
+        </article>
+      </div>
     </div>
-  </div>
+  </section>
 
-  <h2>2. Turnyrų sąrašas</h2>
-  <div class="shot wide">
-    <img src="store/remejams/remejai-sarasas.webp" alt="Turnyro kortelė sąraše su rėmėjų logotipais" width="360" height="190" loading="lazy">
-    <div><p>Rėmėjų logotipai matomi jau turnyrų sąraše – dar prieš žvejui atidarant turnyrą.</p></div>
-  </div>
-
-  <h2>3. Rezultatų lentelė</h2>
-  <div class="shot">
-    <img src="store/remejams/remejai-lentele.webp" alt="Rezultatų lentelė su užrašu „Lentelę remia“ ir logotipais" width="300" height="649" loading="lazy">
-    <div><p>Lentelė – dažniausiai atidaromas ekranas turnyro metu. Virš jos – „Lentelę remia“ ir jūsų logotipas.</p></div>
-  </div>
-
-  <h2>4. Didysis ekranas renginyje</h2>
-  <div class="shot">
-    <img src="store/remejams/remejai-ekranas.webp" alt="Rezultatų ekranas televizoriui ar projektoriui su rėmėjų logotipais" width="300" height="649" loading="lazy">
-    <div><p>Organizatorius gali rodyti lentelę televizoriuje ar projektoriumi stovykloje, apdovanojimuose. Po lentele – rėmėjų logotipai, generalinio – didžiausias.</p></div>
-  </div>
-
-  <h2>5. Statistika ir ataskaita rėmėjui</h2>
-  <div class="shot">
-    <img src="store/remejams/remejai-statistika.webp" alt="Rėmėjų statistika: parodymai ir paspaudimai" width="300" height="649" loading="lazy">
-    <div>
-      <p>Organizatorius mato kiekvieno rėmėjo skaičius ir vienu mygtuku nusiunčia jums ataskaitą:</p>
-      <ul>
-        <li><strong>Parodymai</strong> – kiek skirtingų įrenginių per dieną matė jūsų logotipą;</li>
-        <li><strong>Paspaudimai</strong> – kiek kartų atidaryta jūsų svetainė;</li>
-        <li>turnyro dalyvių ir patvirtintų laimikių skaičius.</li>
-      </ul>
+  <section>
+    <div class="wrap">
+      <div class="kicker">Nauda</div>
+      <h2>Ką gauna <b>rėmėjas</b></h2>
+      <div class="benefits">
+        <div class="ben"><span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></span>
+          <h3>Matomumas visą turnyrą</h3><p>Ne vienas paspaudimas reklamoje, o kiekvieną dieną, kai dalyviai tikrina lentelę ir registruoja laimikius.</p></div>
+        <div class="ben"><span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg></span>
+          <h3>Tiesioginiai pirkimai</h3><p>Pasiūlymas dalyviams su nuolaidos kodu – rėmimas virsta apsilankymais jūsų parduotuvėje.</p></div>
+        <div class="ben"><span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span>
+          <h3>Išmatuojama</h3><p>Ataskaitoje – kiek kartų logotipas parodytas ir kiek kartų atidaryta jūsų svetainė.</p></div>
+        <div class="ben"><span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg></span>
+          <h3>Prizų dovanotojas</h3><p>Jūsų įnašas į prizų fondą rodomas prie prizų – žvejai žino, kas jiems dovanoja.</p></div>
+        <div class="ben"><span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2a5 5 0 0 1 5.5 5.8"/></svg></span>
+          <h3>Tik žvejai</h3><p>Auditorija – žvejai, kurie realiai žvejoja ir perka įrangą. Jokio atsitiktinio srauto.</p></div>
+        <div class="ben"><span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+          <h3>Paleidžiama per minutę</h3><p>Reikia tik logotipo ir nuorodos. Pakeitimai matomi iškart – ir turnyro metu.</p></div>
+      </div>
     </div>
-  </div>
+  </section>
 
-  <h2>Rėmimo lygiai</h2>
-  <div class="tiers">
-    <div class="tier">
-      <h3>Generalinis rėmėjas</h3>
-      <ul>
-        <li>Didžiausias logotipas turnyro viršuje</li>
-        <li>Pirmas lentelėje ir didžiajame ekrane</li>
-        <li>Pasiūlymas dalyviams (nuolaida, kodas)</li>
-        <li>Nuoroda į jūsų svetainę</li>
-        <li>Ataskaita: parodymai ir paspaudimai</li>
-      </ul>
+  <section>
+    <div class="wrap">
+      <div class="kicker">Ataskaita</div>
+      <h2>Skaičiai, o ne <b>pažadai</b></h2>
+      <div class="report">
+        <img src="store/remejams/v2-statistika.webp" alt="Rėmėjų statistika: parodymai ir paspaudimai kiekvienam rėmėjui" width="716" height="682" loading="lazy">
+        <div>
+          <p class="lead">Organizatorius mato kiekvieno rėmėjo rezultatus ir vienu mygtuku nusiunčia jums ataskaitą.</p>
+          <ul>
+            <li><span class="tick">✓</span><span><b>Parodymai</b> – kiek skirtingų įrenginių per dieną matė jūsų logotipą.</span></li>
+            <li><span class="tick">✓</span><span><b>Paspaudimai</b> – kiek kartų atidaryta jūsų svetainė.</span></li>
+            <li><span class="tick">✓</span><span><b>Per 7 dienas</b> – kaip keitėsi paskutinę savaitę.</span></li>
+            <li><span class="tick">✓</span><span>Turnyro dalyvių ir patvirtintų laimikių skaičius.</span></li>
+          </ul>
+          <p class="small muted" style="margin-top:14px">Paveikslėlyje – demonstracinis turnyras su sugalvotais rėmėjais ir pavyzdiniais skaičiais.</p>
+        </div>
+      </div>
     </div>
-    <div class="tier">
-      <h3>Rėmėjas</h3>
-      <ul>
-        <li>Logotipas turnyro puslapyje, sąraše, lentelėje ir ekrane</li>
-        <li>Trumpas pasiūlymas dalyviams</li>
-        <li>Nuoroda į jūsų svetainę</li>
-        <li>Ataskaita: parodymai ir paspaudimai</li>
-      </ul>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="kicker">Rėmimo lygiai</div>
+      <h2>Pasirinkite <b>savo vietą</b></h2>
+      <div class="tiers">
+        <div class="tier main">
+          <span class="badge">Daugiausia matomumo</span>
+          <h3>Generalinis rėmėjas</h3>
+          <ul>
+            <li><span class="tick">✓</span>Didžiausias logotipas turnyro viršuje</li>
+            <li><span class="tick">✓</span>Pirmas lentelėje ir didžiajame ekrane</li>
+            <li><span class="tick">✓</span>Didelė kortelė prizų skiltyje</li>
+            <li><span class="tick">✓</span>Pasiūlymas dalyviams (nuolaida, kodas)</li>
+            <li><span class="tick">✓</span>Nuoroda į jūsų svetainę</li>
+            <li><span class="tick">✓</span>Ataskaita: parodymai ir paspaudimai</li>
+          </ul>
+        </div>
+        <div class="tier">
+          <h3>Rėmėjas</h3>
+          <ul>
+            <li><span class="tick">✓</span>Logotipas turnyro puslapyje, sąraše, lentelėje ir ekrane</li>
+            <li><span class="tick">✓</span>Trumpas pasiūlymas dalyviams</li>
+            <li><span class="tick">✓</span>Nuoroda į jūsų svetainę</li>
+            <li><span class="tick">✓</span>Ataskaita: parodymai ir paspaudimai</li>
+            <li class="off"><span class="tick">–</span>Didžiausias logotipas viršuje</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note">Abiem lygiams galima prisidėti prie prizų fondo – įnašas rodomas prie prizų. Programėlė pinigų neperveda: prizus įteikia organizatorius arba rėmėjai.</p>
     </div>
-  </div>
-  <p class="muted">Rėmėjas gali prisidėti ir prie prizinio fondo – įnašas rodomas prie prizų. Pinigų programėlė neperveda: prizus įteikia organizatorius arba rėmėjai.</p>
+  </section>
 
-  <h2>Ko reikia iš jūsų</h2>
-  <ul>
-    <li>Logotipo (geriausia PNG su permatomu fonu; tiks ir JPG).</li>
-    <li>Nuorodos į svetainę ar el. parduotuvę.</li>
-    <li>Nebūtina: pasiūlymo dalyviams (iki 140 simbolių) ir įnašo į prizinį fondą.</li>
-  </ul>
-  <p>Logotipą organizatorius įkelia per kelias sekundes – ir jis iškart matomas visiems dalyviams, net jei turnyras jau vyksta.</p>
-  <a class="cta" href="./#/">Atidaryti programėlę</a>
+  <section>
+    <div class="wrap">
+      <div class="kicker">Kaip pradėti</div>
+      <h2>Trys <b>žingsniai</b></h2>
+      <div class="steps">
+        <div class="step"><span class="num">1</span><h3>Atsiųskite logotipą</h3><p>PNG su permatomu fonu (tiks ir JPG) ir nuorodą į svetainę ar el. parduotuvę.</p></div>
+        <div class="step"><span class="num">2</span><h3>Pasiūlymas – nebūtina</h3><p>Nuolaida dalyviams (iki 140 simbolių) ir, jei norite, įnašas ar prizai turnyrui.</p></div>
+        <div class="step"><span class="num">3</span><h3>Matomas iškart</h3><p>Logotipą įkeliame per minutę, o po turnyro gaunate ataskaitą su skaičiais.</p></div>
+      </div>
+    </div>
+  </section>
 
-  <p class="muted" style="margin-top:28px">Iliustracijose – demonstracinis turnyras su sugalvotais rėmėjais. Parodymai skaičiuojami programėlėje: vienas įrenginys – vienas parodymas rėmėjui per dieną.</p>
+  <section>
+    <div class="wrap">
+      <div class="kicker">Klausimai</div>
+      <h2>Dažni <b>klausimai</b></h2>
+      <div class="faq">
+        <details><summary>Ar logotipą galima pridėti, kai turnyras jau vyksta?</summary><p>Taip. Organizatorius įkelia logotipą bet kada, ir jis iškart matomas visiems dalyviams.</p></details>
+        <details><summary>Kaip skaičiuojami parodymai?</summary><p>Vienas įrenginys – vienas parodymas rėmėjui per dieną, kad ir kiek kartų žvejas atidarytų turnyrą. Taip skaičiai nepasipučia.</p></details>
+        <details><summary>Kokio logotipo reikia?</summary><p>Geriausia PNG su permatomu fonu. Tiks ir JPG ar WebP – programėlė pati sumažina ir pritaiko dydį.</p></details>
+        <details><summary>Ar programėlė tvarko prizų pinigus?</summary><p>Ne. Prizus įteikia organizatorius arba rėmėjai. Programėlė rodo, kas laimėjo, ir padeda susisiekti su laimėtojais.</p></details>
+        <details><summary>Kur veikia programėlė?</summary><p>Bet kuriame telefone per naršyklę – nieko diegti nereikia. Pradedame Lietuvoje.</p></details>
+      </div>
+
+      <div class="cta-band">
+        <h2>Būkite <b>pirmieji</b> rėmėjai</h2>
+        <p>Parašykite – atsiųsime turnyrų planą ir parodysime, kaip atrodys jūsų logotipas programėlėje.</p>
+        <div class="btns">
+          <a class="btn btn-primary" href="mailto:zvejybosturnyrai@gmail.com?subject=R%C4%97mimas%20%E2%80%93%20%C5%BDvejybos%20turnyrai">Parašyti mums</a>
+          <a class="btn btn-ghost" href="./#/">Išbandyti programėlę</a>
+        </div>
+        <p class="small muted" style="margin:18px 0 0">zvejybosturnyrai@gmail.com</p>
+      </div>
+    </div>
+  </section>
 </main>
+
+<footer>
+  <div class="wrap">Iliustracijose ir vaizdo įraše – demonstracinis turnyras su sugalvotais žvejais ir rėmėjais.<br>© Žvejybos turnyrai</div>
+</footer>
 </body>
 </html>

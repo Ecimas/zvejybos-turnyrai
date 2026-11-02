@@ -535,10 +535,17 @@ details.more[open] { padding-bottom: 14px; }
 .tv-title { font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif; font-size: clamp(32px, 6vw, 72px); line-height: 1; margin: 0; overflow-wrap: anywhere; }
 .tv-list { display: flex; flex-direction: column; gap: clamp(6px, 1vw, 12px); }
 .tv-row {
-  display: grid; grid-template-columns: 2.2em 1fr auto auto; gap: 0.6em; align-items: center;
-  font-size: clamp(20px, 3.4vw, 44px); padding: 0.35em 0.6em; border-radius: 16px; background: var(--surface);
+  display: grid; grid-template-columns: 2.2em minmax(0, 1fr) auto auto; gap: 0.6em; align-items: center;
+  font-size: clamp(18px, min(3.4vw, 4.4vh), 44px); padding: 0.3em 0.6em; border-radius: 16px; background: var(--surface);
 }
 .tv-row.r1 { background: var(--accent); color: var(--on-accent); }
+/* Didysis ekranas – per visą televizoriaus plotį (ne 520 px telefono stulpelis) */
+#app:has(.tv) { max-width: none; }
+/* Televizorius neslenka: lentelė užima likusią vietą, rėmėjai visada matomi apačioje */
+.tv { height: 100vh; min-height: 0; overflow: hidden; }
+.tv-list { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.tv-sponsors, .tv-foot { flex: none; }
+.tv-name { min-width: 0; font-weight: 700; }
 .tv-rank, .tv-score { font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif; font-weight: 800; }
 .tv-meta { font-size: 0.55em; opacity: 0.8; }
 .tv-empty { font-size: clamp(22px, 4vw, 40px); text-align: center; margin: auto; display: flex; gap: 12px; align-items: center; }
