@@ -1352,8 +1352,8 @@ body.has-appbar { --top-offset: calc(60px + env(safe-area-inset-top)); }
 .faq details[open] .set-chev { transform: rotate(90deg); }
 .faq .ans { padding: 0 14px 14px; color: var(--soft); display: flex; flex-direction: column; gap: 8px; }
 .faq .ans p { margin: 0; }
-.help-links { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.help-links a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 84px; padding: 10px 6px; border-radius: 16px;
+.help-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.help-links a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 72px; padding: 10px 6px; border-radius: 16px;
   background: var(--surface); border: 1px solid var(--line); color: var(--text); text-decoration: none; font-weight: 700; font-size: 14px; text-align: center; }
 .help-links a svg { color: var(--accent-ink); }
 .team-card { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 18px; border: 1.5px solid var(--accent);
@@ -1482,3 +1482,7 @@ body.has-appbar { --top-offset: calc(60px + env(safe-area-inset-top)); }
 .ap-chip[aria-pressed="true"] .muted { color: inherit; opacity: .75; }
 .ap-ph { position: relative; display: block; }
 .ap-tag { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 12px; background: var(--accent); color: var(--on-accent); display: inline-flex; align-items: center; justify-content: center; }
+
+/* Kvietimas tapti rėmėju (turnyro prizų skiltyje) */
+.sponsor-invite { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 10px 14px; border-radius: 14px; border: 1px dashed var(--line-2); color: var(--muted); text-decoration: none; font-size: 14px; }
+.sponsor-invite b { color: var(--accent-ink); }

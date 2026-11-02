@@ -126,6 +126,7 @@ export function sponsorShowcase(t) {
         ${s.blurb ? html`<span class="small sponsor-blurb-sm">${s.blurb}</span>` : ''}
       </div>`)}</div>
     </div>` : ''}
+    <a class="sponsor-invite" href="remejams.html" data-sponsors-page>${icon('star', 16)}<span class="grow">Norite, kad čia būtų ir jūsų įmonė?</span><b>Rėmėjams</b>${icon('chevron', 14)}</a>
   </section>`;
 }
 

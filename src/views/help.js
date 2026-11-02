@@ -37,6 +37,7 @@ export async function helpView(ctx) {
         <a href="#/pradzia">${icon('play', 22)}Kaip tai veikia</a>
         <a href="#/taisykles">${icon('book', 22)}Taisyklės</a>
         <a href="#/privatumas">${icon('lock', 22)}Privatumas</a>
+        <a href="remejams.html" data-sponsors-page>${icon('star', 22)}Rėmėjams</a>
       </nav>
       <section class="stack">
         <h2 class="h2">Dažni klausimai</h2>

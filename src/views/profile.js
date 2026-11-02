@@ -232,6 +232,7 @@ export async function profileView(ctx, _params, query) {
             ${perms.has('publish') ? html`<a class="list-row" href="#/tasku-taisykles" data-my-rules>${icon('sliders', 20)}<span class="grow stack-1"><span class="strong">Mano taškų taisyklės</span><span class="small muted">Savas taškų skaičiavimas turnyrams</span></span>${icon('chevron', 18)}</a>` : ''}
             ${perms.has('publish') ? '' : html`<a class="list-row" href="#/organizatorius" data-become-organizer>${icon('trophy', 20)}<span class="grow stack-1"><span class="strong">Tapti organizatoriumi</span><span class="small muted">Vieši turnyrai, matomi visų sąraše</span></span>${icon('chevron', 18)}</a>`}
             <a class="list-row" href="#/taisykles">${icon('book', 20)}<span class="grow strong">Turnyrų taisyklės</span>${icon('chevron', 18)}</a>
+            <a class="list-row" href="remejams.html" data-sponsors-page>${icon('star', 20)}<span class="grow stack-1"><span class="strong">Rėmėjams</span><span class="small muted">Jūsų įmonės logotipas turnyruose</span></span>${icon('chevron', 18)}</a>
           </div></div>
         <div class="stack-2"><h2 class="p-sec">Paskyra</h2>
           <div class="list">
