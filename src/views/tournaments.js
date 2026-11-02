@@ -1,13 +1,14 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { phase, timeLabel, scoreText, registrationOpen } from '../lib/format.js';
-import { phaseBadge, empty, defaultNickname, banNotice } from '../ui.js';
+import { phaseBadge, empty, banNotice } from '../ui.js';
 import { eur } from '../lib/prizes.js';
 import { hasUnseen } from '../lib/seen.js';
 import { checkBanners } from './check.js';
 import { sortSponsors, logoTile, trackViews } from '../lib/sponsors.js';
 import { feat } from '../lib/clubs.js';
 import { canCreateTournament } from '../lib/features.js';
+import { startItems, startCard, bindStartCard, startHidden } from './intro.js';
 
 const SEGMENTS = [
   ['visi', 'Visi'],
@@ -118,10 +119,14 @@ async function ranksFor(ctx, list) {
 }
 
 export async function tournamentsView(ctx) {
-  const [list, checks] = await Promise.all([
+  const wantStart = !!ctx.state.user && !ctx.state.ban && !startHidden();
+  const [list, checks, myCatches] = await Promise.all([
     ctx.backend.tournaments(),
-    ctx.state.user && ctx.backend.myChecks ? ctx.backend.myChecks().catch(() => []) : []
+    ctx.state.user && ctx.backend.myChecks ? ctx.backend.myChecks().catch(() => []) : [],
+    wantStart ? ctx.backend.myCatches().catch(() => []) : []
   ]);
+  const queued = wantStart ? await ctx.outbox.list().catch(() => []) : [];
+  const start = wantStart ? startItems(ctx.state, { catches: myCatches.length + queued.length, joined: list.some((t) => t.joined) }) : null;
   const me = ctx.state.user?.id;
   const savedSeg = sessionStorage.getItem('zt-seg');
   let seg = SEGMENTS.some(([k]) => k === savedSeg) ? savedSeg : 'visi';
@@ -180,15 +185,14 @@ export async function tournamentsView(ctx) {
       ${ctx.backend.mode === 'demo' ? html`<p class="demo-note">${icon('alert', 16)}Demonstracinis režimas: pavyzdiniai duomenys, saugomi tik šiame telefone.</p>` : ''}
       ${banNotice(ctx.state.ban)}
       ${checkBanners(checks)}
-      ${ctx.state.user && !ctx.state.ban && defaultNickname(ctx.state.profile?.nickname) ? html`<a class="card card-link row ann-banner" href="#/profilis" data-nick-banner>
-        ${icon('user', 22)}<span class="grow stack-1"><span class="strong">Pasirink slapyvardį</span><span class="small muted">Jį matys kiti žvejai lentelėse</span></span>${icon('chevron', 18)}
-      </a>` : ''}
+      ${start && start.some((x) => !x.done) ? startCard(start) : ''}
       <div class="l-seg" role="group" aria-label="Turnyrų filtras">
         ${SEGMENTS.map(([key, label]) => html`<button type="button" data-seg="${key}" aria-pressed="${key === seg}">${label}</button>`)}
       </div>
       <div class="stack-lg" data-list>${listHtml(seg)}</div>
     </div>`,
     mount(root) {
+      bindStartCard(root, ctx);
       const listEl = root.querySelector('[data-list]');
       const pick = (key, scroll) => {
         seg = key;

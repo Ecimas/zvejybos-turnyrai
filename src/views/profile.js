@@ -4,6 +4,7 @@ import { cm, shortDate, count, plural } from '../lib/format.js';
 import { thumb, hydratePhotos, backButton, empty, avatar, loginPrompt, notFound, defaultNickname, banNotice } from '../ui.js';
 import { feat } from '../lib/clubs.js';
 import { canCreateTournament } from '../lib/features.js';
+import { introDone } from './intro.js';
 import { computeBadges } from '../lib/badges.js';
 import { weatherEnabled } from './capture.js';
 import { BAN_DAYS, BAN_REASONS, banUntilText } from '../lib/bans.js';
@@ -171,6 +172,9 @@ export async function profileView(ctx, _params, query) {
       </header>
 
       ${banNotice(state.ban)}
+      ${!introDone() && p.created_at && Date.now() - Date.parse(p.created_at) < 3 * 864e5 ? html`<a class="card card-link row gap-10" href="#/pradzia" data-intro-card>
+        <span class="feat"><span class="ic">${icon('fish', 20)}</span></span><span class="grow stack-1"><span class="strong">Naujas čia? Pažiūrėk, kaip viskas veikia</span>
+        <span class="small muted">Trys trumpi žingsniai – 1 minutė</span></span>${icon('chevron', 18)}</a>` : ''}
       ${!state.ban && defaultNickname(p.nickname) ? html`<div class="card stack-2 nick-card">
         <p class="strong">Pasirink slapyvardį</p>
         <p class="small muted">Jį matys kiti žvejai lentelėse. Dabar rodomas automatiškai sukurtas „${p.nickname}“.</p>

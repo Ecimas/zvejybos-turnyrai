@@ -14,6 +14,7 @@ import { startPresence } from './lib/presence.js';
 import { captureView, setWeatherFeature } from './views/capture.js';
 import { adminFeaturesView } from './views/admin.js';
 import { myRulesView } from './views/rules.js';
+import { introView } from './views/intro.js';
 import { feat } from './lib/clubs.js';
 import { catchView } from './views/catch.js';
 import { diaryView } from './views/diary.js';
@@ -57,6 +58,7 @@ const ROUTES = [
   [/^\/moderavimas\/statistika$/, statsView],
   [/^\/moderavimas\/funkcijos$/, adminFeaturesView],
   [/^\/tasku-taisykles$/, myRulesView],
+  [/^\/pradzia$/, introView],
   [/^\/moderavimas\/turnyrai$/, adminLogView],
   [/^\/patikra\/([\w-]+)$/, checkView],
   [/^\/zemelapis$/, mapView],

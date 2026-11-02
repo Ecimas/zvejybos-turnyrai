@@ -10,6 +10,10 @@ import { checkRequestBox, mountCheckRequest } from './check.js';
 import { can } from '../lib/roles.js';
 import { feat, REACTIONS } from '../lib/clubs.js';
 import { commentsHtml, bindComments } from './clubs.js';
+import { makeShareCard, shareImage } from '../lib/share.js';
+import { daypartOf, daypartLabel } from '../lib/map.js';
+import { WEATHER_LT } from '../lib/weather.js';
+import { shortDate } from '../lib/format.js';
 
 export const REPORT_REASONS = [
   ['old_photo', 'Sena ar svetima nuotrauka'],
@@ -51,12 +55,25 @@ export async function catchView(ctx, [id]) {
     .filter((t) => joinedAt.has(t.id) && at >= new Date(t.starts_at).getTime() && at < new Date(t.ends_at).getTime())
     .map((t) => ({ t, reason: fitReason(t, t.species_ids, joinedAt.get(t.id) || true, c) }));
 
+  // Vieta turnyruose (patvirtintam ir įskaitomam) ir palyginimas su savo tos rūšies žuvimis.
+  const okRows = c.status === 'approved' ? relevant.filter((x) => x.reason === 'ok') : [];
+  const [boards, mine] = await Promise.all([
+    Promise.all(okRows.map(({ t }) => (t.leaderboard_hidden && !own ? null : backend.leaderboard(t.id).catch(() => null)))),
+    own ? backend.myCatches().catch(() => []) : []
+  ]);
+  const rankIn = new Map(okRows.map(({ t }, i) => [t.id, boards[i]?.find((r) => r.user_id === c.user_id)?.rank ?? null]));
+  const same = mine.filter((x) => x.species_id === c.species_id && x.status !== 'rejected');
+  const sorted = same.slice().sort((a, b) => b.length_mm - a.length_mm);
+  const pos = sorted.findIndex((x) => x.id === c.id) + 1;
+  const prevBest = same.filter((x) => x.id !== c.id && new Date(x.captured_at_device) < new Date(c.captured_at_device)).reduce((m, x) => Math.max(m, x.length_mm), 0);
+  const avg = same.length ? Math.round(same.reduce((s1, x) => s1 + x.length_mm, 0) / same.length) : 0;
+  const isRecord = own && pos === 1 && same.length > 1;
+  const maxLen = sorted[0]?.length_mm || c.length_mm;
+  const w = c.weather;
   const rows = [
-    ['Rūšis', sp],
-    ['Ilgis', cm(c.length_mm)],
-    c.weight_g ? ['Svoris', kg(c.weight_g)] : null,
-    ['Pagauta', dateTime(c.captured_at_device)],
-    c.weather ? ['Oras', weatherLine(c.weather)] : null
+    ['Pagauta', html`${shortDate(c.captured_at_device)}<small>${dateTime(c.captured_at_device).split(', ').pop()} · ${daypartLabel(daypartOf(c.captured_at_device)).toLowerCase()}</small>`],
+    w ? ['Oras', html`${[w.temp_c !== null && w.temp_c !== undefined ? `${String(w.temp_c).replace('.', ',')} °C` : '', w.pressure_hpa ? `${w.pressure_hpa} hPa` : ''].filter(Boolean).join(' · ')}<small>${(WEATHER_LT[w.code] || '').toLowerCase()}${w.wind_ms !== null && w.wind_ms !== undefined ? ` · vėjas ${String(w.wind_ms).replace('.', ',')} m/s` : ''}</small>`] : null,
+    c.weight_g || (own && c.bait) ? [own && c.bait ? 'Masalas' : 'Svoris', html`${own && c.bait ? c.bait : kg(c.weight_g)}<small>${own && c.bait && c.weight_g ? kg(c.weight_g) : ''}</small>`] : null
   ].filter(Boolean);
 
   return {
@@ -69,19 +86,16 @@ export async function catchView(ctx, [id]) {
         ${c.photo_path ? html`<button class="icon-btn" data-share aria-label="Dalintis laimikiu">${icon('share', 20)}</button>` : html`<span></span>`}
       </header>
 
-      <button class="photo-big" data-zoom aria-label="Rodyti nuotrauką per visą ekraną">
-        ${icon('fish', 72, 1.4)}
-        ${c.photo_path ? html`<img alt="${sp} ${cm(c.length_mm)}" data-photo="${c.photo_path}">` : ''}
-        <span class="photo-hint">${icon('plus', 16, 2.4)}Padidinti</span>
-      </button>
-
-      <section class="row-between">
-        <div class="stack-1">
-          <h1 class="display-lg" tabindex="-1">${cm(c.length_mm)}</h1>
-          <span class="muted strong">${sp}</span>
-        </div>
-        ${c.status !== 'approved' || own ? statusChip(c.status) : ''}
-      </section>
+      <div class="c-hero">
+        <button class="photo-big" data-zoom aria-label="Rodyti nuotrauką per visą ekraną">
+          ${icon('fish', 72, 1.4)}
+          ${c.photo_path ? html`<img alt="${sp} ${cm(c.length_mm)}" data-photo="${c.photo_path}">` : ''}
+          <span class="photo-hint">${icon('plus', 16, 2.4)}Padidinti</span>
+        </button>
+        ${isRecord ? html`<span class="c-tag" data-pb>🏆 Asmeninis rekordas</span>` : ''}
+        <div class="c-ov"><h1 class="c-len" tabindex="-1">${cm(c.length_mm)}</h1><span class="c-sp">${sp}</span></div>
+      </div>
+      ${c.status !== 'approved' || own ? html`<div class="row gap-8">${statusChip(c.status)}</div>` : ''}
       ${own && c.status === 'rejected' && c.reject_reason ? html`<p class="warn-box">${icon('alert', 18)}${c.reject_reason}</p>` : ''}
 
       <section class="card row tight">
@@ -90,7 +104,13 @@ export async function catchView(ctx, [id]) {
           <span class="small muted">${c.region || ''}</span></div>
       </section>
 
-      <dl class="list">${rows.map(([k, v]) => html`<div class="list-row"><dt class="muted">${k}</dt><dd class="strong right">${v}</dd></div>`)}</dl>
+      <dl class="c-facts" data-facts>${rows.map(([k, v]) => html`<div><dt>${k}</dt><dd>${v}</dd></div>`)}</dl>
+
+      ${own && same.length > 1 ? html`<section class="card stack-2" data-compare>
+        <div class="row-between"><b>${sp}: tavo laimikiai</b><span class="small muted">${pos} vieta iš ${same.length}</span></div>
+        <div class="cmpbar" aria-hidden="true"><i style="width:${Math.round((c.length_mm / maxLen) * 100)}%"></i>${prevBest ? html`<u style="left:${Math.round((prevBest / maxLen) * 100)}%"></u>` : ''}</div>
+        <span class="small muted">${prevBest ? (c.length_mm > prevBest ? `Ankstesnis rekordas – ${cm(prevBest)} (+${cm(c.length_mm - prevBest)})` : `Tuo metu rekordas buvo ${cm(prevBest)}`) : 'Pirma šios rūšies žuvis'} · vidurkis ${cm(avg)}</span>
+      </section>` : ''}
 
       ${relevant.length ? html`<section class="stack">
         <h2 class="h2">Turnyruose</h2>
@@ -98,6 +118,7 @@ export async function catchView(ctx, [id]) {
           <span class="dot-icon ${reason === 'ok' && c.status === 'approved' ? 'ok' : 'off'}">${icon(reason === 'ok' ? 'check' : 'minus', 15, 3)}</span>
           <span class="grow stack-1"><span class="strong">${t.title}</span>
             <span class="small muted">${reason !== 'ok' ? REASON_LT[reason] : c.status === 'approved' ? 'Įskaitytas' : 'Bus įskaitytas po patvirtinimo'}${phase(t) === 'done' ? ' · turnyras baigėsi' : ''}</span></span>
+          ${rankIn.get(t.id) ? html`<span class="c-rank" title="${c.nickname} vieta lentelėje">#${rankIn.get(t.id)}</span>` : ''}
           ${icon('chevron', 18)}
         </a>`)}</div>
       </section>` : ''}
@@ -108,7 +129,7 @@ export async function catchView(ctx, [id]) {
           <div class="list-row"><dt class="muted">Masalas</dt><dd class="strong right">${c.bait || '–'}</dd></div>
           <div class="list-row"><dt class="muted">Pastabos</dt><dd class="right prewrap">${c.notes || '–'}</dd></div>
           <div class="list-row"><dt class="muted">Vieta</dt><dd class="right">${c.location
-            ? html`<a class="link" target="_blank" rel="noopener noreferrer" href="https://www.openstreetmap.org/?mlat=${c.location.lat.toFixed(5)}&amp;mlon=${c.location.lng.toFixed(5)}#map=14/${c.location.lat.toFixed(5)}/${c.location.lng.toFixed(5)}">žemėlapis (±${Math.round(c.location.accuracy ?? 0)} m)</a>`
+            ? html`<a class="link" href="#/zemelapis">Mano žemėlapyje</a> · <a class="link" target="_blank" rel="noopener noreferrer" href="https://www.openstreetmap.org/?mlat=${c.location.lat.toFixed(5)}&amp;mlon=${c.location.lng.toFixed(5)}#map=14/${c.location.lat.toFixed(5)}/${c.location.lng.toFixed(5)}">žemėlapis (±${Math.round(c.location.accuracy ?? 0)} m)</a>`
             : 'nėra'}</dd></div>
         </dl>
         <button class="btn btn-ghost" data-edit-catch aria-expanded="false">${icon('edit', 18)}Redaguoti masalą ir pastabas</button>
@@ -216,12 +237,23 @@ export async function catchView(ctx, [id]) {
           }
         });
       }
-      root.querySelector('[data-share]')?.addEventListener('click', async () => {
-        const url = location.href;
+      // Pasidalinimas: paveikslėlio kortelė (nuotrauka + ilgis + rūšis); nepavykus – nuoroda.
+      root.querySelector('[data-share]')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
         try {
-          if (navigator.share) await navigator.share({ title: `${sp} ${cm(c.length_mm)}`, url });
-          else { await navigator.clipboard.writeText(url); ctx.toast('Nuoroda nukopijuota'); }
-        } catch { /* atšaukta */ }
+          const img = root.querySelector('.photo-big img.loaded');
+          const card = await makeShareCard({ photo: img?.src || null, length: cm(c.length_mm), species: sp,
+            line: `${new Date(c.captured_at_device).toLocaleDateString('lt-LT')} · ${c.nickname}`, badge: isRecord ? '🏆 Asmeninis rekordas' : '' });
+          const how = await shareImage(card, { title: `${sp} ${cm(c.length_mm)}` });
+          if (how === 'downloaded') ctx.toast('Paveikslėlis išsaugotas');
+        } catch {
+          try {
+            if (navigator.share) await navigator.share({ title: `${sp} ${cm(c.length_mm)}`, url: location.href });
+            else { await navigator.clipboard.writeText(location.href); ctx.toast('Nuoroda nukopijuota'); }
+          } catch { /* atšaukta */ }
+        }
+        btn.disabled = false;
       });
     }
   };

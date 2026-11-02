@@ -27,11 +27,21 @@ export async function loginView(ctx) {
     nav: 'profilis',
     title: 'Prisijungti',
     html: html`<div class="screen">
-      <header class="top-bar">${backButton('#/')}<span></span><span></span></header>
+      <header class="top-bar">${backButton('#/')}<span></span><a class="btn-text small" href="#/pradzia">Kaip tai veikia?</a></header>
       <div class="stack-lg login">
+        <section class="lg-hero" data-login-hero>
+          <span class="lg-emoji" aria-hidden="true">🎣</span>
+          <p class="lg-title">Žvejok kur nori.<br>Varžykis su visa Lietuva.</p>
+          <p class="lg-sub">Nuotoliniai žvejybos turnyrai, tavo laimikių dienoraštis ir klubai – viename telefone.</p>
+        </section>
+        <div class="stack-2 lg-feats">
+          <div class="feat"><span class="ic">${icon('camera', 20)}</span><span class="stack-1"><b>Nufotografuok prie liniuotės</b><span class="small muted">Ilgis, laikas ir vieta užfiksuojami patikimai.</span></span></div>
+          <div class="feat"><span class="ic">${icon('trophy', 20)}</span><span class="stack-1"><b>Dalyvauk turnyruose</b><span class="small muted">Gyva lentelė, prizai, dvikovos ir lygos.</span></span></div>
+          <div class="feat"><span class="ic">${icon('book', 20)}</span><span class="stack-1"><b>Sek savo dienoraštį</b><span class="small muted">Rekordai, kolekcija, kada tau geriausiai kimba.</span></span></div>
+        </div>
         <div class="stack-2">
-          <h1 class="display-lg" tabindex="-1">Prisijungti</h1>
-          <p class="muted" data-intro>Be slaptažodžio: atsiųsime prisijungimo nuorodą į el. paštą.</p>
+          <h1 class="h2" tabindex="-1">Prisijungti</h1>
+          <p class="muted" data-intro>Be slaptažodžio: atsiųsime prisijungimo nuorodą į el. paštą. Registracija nemokama.</p>
         </div>
 
         <div class="stack" data-google-wrap hidden>

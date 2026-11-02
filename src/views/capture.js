@@ -10,6 +10,10 @@ import { loginPrompt, celebrate, banNotice } from '../ui.js';
 import { recordFor, fromQueue } from '../lib/records.js';
 import { fetchWeather, weatherLine } from '../lib/weather.js';
 import { syncClock, clockOffsetS } from '../lib/clock.js';
+import { projectRank, projectionText } from '../lib/projection.js';
+import { colorFor } from '../lib/map.js';
+import { goalProgress, goalTitle, dayKey } from '../lib/insights.js';
+import { makeShareCard, shareImage } from '../lib/share.js';
 
 // Oras: įjungtas, jei leidžia ir administratorius (jungiklis „weather“), ir pats žvejys (profilyje).
 let weatherFeature = true;
@@ -38,18 +42,25 @@ export async function captureView(ctx) {
   if (state.ban) {
     return { nav: 'laimikis', title: 'Naujas laimikis', html: html`<div class="screen"><h1 class="display-lg" tabindex="-1">Naujas laimikis</h1>${banNotice(state.ban)}<a class="btn btn-ghost" href="#/">Į turnyrus</a></div>` };
   }
-  const [allTournaments, mineSent, mineQueued] = await Promise.all([
+  const [allTournaments, mineSent, mineQueued, goals] = await Promise.all([
     backend.tournaments().catch(() => []),
     backend.myCatches().catch(() => []),
-    ctx.outbox.list().catch(() => [])
+    ctx.outbox.list().catch(() => []),
+    backend.myGoals ? backend.myGoals().catch(() => []) : []
   ]);
   const tournaments = allTournaments.filter((t) => t.joined && phase(t) === 'live');
+  // Lentelės – „ką tai reiškia“ skaičiavimui (be ryšio – be vietos prognozės).
+  const boards = new Map(await Promise.all(tournaments.map(async (t) => [t.id, await backend.leaderboard(t.id).catch(() => null)])));
+  const me = state.user.id;
   // Visi savi laimikiai – rekordui nustatyti (ir be ryšio: tada bent tie, kurie telefone).
   const known = [...mineSent, ...mineQueued.map(fromQueue)];
   const species = state.species;
   const last = lastUsed();
-  const commonIds = COMMON.map((c) => species.find((s) => s.code === c)?.id).filter(Boolean);
-  if (last.speciesId && !commonIds.includes(last.speciesId)) commonIds.unshift(last.speciesId);
+  // Rūšys: paskutinė, tada dažniausios tavo, tada populiariausios – iš viso 5.
+  const freq = new Map();
+  known.forEach((c) => freq.set(c.species_id, (freq.get(c.species_id) || 0) + 1));
+  const commonIds = [...new Set([last.speciesId, ...[...freq].sort((a, b) => b[1] - a[1]).map(([id]) => id),
+    ...COMMON.map((c) => species.find((s) => s.code === c)?.id)].filter((id) => id && species.some((s) => s.id === id)))].slice(0, 5);
   const nickname = state.profile?.nickname || 'zvejys';
 
   return {
@@ -79,18 +90,17 @@ export async function captureView(ctx) {
         <div class="photo-wrap">
           <img data-photo-preview alt="Laimikio nuotrauka">
           <button class="pill-btn" data-retake>Perfotografuoti</button>
+          <p class="photo-check">${icon('check', 14, 2.6)}Patikrink: matosi liniuotė ir visa žuvis</p>
         </div>
         <div class="sheet stack-lg">
+          <section class="imp" data-impact aria-live="polite" hidden></section>
+
           <div class="stack">
-            <div class="row-between">
-              <div class="stack-1">
-                <span class="small muted strong">Ilgis</span>
-                <span class="len-readout" aria-live="polite"><span data-len>50</span> <span class="unit">cm</span></span>
-              </div>
-              <div class="row gap-8">
-                <button class="sq-btn" data-dec aria-label="Sumažinti 1 cm">${icon('minus', 22, 2.6)}</button>
-                <button class="sq-btn" data-inc aria-label="Padidinti 1 cm">${icon('plus', 22, 2.6)}</button>
-              </div>
+            <span class="small muted strong">Ilgis</span>
+            <div class="lenbox">
+              <button class="sq-btn sq-big" data-dec aria-label="Sumažinti 1 cm">${icon('minus', 26, 2.6)}</button>
+              <span class="len-readout" aria-live="polite"><span data-len>50</span> <span class="unit">cm</span></span>
+              <button class="sq-btn sq-big" data-inc aria-label="Padidinti 1 cm">${icon('plus', 26, 2.6)}</button>
             </div>
             <div data-ruler></div>
             <label class="sr-only">Laimikio ilgis centimetrais
@@ -99,9 +109,9 @@ export async function captureView(ctx) {
           </div>
 
           <div class="stack">
-            <span class="small muted strong">Rūšis</span>
-            <div class="chips" role="group" aria-label="Rūšis">
-              ${commonIds.map((id) => html`<button type="button" class="sp-chip" data-sp="${id}" aria-pressed="false">${species.find((s) => s.id === id)?.name_lt}</button>`)}
+            <span class="small muted strong">Rūšis${freq.size ? ' · dažniausios tau' : ''}</span>
+            <div class="spg" role="group" aria-label="Rūšis">
+              ${commonIds.map((id) => html`<button type="button" class="sp-chip" data-sp="${id}" aria-pressed="false"><i class="dot" style="background:${colorFor(id)}" aria-hidden="true"></i>${species.find((s) => s.id === id)?.name_lt}</button>`)}
             </div>
             <label class="field">
               <span class="small muted">Kita rūšis</span>
@@ -140,6 +150,8 @@ export async function captureView(ctx) {
           <button class="btn btn-primary btn-lg grow" data-save>${icon('check', 22, 3)}Išsaugoti</button>
         </div>
       </section>
+
+      <section data-step="done" class="done-step stack-lg" hidden></section>
     </div>`,
 
     mount(root) {
@@ -200,20 +212,39 @@ export async function captureView(ctx) {
       root.querySelectorAll('[data-sp]').forEach((b) => b.addEventListener('click', () => { speciesId = Number(b.dataset.sp); showSpecies(); }));
       q('[data-sp-select]').addEventListener('change', (e) => { if (e.target.value) { speciesId = Number(e.target.value); showSpecies(); } });
 
+      // Ką šis laimikis reikštų: vieta turnyruose ir asmeninis rekordas.
+      function impactOf() {
+        const draft = { species_id: speciesId, length_mm: len * 10, captured_at_device: capturedAt || new Date().toISOString(), received_at: null, clock_offset_s: clockOffset };
+        const rows = tournaments.map((t) => {
+          const r = fitReason(t, t.species_ids, true, draft);
+          const board = boards.get(t.id);
+          const pr = r === 'ok' && board ? projectRank(t, board, me, mineSent, draft) : null;
+          return { t, r, pr };
+        });
+        const rec = speciesId ? recordFor(known, speciesId, len * 10) : { kind: 'none' };
+        return { rows, rec };
+      }
       function updateFit() {
         const box = q('[data-fit]');
+        const { rows, rec } = impactOf();
+        const imp = q('[data-impact]');
+        const spName = species.find((s) => s.id === speciesId)?.name_lt ?? '';
+        const best = rows.filter((x) => x.pr && x.pr.improved).sort((a, b) => a.pr.rank - b.pr.rank)[0];
+        const items = [
+          best ? html`<div class="imp-row"><span class="rk">#${best.pr.rank}</span><span class="grow stack-1"><b>${best.t.title}</b><span class="small">${projectionText(best.pr)}${best.pr.was && best.pr.rank < best.pr.was ? html` <span class="arrow">↑${best.pr.was - best.pr.rank}</span>` : ''}</span></span></div>` : '',
+          rec.kind === 'record' ? html`<div class="imp-row" data-impact-record><span class="rk">🏆</span><span class="grow stack-1"><b>Naujas asmeninis rekordas</b><span class="small">${spName}: buvo ${cm(rec.previous)}</span></span></div>`
+            : rec.kind === 'first' ? html`<div class="imp-row" data-impact-record><span class="rk">⭐</span><span class="grow stack-1"><b>Pirma tavo šios rūšies žuvis</b><span class="small">${spName} – nauja kolekcijoje</span></span></div>` : ''
+        ].filter(Boolean);
+        imp.hidden = !items.length;
+        imp.innerHTML = items.length ? String(html`<span class="imp-k">Ką tai reiškia</span>${items}`) : '';
         if (!tournaments.length) {
           box.innerHTML = String(html`<div class="list-row"><span class="muted small">Šiuo metu nedalyvauji jokiame vykstančiame turnyre. Laimikis bus išsaugotas dienoraštyje.</span></div>`);
           return;
         }
-        const draft = { species_id: speciesId, length_mm: len * 10, captured_at_device: capturedAt || new Date().toISOString(), received_at: null, clock_offset_s: clockOffset };
-        box.innerHTML = String(html`${tournaments.map((t) => {
-          const r = fitReason(t, t.species_ids, true, draft);
-          return html`<div class="list-row">
+        box.innerHTML = String(html`${rows.map(({ t, r, pr }) => html`<div class="list-row">
             <span class="dot-icon ${r === 'ok' ? 'ok' : 'off'}">${icon(r === 'ok' ? 'check' : 'minus', 15, 3)}</span>
-            <span class="grow stack-1"><span class="strong">${t.title}</span><span class="small muted">${r === 'ok' ? 'Bus įskaityta po patvirtinimo' : REASON_LT[r]}</span></span>
-          </div>`;
-        })}`);
+            <span class="grow stack-1"><span class="strong">${t.title}</span><span class="small muted">${r === 'ok' ? `Bus įskaityta po patvirtinimo${pr ? ` · ${projectionText(pr)}` : ''}` : REASON_LT[r]}</span></span>
+          </div>`)}`);
       }
 
       const gpsChip = q('[data-gps]');
@@ -308,11 +339,21 @@ export async function captureView(ctx) {
             weather
           });
           try { localStorage.setItem('zt-last', JSON.stringify({ speciesId, lengthCm: len, bait: bait.value.trim() })); } catch { /* nėra vietos */ }
-          const rec = recordFor(known, speciesId, len * 10);
-          known.push({ id: clientId, species_id: speciesId, length_mm: len * 10, status: 'pending' });
+          const impact = impactOf();
+          const rec = impact.rec;
+          const savedId = clientId;
+          const savedPhoto = photo;
+          const savedAt = capturedAt;
+          known.push({ id: clientId, species_id: speciesId, length_mm: len * 10, status: 'pending', captured_at_device: capturedAt });
           vibrate([20, 40, 20]);
-          ctx.flush();
+          const flushing = ctx.flush();
           const spName = species.find((s) => s.id === speciesId)?.name_lt ?? '';
+          if (!more) {
+            if (rec.kind === 'record') vibrate([30, 60, 30, 60, 80]);
+            showDone({ rec, impact, spName, lengthMm: len * 10, at: savedAt, id: savedId, photo: savedPhoto, flushing });
+            saving = false;
+            return;
+          }
           if (rec.kind === 'record') {
             vibrate([30, 60, 30, 60, 80]);
             await celebrate({ title: 'Naujas asmeninis rekordas!', big: `${spName} ${cm(len * 10)}`,
@@ -343,6 +384,72 @@ export async function captureView(ctx) {
           saving = false;
         }
       }
+      // --- Išsaugota: šventinis ekranas ---
+      function showDone({ rec, impact, spName, lengthMm, at, id, photo: blob, flushing }) {
+        const done = q('[data-step="done"]');
+        const time = stamp(new Date(at)).slice(11, 16);
+        const today = known.filter((c) => c.status !== 'rejected' && c.captured_at_device && dayKey(c.captured_at_device) === dayKey(at));
+        const todayBig = today.reduce((m, c) => Math.max(m, c.length_mm), 0);
+        const goal = goals.map((g) => ({ g, p: goalProgress(g, known.map((c) => ({ ...c, status: c.status || 'pending' })), [], new Date(), (sid) => species.find((s) => s.id === sid)?.name_lt ?? '') }))
+          .filter((x) => !x.p.done || (x.p.doneAt && Math.abs(x.p.doneAt - Date.parse(at)) < 60e3)).sort((a, b) => b.p.pct - a.p.pct)[0];
+        const ok = impact.rows.filter((x) => x.r === 'ok');
+        const title = rec.kind === 'record' ? 'Naujas asmeninis rekordas!' : rec.kind === 'first' ? 'Pirma tavo šios rūšies žuvis!' : 'Laimikis išsaugotas!';
+        done.innerHTML = String(html`<div class="succ" data-done>
+            <div class="burst" aria-hidden="true">${rec.kind === 'record' ? '🏆' : rec.kind === 'first' ? '⭐' : '🎣'}</div>
+            <h2 class="display-md" tabindex="-1">${title}</h2>
+            <p class="muted strong">${spName} ${cm(lengthMm)} · ${time}</p>
+            ${rec.kind === 'record' ? html`<p class="small muted">Ankstesnis rekordas – ${cm(rec.previous)}. Rekordas bus įskaitytas, kai moderatorius patvirtins.</p>` : ''}
+          </div>
+          ${ok.length ? html`<section class="imp">${ok.map(({ t, pr }) => html`<div class="imp-row"><span class="rk">${pr ? `#${pr.rank}` : '✓'}</span>
+            <span class="grow stack-1"><b>${t.title}</b><span class="small">Bus įskaityta po patvirtinimo${pr ? ` · ${projectionText(pr)}` : ''}${pr && pr.gap > 0 && pr.rank > 1 ? ` · iki #${pr.rank - 1} trūksta ${t.format === 'species_points' || t.format === 'custom' ? `${String(pr.gap / 10).replace('.', ',')} tšk.` : cm(pr.gap)}` : ''}</span></span></div>`)}</section>` : ''}
+          <div class="grid-2">
+            <div class="tile"><span class="imp-k">Šiandien</span><b class="tile-big">${today.length} ${today.length === 1 ? 'žuvis' : today.length % 10 >= 2 && today.length % 10 <= 9 && (today.length % 100 < 10 || today.length % 100 > 20) ? 'žuvys' : 'žuvų'}</b><span class="small muted">didžiausia ${cm(todayBig)}</span></div>
+            ${goal ? html`<div class="tile" data-done-goal><span class="imp-k">Tikslas</span><b class="tile-big">${Math.round(goal.p.pct * 100)} %</b><span class="small muted">${goalTitle(goal.g, (sid) => species.find((s) => s.id === sid)?.name_lt ?? '')}</span></div>`
+              : html`<a class="tile" href="#/dienorastis?skiltis=tikslai"><span class="imp-k">Tikslai</span><b class="tile-big">＋</b><span class="small muted">Išsikelk tikslą</span></a>`}
+          </div>
+          <div class="card row gap-8" data-done-status>${icon('refresh', 18)}<span class="small grow">Siunčiama…</span></div>
+          <button class="btn btn-primary btn-lg" data-done-more>${icon('camera', 20)}Registruoti dar vieną</button>
+          <div class="row gap-8"><button class="btn grow" data-done-share>${icon('share', 18)}Pasidalinti</button><button class="btn grow" data-done-diary>${icon('book', 18)}Į dienoraštį</button></div>`);
+        show('done');
+        done.querySelector('h2').focus({ preventScroll: true });
+        window.scrollTo(0, 0);
+        const status = done.querySelector('[data-done-status]');
+        Promise.resolve(flushing).catch(() => {}).then(async () => {
+          const left = await ctx.outbox.list().catch(() => []);
+          if (!status.isConnected) return;
+          const q1 = left.find((x) => x.clientId === id);
+          status.innerHTML = String(q1
+            ? html`${icon('cloudOff', 18)}<span class="small grow">${q1.state === 'failed' ? 'Neišsiųsta – žiūrėk dienoraštyje' : 'Laukia ryšio – išsiųsime automatiškai'}</span><span class="chip chip-wait">Telefone</span>`
+            : html`${icon('check', 18)}<span class="small grow">Išsiųsta · laukia moderatoriaus</span><span class="chip chip-wait">Tikrinama</span>`);
+        });
+        done.querySelector('[data-done-diary]').addEventListener('click', () => ctx.navigate('#/dienorastis'));
+        done.querySelector('[data-done-more]').addEventListener('click', () => {
+          clientId = uuid();
+          photo = null;
+          capturedAt = null;
+          clockOffset = null;
+          weather = null;
+          weatherAsked = false;
+          q('[data-weather]').hidden = true;
+          q('[data-weight]').value = '';
+          q('[data-notes]').value = '';
+          backToCamera();
+        });
+        done.querySelector('[data-done-share]').addEventListener('click', async (e) => {
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          try {
+            const card = await makeShareCard({ photo: blob, length: cm(lengthMm), species: spName,
+              line: `${new Date(at).toLocaleDateString('lt-LT')} · ${state.profile?.nickname || ''}`, badge: rec.kind === 'record' ? '🏆 Asmeninis rekordas' : '' });
+            const how = await shareImage(card, { title: `${spName} ${cm(lengthMm)}` });
+            if (how === 'downloaded') ctx.toast('Paveikslėlis išsaugotas');
+          } catch {
+            ctx.toast('Nepavyko paruošti paveikslėlio');
+          }
+          btn.disabled = false;
+        });
+      }
+
       q('[data-save]').addEventListener('click', () => save(false));
       q('[data-save-more]').addEventListener('click', () => save(true));
 

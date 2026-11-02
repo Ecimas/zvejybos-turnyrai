@@ -1488,7 +1488,13 @@ def main():
         expect(page.locator("[data-len]")).to_have_text("81")
         step("liniuotė ir +/- mygtukai")
 
+        # Pirmoji – dažniausiai tavo gaudoma rūšis
+        expect(page.locator("[data-sp]").first).to_have_attribute("aria-pressed", "true")
+        page.get_by_role("button", name="Lydeka").click()
         expect(page.get_by_role("button", name="Lydeka")).to_have_attribute("aria-pressed", "true")
+        imp = page.locator("[data-impact]")
+        expect(imp).to_contain_text("Naujas asmeninis rekordas")
+        expect(imp).to_contain_text("buvo 69 cm")
         fit = page.locator("[data-fit] .list-row", has_text="Rudens lydekų taurė")
         expect(fit).to_contain_text("Bus įskaityta po patvirtinimo")
         page.get_by_role("button", name="Ešerys").click()
@@ -1506,13 +1512,18 @@ def main():
         step("rūšis, taisyklių patikra, oras ir papildoma informacija")
 
         page.get_by_role("button", name="Išsaugoti").click()
-        # 81 cm lydeka > ankstesnė 69 cm -> naujas asmeninis rekordas
-        expect(page.locator(".celebrate")).to_contain_text("Naujas asmeninis rekordas!")
-        expect(page.locator(".celebrate")).to_contain_text("Lydeka 81 cm")
-        expect(page.locator(".celebrate")).to_contain_text("Ankstesnis rekordas – 69 cm")
+        # 81 cm lydeka > ankstesnė 69 cm -> naujas asmeninis rekordas (šventinis ekranas)
+        done = page.locator("[data-step='done']")
+        expect(done.locator("[data-done]")).to_contain_text("Naujas asmeninis rekordas!")
+        expect(done).to_contain_text("Lydeka 81 cm")
+        expect(done).to_contain_text("Ankstesnis rekordas – 69 cm")
+        expect(done).to_contain_text("Rudens lydekų taurė")
+        expect(done.locator("[data-done-status]")).to_contain_text("Išsiųsta · laukia moderatoriaus")
         shot(page, "04b-rekordas")
-        page.get_by_role("button", name="Super!").click()
-        expect(page.locator(".celebrate")).to_have_count(0)
+        with page.expect_download() as dl:
+            done.get_by_role("button", name="Pasidalinti").click()
+        assert dl.value.suggested_filename == "laimikis.png"
+        done.get_by_role("button", name="Į dienoraštį").click()
         expect(page.get_by_role("heading", name="Dienoraštis")).to_be_visible()
         card81 = page.locator("[data-catch]", has_text="81 cm").first
         expect(card81).to_contain_text("Asmeninis rekordas")
@@ -1551,7 +1562,31 @@ def main():
         page.get_by_role("button", name="Uždaryti nuotrauką").click()
         expect(page.locator(".lightbox")).to_have_count(0)
         shot(page, "05c-laimikis")
-        step("laimikio peržiūra ir nuotrauka per visą ekraną")
+        expect(page.locator("[data-pb]")).to_contain_text("Asmeninis rekordas")
+        expect(page.locator("[data-compare]")).to_contain_text("Lydeka: tavo laimikiai")
+        expect(page.locator("[data-compare]")).to_contain_text("1 vieta iš")
+        expect(page.get_by_role("link", name="Mano žemėlapyje")).to_be_visible()
+        with page.expect_download() as dl2:
+            page.get_by_role("button", name="Dalintis laimikiu").click()
+        assert dl2.value.suggested_filename == "laimikis.png"
+        step("laimikio peržiūra ir nuotrauka per visą ekraną, palyginimas, pasidalinimas paveikslėliu")
+
+        # Pristatymas (#/pradzia); „Tavo pradžia“ nerodoma, kai viskas atlikta
+        page.goto(base + "#/")
+        expect(page.get_by_role("heading", name="Turnyrai", level=1)).to_be_visible()
+        expect(page.locator("[data-start]")).to_have_count(0)
+        page.goto(base + "#/pradzia")
+        expect(page.locator("[data-intro-title]")).to_have_text("1. Žuvis prie liniuotės")
+        expect(page.locator("[data-start] .check.d")).to_have_count(4)
+        page.get_by_role("button", name="Toliau").click()
+        expect(page.locator("[data-intro-title]")).to_have_text("2. Dalyvauk turnyruose")
+        page.get_by_role("button", name="Toliau").click()
+        expect(page.locator("[data-intro-title]")).to_have_text("3. Tavo dienoraštis")
+        shot(page, "05d-pristatymas")
+        page.get_by_role("button", name="Pradėti").click()
+        expect(page.get_by_role("heading", name="Turnyrai", level=1)).to_be_visible()
+        assert page.evaluate("() => localStorage.getItem('zt-intro-done')") == "1"
+        step("pristatymas 3 žingsniais ir paslepiamas pradžios sąrašas")
         shot(page, "05-dienorastis")
         step("išsaugota ir išsiųsta")
 
@@ -1566,6 +1601,8 @@ def main():
         page.get_by_role("button", name="Fotografuoti").click()
         page.get_by_role("button", name="Išsaugoti").click()
         expect(page.locator("#status")).to_contain_text("1 laimikis laukia išsiuntimo")
+        expect(page.locator("[data-done-status]")).to_contain_text("Laukia ryšio")
+        page.get_by_role("button", name="Į dienoraštį").click()
         expect(page.locator(".card", has_text="Laukia eilėje")).to_be_visible()
         shot(page, "06-eile")
         page.evaluate("() => { window.__zt.backend.submitCatch = window.__realSubmit; }")
