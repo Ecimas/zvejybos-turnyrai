@@ -194,4 +194,49 @@ do $$ begin
 end $$;
 reset role;
 reset request.jwt.claim.sub;
+\echo 'M9. Pagalba: žvejo pokalbis su komanda'
+set role authenticated;
+set request.jwt.claim.sub = '3e600000-0000-4000-8000-0000000000c6';
+do $$ declare c uuid; c2 uuid; n bigint; begin
+  c := public.start_support();
+  c2 := public.start_support();
+  assert c = c2, 'pagalbos pokalbis turi būti vienas';
+  perform public.send_message(c, 'Kaip pakeisti slapyvardį?');
+  assert (select count(*) from public.my_conversations() where kind = 'support') = 1, 'žvejas nemato savo pagalbos pokalbio';
+  begin perform public.block_conversation(c, true); raise exception 'FAIL: komanda užblokuota';
+  exception when raise_exception then if sqlerrm <> 'not allowed' then raise; end if; end;
+end $$;
+-- Kitas žvejys pagalbos pokalbio nemato
+set request.jwt.claim.sub = '3e500000-0000-4000-8000-0000000000c5';
+do $$ begin
+  assert not exists (select 1 from public.conversations where kind = 'support' and participant_id = '3e600000-0000-4000-8000-0000000000c6'), 'svetimas mato pagalbą';
+  begin perform public.send_message((select id from public.conversations where kind = 'support' limit 1), 'x');
+  exception when raise_exception then null; end;
+end $$;
+-- Savininkas mato, neperskaityta, atsako; žvejas gauna pranešimą
+set request.jwt.claim.sub = '3e700000-0000-4000-8000-0000000000c7';
+do $$ declare c uuid; u bigint; begin
+  select id, unread into c, u from public.my_conversations() where kind = 'support' and other_id = '3e600000-0000-4000-8000-0000000000c6';
+  assert c is not null and u = 1, format('savininkas nemato pagalbos žinutės (%s)', u);
+  perform public.send_message(c, 'Profilis → Redaguoti profilį.');
+  assert (select unread from public.my_conversations() where id = c) = 0, 'savo atsakymas skaičiuojamas kaip neperskaitytas';
+end $$;
+reset role;
+do $$ begin
+  assert exists (select 1 from public.notification_outbox where user_id = '3e700000-0000-4000-8000-0000000000c7' and title like 'Pagalba:%'), 'savininkas negavo pranešimo';
+  assert exists (select 1 from public.notification_outbox where user_id = '3e600000-0000-4000-8000-0000000000c6' and title = 'Atsakė Žvejybos turnyrų komanda'), 'žvejas negavo atsakymo pranešimo';
+end $$;
+set role authenticated;
+set request.jwt.claim.sub = '3e600000-0000-4000-8000-0000000000c6';
+do $$ begin
+  assert (select unread from public.my_conversations() where kind = 'support') = 1, 'žvejas nemato atsakymo kaip naujo';
+end $$;
+reset role;
+
+do $$ begin
+  assert public.easter_date(2026) = date '2026-04-05' and public.easter_date(2027) = date '2027-03-28', 'Velykos';
+  assert public.lt_holiday(date '2026-04-06') and public.lt_holiday(date '2026-11-02') and not public.lt_holiday(date '2026-11-03'), 'šventės';
+  assert public.add_business_days(timestamptz '2026-12-23 10:00:00+00', 3) = timestamptz '2026-12-30 10:00:00+00', 'Kalėdos neskaičiuojamos';
+  assert public.add_business_days(timestamptz '2026-10-30 10:00:00+00', 1) = timestamptz '2026-11-03 10:00:00+00', 'Vėlinės neskaičiuojamos';
+end $$;
 \echo '   ok – žinutės'

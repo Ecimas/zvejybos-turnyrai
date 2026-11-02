@@ -3,13 +3,14 @@
 --  * Sisteminis pokalbis (kind = 'system'): automatinė rezultato žinutė dalyviui, į ją atsakyti negalima.
 --  * Turnyrui pasibaigus visi dalyviai gauna rezultatą; prizininkai – pokalbyje su organizatoriumi su žinia,
 --    kad organizatorius susisieks per 3 darbo dienas. Nesusisiekus – priminimas organizatoriui ir savininkui.
+--  * Pagalba (kind = 'support'): žvejo pokalbis su programėlės komanda (savininkas ir administratoriai).
 --  * Rašoma tik per serverio funkcijas (tikrinamos teisės, blokavimas, užblokuoti vartotojai, dažnio riba).
 
 -- ---------------------------------------------------------------- Lentelės
 create table if not exists public.conversations (
   id              uuid primary key default gen_random_uuid(),
-  tournament_id   uuid not null references public.tournaments (id) on delete cascade,
-  kind            text not null check (kind in ('org', 'system')),
+  tournament_id   uuid references public.tournaments (id) on delete cascade,
+  kind            text not null check (kind in ('org', 'system', 'support')),
   organizer_id    uuid references public.profiles (id) on delete cascade,
   participant_id  uuid not null references public.profiles (id) on delete cascade,
   prize_place     integer,
@@ -23,8 +24,10 @@ create table if not exists public.conversations (
   last_message_at timestamptz not null default now(),
   created_at      timestamptz not null default now(),
   unique (tournament_id, participant_id, kind),
-  check ((kind = 'org') = (organizer_id is not null))
+  check ((kind = 'org') = (organizer_id is not null)),
+  check ((kind = 'support') = (tournament_id is null))
 );
+create unique index if not exists conversations_support_uniq on public.conversations (participant_id) where kind = 'support';
 create index if not exists conversations_participant_idx on public.conversations (participant_id, last_message_at desc);
 create index if not exists conversations_organizer_idx on public.conversations (organizer_id, last_message_at desc) where organizer_id is not null;
 create index if not exists conversations_deadline_idx on public.conversations (deadline_at) where deadline_at is not null and reminded_at is null;
@@ -61,12 +64,14 @@ alter table public.message_reports enable row level security;
 do $$ begin
   if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'conversations' and policyname = 'conversations_select') then
     create policy conversations_select on public.conversations for select to authenticated
-      using (participant_id = (select auth.uid()) or organizer_id = (select auth.uid()));
+      using (participant_id = (select auth.uid()) or organizer_id = (select auth.uid())
+             or (kind = 'support' and (select public.has_perm('tournaments'))));
   end if;
   if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'messages' and policyname = 'messages_select') then
     create policy messages_select on public.messages for select to authenticated
       using (exists (select 1 from public.conversations c where c.id = conversation_id
-                      and (c.participant_id = (select auth.uid()) or c.organizer_id = (select auth.uid()))));
+                      and (c.participant_id = (select auth.uid()) or c.organizer_id = (select auth.uid())
+                           or (c.kind = 'support' and (select public.has_perm('tournaments'))))));
   end if;
 end $$;
 revoke all on public.conversations, public.messages, public.message_reports from anon;
@@ -83,7 +88,32 @@ as $$
               else replace(to_char(p_cents / 100.0, 'FM999999990.00'), '.', ',') end || ' €';
 $$;
 
--- Po n darbo dienų (šeštadieniai ir sekmadieniai neskaičiuojami).
+-- Velykų sekmadienis (Grigaliaus kalendorius).
+create or replace function public.easter_date(y integer)
+returns date
+language plpgsql
+immutable
+as $$
+declare a int; b int; c int; d int; e int; f int; g int; h int; i int; k int; l int; m int;
+begin
+  a := y % 19; b := y / 100; c := y % 100; d := b / 4; e := b % 4; f := (b + 8) / 25; g := (b - f + 1) / 3;
+  h := (19 * a + b - d - g + 15) % 30; i := c / 4; k := c % 4; l := (32 + 2 * e + 2 * i - h - k) % 7; m := (a + 11 * h + 22 * l) / 451;
+  return make_date(y, (h + l - 7 * m + 114) / 31, ((h + l - 7 * m + 114) % 31) + 1);
+end;
+$$;
+
+-- Lietuvos valstybinės šventės (kaip programėlės workdays.js).
+create or replace function public.lt_holiday(p date)
+returns boolean
+language sql
+immutable
+as $$
+  select to_char(p, 'MM-DD') = any (array['01-01', '02-16', '03-11', '05-01', '06-24', '07-06', '08-15', '11-01', '11-02', '12-24', '12-25', '12-26'])
+      or p = public.easter_date(extract(year from p)::int)
+      or p = public.easter_date(extract(year from p)::int) + 1;
+$$;
+
+-- Po n darbo dienų (savaitgaliai ir Lietuvos šventės neskaičiuojami).
 create or replace function public.add_business_days(p_from timestamptz, p_days integer)
 returns timestamptz
 language plpgsql
@@ -92,10 +122,12 @@ as $$
 declare
   d timestamptz := p_from;
   n integer := 0;
+  v date;
 begin
   while n < p_days loop
     d := d + interval '1 day';
-    if extract(isodow from d at time zone 'Europe/Vilnius') < 6 then
+    v := (d at time zone 'Europe/Vilnius')::date;
+    if extract(isodow from v) < 6 and not public.lt_holiday(v) then
       n := n + 1;
     end if;
   end loop;
@@ -203,6 +235,26 @@ $$;
 revoke all on function public.start_conversation(uuid, uuid) from public, anon;
 grant execute on function public.start_conversation(uuid, uuid) to authenticated;
 
+-- Pagalba: žvejo pokalbis su komanda (vienas kiekvienam žvejui).
+create or replace function public.start_support()
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+begin
+  if auth.uid() is null then raise exception 'not allowed'; end if;
+  insert into public.conversations (kind, participant_id) values ('support', auth.uid())
+  on conflict (participant_id) where kind = 'support' do nothing;
+  select id into v_id from public.conversations where kind = 'support' and participant_id = auth.uid();
+  return v_id;
+end;
+$$;
+revoke all on function public.start_support() from public, anon;
+grant execute on function public.start_support() to authenticated;
+
 create or replace function public.send_message(p_conversation uuid, p_body text)
 returns bigint
 language plpgsql
@@ -219,10 +271,11 @@ declare
 begin
   if me is null then raise exception 'not allowed'; end if;
   select * into c from public.conversations where id = p_conversation for update;
-  if not found or (c.participant_id <> me and c.organizer_id is distinct from me) then
+  if not found or (c.participant_id <> me and c.organizer_id is distinct from me
+                   and not (c.kind = 'support' and public.has_perm('tournaments'))) then
     raise exception 'not allowed';
   end if;
-  if c.kind <> 'org' then raise exception 'read_only'; end if;
+  if c.kind = 'system' then raise exception 'read_only'; end if;
   if c.blocked_by is not null then raise exception 'blocked'; end if;
   if public.is_banned() then raise exception 'banned'; end if;
   if char_length(v_body) < 1 or char_length(v_body) > 2000 then raise exception 'body_invalid'; end if;
@@ -230,12 +283,25 @@ begin
     raise exception 'rate_limit' using hint = 'Per daug žinučių – palauk kelias minutes';
   end if;
   insert into public.messages (conversation_id, sender_id, body) values (c.id, me, v_body) returning id into v_id;
+  -- Pagalboje komandos pusė (organizer_id = null) skaitymą žymi org_read_at
   update public.conversations set last_message_at = now(),
-         org_read_at = case when me = c.organizer_id then now() else org_read_at end,
+         org_read_at = case when me = c.organizer_id or (c.kind = 'support' and me <> c.participant_id) then now() else org_read_at end,
          part_read_at = case when me = c.participant_id then now() else part_read_at end
    where id = c.id;
-  v_other := case when me = c.organizer_id then c.participant_id else c.organizer_id end;
   select nickname into v_nick from public.profiles where id = me;
+  if c.kind = 'support' then
+    if me = c.participant_id then
+      for v_other in select id from public.profiles where roles && array['owner', 'admin']::text[] and id <> me loop
+        perform public.notify_user(v_other, 'announcement', format('Pagalba: žinutė nuo %s', coalesce(v_nick, 'žvejo')),
+          left(v_body, 140), '#/zinutes/' || c.id, format('msg:%s:%s', v_id, v_other));
+      end loop;
+    else
+      perform public.notify_user(c.participant_id, 'announcement', 'Atsakė Žvejybos turnyrų komanda',
+        left(v_body, 140), '#/zinutes/' || c.id, format('msg:%s', v_id));
+    end if;
+    return v_id;
+  end if;
+  v_other := case when me = c.organizer_id then c.participant_id else c.organizer_id end;
   perform public.notify_user(v_other, 'announcement', format('Žinutė nuo %s', coalesce(v_nick, 'žvejo')),
     left(v_body, 140), '#/zinutes/' || c.id, format('msg:%s', v_id));
   return v_id;
@@ -251,14 +317,16 @@ security definer
 set search_path = public
 as $$
   update public.conversations
-     set org_read_at = case when organizer_id = auth.uid() then now() else org_read_at end,
+     set org_read_at = case when organizer_id = auth.uid() or (kind = 'support' and participant_id <> auth.uid()) then now() else org_read_at end,
          part_read_at = case when participant_id = auth.uid() then now() else part_read_at end
-   where id = p_conversation and (participant_id = auth.uid() or organizer_id = auth.uid());
+   where id = p_conversation
+     and (participant_id = auth.uid() or organizer_id = auth.uid() or (kind = 'support' and public.has_perm('tournaments')));
 $$;
 revoke all on function public.mark_conversation_read(uuid) from public, anon;
 grant execute on function public.mark_conversation_read(uuid) to authenticated;
 
 -- Mano pokalbiai su paskutine žinute ir neperskaitytų skaičiumi.
+-- „Komandos pusė“ (i_organize): turnyro organizatorius arba pagalbos pokalbyje – administratorius.
 create or replace function public.my_conversations()
 returns table (id uuid, tournament_id uuid, tournament_title text, kind text, i_organize boolean, other_id uuid, other_nick text,
                prize_place integer, prize_cents integer, handed_at timestamptz, deadline_at timestamptz, blocked boolean, blocked_by_me boolean,
@@ -268,21 +336,29 @@ stable
 security definer
 set search_path = public
 as $$
-  select c.id, c.tournament_id, t.title, c.kind, c.organizer_id = auth.uid(),
-         case when c.organizer_id = auth.uid() then c.participant_id else c.organizer_id end,
+  with mine as (
+    select c.*, coalesce(c.organizer_id = auth.uid(), false) or (c.kind = 'support' and c.participant_id <> auth.uid()) as side_org
+      from public.conversations c
+     where c.participant_id = auth.uid() or c.organizer_id = auth.uid()
+        or (c.kind = 'support' and public.has_perm('tournaments'))
+  )
+  select c.id, c.tournament_id, t.title, c.kind, c.side_org,
+         case when c.side_org then c.participant_id else c.organizer_id end,
          p.nickname, c.prize_place, c.prize_cents, c.handed_at, c.deadline_at, c.blocked_by is not null, c.blocked_by = auth.uid(),
          c.last_message_at, lm.body, lm.sender_id = auth.uid(), lm.sender_id is null,
          (select count(*) from public.messages m
-           where m.conversation_id = c.id and m.sender_id is distinct from auth.uid()
-             and m.created_at > coalesce(case when c.organizer_id = auth.uid() then c.org_read_at else c.part_read_at end, '-infinity'::timestamptz)
-             and not (c.organizer_id = auth.uid() and m.sender_id is null))
-    from public.conversations c
-    join public.tournaments t on t.id = c.tournament_id
-    left join public.profiles p on p.id = case when c.organizer_id = auth.uid() then c.participant_id else c.organizer_id end
+           where m.conversation_id = c.id
+             and m.created_at > coalesce(case when c.side_org then c.org_read_at else c.part_read_at end, '-infinity'::timestamptz)
+             and case when c.side_org then m.sender_id = c.participant_id
+                      when c.kind = 'support' then m.sender_id is distinct from auth.uid()
+                      else m.sender_id is distinct from auth.uid() end)
+    from mine c
+    left join public.tournaments t on t.id = c.tournament_id
+    left join public.profiles p on p.id = case when c.side_org then c.participant_id else c.organizer_id end
     left join lateral (select m.body, m.sender_id from public.messages m where m.conversation_id = c.id order by m.created_at desc, m.id desc limit 1) lm on true
-   where (c.participant_id = auth.uid() or c.organizer_id = auth.uid())
-     -- Organizatoriui rodomi tik pokalbiai, kuriuose jau yra žmonių žinučių arba prizininkai
-     and (c.participant_id = auth.uid() or c.prize_place is not null or exists (select 1 from public.messages m where m.conversation_id = c.id and m.sender_id is not null))
+   where not c.side_org
+      -- Organizatoriui ir komandai rodomi tik pokalbiai, kuriuose jau yra žmonių žinučių, arba prizininkai
+      or c.prize_place is not null or exists (select 1 from public.messages m where m.conversation_id = c.id and m.sender_id is not null)
    order by c.last_message_at desc
    limit 200;
 $$;
@@ -361,7 +437,7 @@ declare
   c record;
 begin
   select * into c from public.conversations where id = p_conversation for update;
-  if not found or (c.participant_id <> auth.uid() and c.organizer_id is distinct from auth.uid()) then
+  if not found or c.kind <> 'org' or (c.participant_id <> auth.uid() and c.organizer_id is distinct from auth.uid()) then
     raise exception 'not allowed';
   end if;
   if p_on then
@@ -412,11 +488,11 @@ stable
 security definer
 set search_path = public
 as $$
-  select r.id, m.id, m.body, m.sender_id, ps.nickname, pr.nickname, r.reason, t.title, r.created_at, r.resolved_at
+  select r.id, m.id, m.body, m.sender_id, ps.nickname, pr.nickname, r.reason, coalesce(t.title, 'Pagalba'), r.created_at, r.resolved_at
     from public.message_reports r
     join public.messages m on m.id = r.message_id
     join public.conversations c on c.id = m.conversation_id
-    join public.tournaments t on t.id = c.tournament_id
+    left join public.tournaments t on t.id = c.tournament_id
     left join public.profiles ps on ps.id = m.sender_id
     left join public.profiles pr on pr.id = r.reporter_id
    where public.has_perm('ban')

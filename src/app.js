@@ -29,6 +29,7 @@ import { loginView } from './views/login.js';
 import { inviteView, takeInvite } from './views/invite.js';
 import { privacyView, rulesView } from './views/pages.js';
 import { inboxView, chatView, reportedMessagesView } from './views/messages.js';
+import { helpView } from './views/help.js';
 
 const ROUTES = [
   [/^\/$/, tournamentsView],
@@ -70,6 +71,7 @@ const ROUTES = [
   [/^\/klubu-lyga$/, clubLeagueView],
   [/^\/privatumas$/, privacyView],
   [/^\/taisykles$/, rulesView],
+  [/^\/pagalba$/, helpView],
   [/^\/zinutes$/, inboxView],
   [/^\/zinutes\/([\w-]+)$/, chatView],
   [/^\/moderavimas\/zinutes$/, reportedMessagesView],
@@ -266,6 +268,7 @@ async function main() {
     main.removeAttribute('aria-busy');
     document.title = result.title ? `${result.title} · Žvejybos turnyrai` : 'Žvejybos turnyrai';
     renderNav(result.nav);
+    renderAppbar(result.nav && result.appbar !== false);
     document.body.classList.toggle('no-nav', !result.nav);
     document.body.classList.toggle('dark-screen', !!result.dark);
     window.scrollTo(0, keepScroll ? y : 0);
@@ -296,6 +299,18 @@ async function main() {
     })).catch(() => {});
   }
   setInterval(() => { if (!document.hidden) hydrateUnread(); }, 60000);
+
+  // Viršutinė juosta visuose puslapiuose (išskyrus fotografavimą, pokalbį, didįjį ekraną): logotipas, pagalba, žinutės.
+  function renderAppbar(show) {
+    const bar = $('#appbar');
+    bar.hidden = !show;
+    document.body.classList.toggle('has-appbar', !!show);
+    if (!show || bar.dataset.ready) return;
+    bar.dataset.ready = '1';
+    bar.innerHTML = String(html`<a class="ab-logo" href="#/" aria-label="Žvejybos turnyrai – į pradžią"><img src="icons/icon.svg" alt="" width="34" height="34"><b>Žvejybos <span>turnyrai</span></b></a>
+      <a class="ab-btn" href="#/pagalba" aria-label="Pagalba" data-help-btn>${icon('help', 21)}</a>
+      <a class="ab-btn" href="#/zinutes" aria-label="Žinutės" data-inbox-btn>${icon('chat', 21)}<b data-unread hidden></b></a>`);
+  }
 
   function renderNav(active) {
     const nav = $('#nav');

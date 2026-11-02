@@ -14,7 +14,7 @@ export function messagesSupabase({ sb, check, uid, friendly }) {
     async conversations() {
       const { data, error } = await sb.rpc('my_conversations');
       if (error) throw fail(error, [], 'Nepavyko įkelti žinučių');
-      return (data || []).map((x) => ({ ...x, unread: Number(x.unread) || 0 }));
+      return (data || []).map((x) => ({ ...x, tournament_title: x.kind === 'support' ? 'Pagalba' : x.tournament_title, unread: Number(x.unread) || 0 }));
     },
     async conversation(id) {
       const [{ data: c, error }, { data: msgs, error: e2 }] = await Promise.all([
@@ -25,18 +25,25 @@ export function messagesSupabase({ sb, check, uid, friendly }) {
       if (!c) return null;
       if (e2) throw fail(e2, [], 'Nepavyko įkelti žinučių');
       const me = uid();
-      const other = c.organizer_id === me ? c.participant_id : c.organizer_id;
+      // Komandos pusė: organizatorius arba pagalbos pokalbyje – administratorius
+      const side = c.organizer_id === me || (c.kind === 'support' && c.participant_id !== me);
+      const other = side ? c.participant_id : c.organizer_id;
       let otherNick = null;
       if (other) {
         const { data: p } = await sb.from('profiles').select('nickname').eq('id', other).maybeSingle();
         otherNick = p?.nickname ?? '–';
       }
-      return { ...c, tournament_title: c.tournaments?.title ?? '–', tournament_format: c.tournaments?.format, i_organize: c.organizer_id === me,
+      return { ...c, tournament_title: c.kind === 'support' ? 'Pagalba' : c.tournaments?.title ?? '–', tournament_format: c.tournaments?.format, i_organize: side,
         other_id: other, other_nick: otherNick, blocked: !!c.blocked_by, blocked_by_me: c.blocked_by === me, messages: msgs || [] };
     },
     async startConversation(tournamentId, userId = null) {
       const { data, error } = await sb.rpc('start_conversation', { p_tournament: tournamentId, p_user: userId });
       if (error) throw fail(error, [], 'Nepavyko pradėti pokalbio');
+      return data;
+    },
+    async startSupport() {
+      const { data, error } = await sb.rpc('start_support');
+      if (error) throw fail(error, [], 'Nepavyko atidaryti pokalbio su komanda');
       return data;
     },
     async sendMessage(id, body) {

@@ -1,18 +1,10 @@
+import { addBusinessDays } from '../lib/workdays.js';
 // Demo: vidinės žinutės ir turnyro pabaigos žinutės (kaip serverio 0036) – viskas šiame telefone.
 import { payouts, eur } from '../lib/prizes.js';
 
 const D = 24 * 3600e3;
 
-export function addBusinessDays(from, days) {
-  const d = new Date(from);
-  let n = 0;
-  while (n < days) {
-    d.setTime(d.getTime() + D);
-    const dow = new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Vilnius' })).getDay();
-    if (dow !== 0 && dow !== 6) n += 1;
-  }
-  return d;
-}
+export { addBusinessDays } from '../lib/workdays.js';
 
 export function messagesDemo({ getDb, save, ME, perms, leaderboard }) {
   const db = new Proxy({}, { get: (_, k) => getDb()[k], set: (_, k, v) => { getDb()[k] = v; return true; } });
@@ -25,7 +17,9 @@ export function messagesDemo({ getDb, save, ME, perms, leaderboard }) {
   };
   const nick = (id) => db.profiles[id]?.nickname ?? '–';
   const conv = (id) => db.conversations.find((c) => c.id === id);
-  const party = (c) => !!c && (c.participant_id === ME || c.organizer_id === ME);
+  // Kaip serveryje (on delete cascade): ištrynus turnyrą, jo pokalbių nebelieka.
+  const alive = (c) => c.kind === 'support' || db.tournaments.some((t) => t.id === c.tournament_id);
+  const party = (c) => !!c && alive(c) && (c.participant_id === ME || c.organizer_id === ME);
   const banned = () => (db.bans || []).some((b) => b.user_id === ME && (!b.until || new Date(b.until) > new Date()));
   const nowIso = () => new Date().toISOString();
   const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `c-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -102,7 +96,7 @@ export function messagesDemo({ getDb, save, ME, perms, leaderboard }) {
       const msgs = db.messages.filter((m) => m.conversation_id === c.id);
       const last = msgs[msgs.length - 1];
       const other = c.organizer_id === ME ? c.participant_id : c.organizer_id;
-      return { id: c.id, tournament_id: c.tournament_id, tournament_title: t?.title ?? '–', kind: c.kind, i_organize: c.organizer_id === ME,
+      return { id: c.id, tournament_id: c.tournament_id, tournament_title: c.kind === 'support' ? 'Pagalba' : t?.title ?? '–', kind: c.kind, i_organize: c.organizer_id === ME,
         other_id: other, other_nick: other ? nick(other) : null, prize_place: c.prize_place, prize_cents: c.prize_cents, handed_at: c.handed_at,
         deadline_at: c.deadline_at, blocked: !!c.blocked_by, blocked_by_me: c.blocked_by === ME, last_message_at: c.last_message_at,
         last_body: last?.body ?? null, last_mine: last?.sender_id === ME, last_system: !!last && last.sender_id === null, unread: unreadOf(c) };
@@ -124,7 +118,7 @@ export function messagesDemo({ getDb, save, ME, perms, leaderboard }) {
       if (!party(c)) return null;
       const t = db.tournaments.find((x) => x.id === c.tournament_id);
       const other = c.organizer_id === ME ? c.participant_id : c.organizer_id;
-      return { ...c, tournament_title: t?.title ?? '–', tournament_format: t?.format, i_organize: c.organizer_id === ME, other_id: other,
+      return { ...c, tournament_title: c.kind === 'support' ? 'Pagalba' : t?.title ?? '–', tournament_format: t?.format, i_organize: c.organizer_id === ME, other_id: other,
         other_nick: other ? nick(other) : null, blocked: !!c.blocked_by, blocked_by_me: c.blocked_by === ME,
         messages: db.messages.filter((m) => m.conversation_id === id).sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id - b.id)) };
     },
@@ -147,11 +141,24 @@ export function messagesDemo({ getDb, save, ME, perms, leaderboard }) {
       save();
       return c.id;
     },
+    // Pagalba: žvejo pokalbis su komanda (demo – tik žvejo pusė, atsako automatinė žinutė).
+    async startSupport() {
+      init();
+      let c = db.conversations.find((x) => x.kind === 'support' && x.participant_id === ME);
+      if (!c) {
+        c = { id: newId(), tournament_id: null, kind: 'support', organizer_id: null, participant_id: ME, prize_place: null, prize_cents: null,
+          deadline_at: null, reminded_at: null, handed_at: null, org_read_at: null, part_read_at: null, blocked_by: null,
+          last_message_at: nowIso(), created_at: nowIso() };
+        db.conversations.push(c);
+        save();
+      }
+      return c.id;
+    },
     async sendMessage(id, body) {
       init();
       const c = conv(id);
       if (!party(c)) throw new Error('Neturi teisės');
-      if (c.kind !== 'org') throw new Error('Į automatinę žinutę atsakyti negalima');
+      if (c.kind === 'system') throw new Error('Į automatinę žinutę atsakyti negalima');
       if (c.blocked_by) throw new Error('Pokalbis užblokuotas');
       if (banned()) throw new Error('Tavo paskyra užblokuota');
       const text = String(body || '').trim();
@@ -160,6 +167,9 @@ export function messagesDemo({ getDb, save, ME, perms, leaderboard }) {
       if (recent >= 30) throw new Error('Per daug žinučių – palauk kelias minutes');
       const m = addMessage(c, ME, text);
       if (c.organizer_id === ME) c.org_read_at = m.created_at; else c.part_read_at = m.created_at;
+      if (c.kind === 'support' && !db.messages.some((x) => x.conversation_id === c.id && x.meta?.event === 'support_auto')) {
+        addMessage(c, null, 'Ačiū! Žinutę gavome – komanda atsakys čia, dažniausiai per 1 darbo dieną. (Demonstraciniame režime atsakymų nėra.)', { event: 'support_auto' });
+      }
       save();
       return m.id;
     },
@@ -200,7 +210,7 @@ export function messagesDemo({ getDb, save, ME, perms, leaderboard }) {
     async blockConversation(id, on) {
       init();
       const c = conv(id);
-      if (!party(c)) throw new Error('Neturi teisės');
+      if (!party(c) || c.kind !== 'org') throw new Error('Neturi teisės');
       if (on && !c.blocked_by) c.blocked_by = ME;
       else if (!on && c.blocked_by === ME) c.blocked_by = null;
       save();

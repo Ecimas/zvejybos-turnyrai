@@ -6,6 +6,7 @@ import { time, shortDate, dateTime, scoreText, count } from '../lib/format.js';
 import { eur } from '../lib/prizes.js';
 import { backButton, empty, loginPrompt, avatar, notFound } from '../ui.js';
 import { can } from '../lib/roles.js';
+import { businessDaysLeft } from '../lib/workdays.js';
 
 const POLL_MS = 8000;
 const dayKey = (d) => new Date(d).toLocaleDateString('sv-SE');
@@ -16,20 +17,7 @@ const dayLabel = (d) => {
   if (k === dayKey(Date.now() - 864e5)) return 'Vakar';
   return shortDate(d);
 };
-// Kiek darbo dienų liko iki termino (neigiamas – praėjo).
-export function businessDaysLeft(deadline, now = Date.now()) {
-  if (!deadline) return null;
-  const end = Date.parse(deadline);
-  if (end < now) return -1;
-  let n = 0;
-  const d = new Date(now);
-  while (d.getTime() < end) {
-    d.setTime(d.getTime() + 864e5);
-    const dow = d.getDay();
-    if (dow !== 0 && dow !== 6) n += 1;
-  }
-  return n;
-}
+export { businessDaysLeft };
 
 // Žinučių mygtukas su neperskaitytų skaičiumi (skaičių įrašo app.js po atvaizdavimo).
 export const inboxButton = () => html`<a class="ic-badge" href="#/zinutes" aria-label="Žinutės" data-inbox-btn>${icon('chat', 20)}<b data-unread hidden></b></a>`;
@@ -42,11 +30,14 @@ export async function inboxView(ctx) {
   const list = await backend.conversations();
   const row = (c) => {
     const sys = c.kind === 'system';
-    const name = sys ? 'Žvejybos turnyrai' : `${c.other_nick || '–'} · ${c.i_organize ? 'dalyvis' : 'organizatorius'}`;
+    const team = c.kind === 'support' && !c.i_organize;
+    const name = sys ? 'Žvejybos turnyrai' : team ? 'Žvejybos turnyrų komanda'
+      : `${c.other_nick || '–'} · ${c.kind === 'support' ? 'pagalba' : c.i_organize ? 'dalyvis' : 'organizatorius'}`;
     const sub = c.prize_place ? `🏆 ${c.tournament_title} · ${c.prize_place} vieta${c.handed_at ? ' · įteikta' : ''}` : c.tournament_title;
     const preview = c.last_body ? `${c.last_mine ? 'Tu: ' : ''}${c.last_body}` : 'Pokalbis pradėtas';
     return html`<li><a class="th ${c.unread ? 'unread' : ''}" href="#/zinutes/${c.id}" data-thread="${c.id}">
-      ${sys ? html`<span class="avatar th-sys" aria-hidden="true">${icon('trophy', 20)}</span>` : avatar(c.other_nick || '?')}
+      ${sys ? html`<span class="avatar th-sys" aria-hidden="true">${icon('trophy', 20)}</span>`
+        : team ? html`<span class="avatar th-team" aria-hidden="true"><img src="icons/icon.svg" alt="" width="40" height="40"></span>` : avatar(c.other_nick || '?')}
       <span class="th-nm"><span class="strong ellipsis">${name}</span><span class="th-t ellipsis">${sub}</span><span class="th-p ellipsis">${preview}</span></span>
       <span class="th-meta"><span>${whenShort(c.last_message_at)}</span>${c.unread ? html`<span class="dotn" aria-label="${count(c.unread, 'nauja žinutė', 'naujos žinutės', 'naujų žinučių')}">${c.unread}</span>` : ''}</span>
     </a></li>`;
@@ -117,8 +108,11 @@ export async function chatView(ctx, [id]) {
   if (!c) return { nav: 'turnyrai', html: notFound('#/zinutes', 'Pokalbis nerastas', 'Galbūt jis ištrintas arba tai ne tavo pokalbis.') };
   const me = state.user.id;
   const sys = c.kind === 'system';
-  const title = sys ? 'Žvejybos turnyrai' : c.other_nick || '–';
-  const sub = sys ? c.tournament_title : `${c.i_organize ? (c.prize_place ? `${c.prize_place} vieta${c.prize_cents ? ` · prizas ${eur(c.prize_cents)}` : ''}` : 'Dalyvis') : 'Organizatorius'} · ${c.tournament_title}`;
+  const support = c.kind === 'support';
+  const title = sys ? 'Žvejybos turnyrai' : support && !c.i_organize ? 'Žvejybos turnyrų komanda' : c.other_nick || '–';
+  const sub = sys ? c.tournament_title : support ? (c.i_organize ? 'Pagalba · atsakai kaip komanda' : 'Pagalba · atsakome darbo dienomis')
+    : `${c.i_organize ? (c.prize_place ? `${c.prize_place} vieta${c.prize_cents ? ` · prizas ${eur(c.prize_cents)}` : ''}` : 'Dalyvis') : 'Organizatorius'} · ${c.tournament_title}`;
+  if (support && !c.i_organize) c.other_nick = 'Komanda';
   const composer = () => (sys ? html`<div class="chat-foot stack-2" data-sys-foot>
       <p class="small muted">Tai automatinė žinutė – atsakyti į ją negalima.</p>
       <button type="button" class="btn" data-ask-org>${icon('chat', 18)}Rašyti organizatoriui</button></div>`
@@ -134,9 +128,9 @@ export async function chatView(ctx, [id]) {
     title: `${title} · Žinutės`,
     html: html`<div class="screen chat-screen">
       <header class="top-bar chat-top">${backButton('#/zinutes', 'Atgal į žinutes')}
-        <div class="grow stack-1 pad-x"><h1 class="chat-name" tabindex="-1">${title}</h1><a class="small muted ellipsis link-plain" href="#/t/${c.tournament_id}">${sub}</a></div>
-        ${sys ? html`<span></span>` : html`<button type="button" class="icon-btn" data-chat-menu aria-expanded="false" aria-label="Daugiau veiksmų">⋯</button>`}</header>
-      ${sys ? '' : html`<div class="card stack-2 chat-menu" data-chat-menu-box hidden>
+        <div class="grow stack-1 pad-x"><h1 class="chat-name" tabindex="-1">${title}</h1><a class="small muted ellipsis link-plain" href="${support ? '#/pagalba' : `#/t/${c.tournament_id}`}">${sub}</a></div>
+        ${sys || support ? html`<span></span>` : html`<button type="button" class="icon-btn" data-chat-menu aria-expanded="false" aria-label="Daugiau veiksmų">⋯</button>`}</header>
+      ${sys || support ? '' : html`<div class="card stack-2 chat-menu" data-chat-menu-box hidden>
         <a class="btn btn-ghost" href="#/t/${c.tournament_id}">${icon('trophy', 16)}Turnyras</a>
         ${c.other_id ? html`<a class="btn btn-ghost" href="#/zvejys/${c.other_id}">${icon('user', 16)}Profilis</a>` : ''}
         ${c.blocked_by_me ? '' : c.blocked ? '' : html`<button type="button" class="btn btn-ghost bad" data-block>${icon('x', 16, 2.4)}Blokuoti pokalbį</button>`}
