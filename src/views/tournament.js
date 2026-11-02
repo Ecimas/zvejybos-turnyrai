@@ -58,7 +58,7 @@ function winners(t, board, me) {
     <div class="row gap-8">${icon('trophy', 22)}<h2 class="h2">Nugalėtojai</h2></div>
     <ol class="plain stack-2">${top.map((r) => html`<li class="row gap-10">
       <span class="medal" aria-hidden="true">${MEDALS[r.rank - 1] || r.rank}</span>
-      <a class="grow strong" href="#/zvejys/${r.user_id}">${r.nickname}${r.user_id === me ? ' (tu)' : ''}</a>
+      <a class="grow strong" href="#/t/${t.id}/dalyvis/${r.user_id}">${r.nickname}${r.user_id === me ? ' (tu)' : ''}</a>
       <span class="stack-1 right"><span class="num-sm">${scoreText(t, r.score_mm)}</span>
         ${pay.get(r.user_id) ? html`<span class="prize-amt">${eur(pay.get(r.user_id))}</span>` : ''}</span>
     </li>`)}</ol>
@@ -256,7 +256,7 @@ export async function tournamentView(ctx, [id], query) {
 
   const leaders = (n) => (hidden ? html`<p class="muted">${icon('lock', 14)} Lentelė paslėpta iki turnyro pabaigos.</p>`
     : board.length ? html`<div class="list">${board.slice(0, n).map((r) => html`
-      <a class="list-row" href="#/zvejys/${r.user_id}">
+      <a class="list-row" href="#/t/${t.id}/dalyvis/${r.user_id}">
         <span class="rank r${r.rank}">${r.rank}</span>
         <span class="grow strong">${r.nickname}${r.user_id === me ? ' (tu)' : ''}</span>
         <span class="num-sm">${scoreText(t, r.score_mm)}</span>
@@ -579,7 +579,7 @@ export async function boardView(ctx, [id], query) {
     ? Math.max(4, Math.min(100, Math.round((Number(mine.score_mm) / Number(edge.score_mm)) * 100))) : null;
 
   const row = (r) => html`<li>
-    <a class="list-row board-row ${r.user_id === me ? 'mine' : ''} ${pay.has(r.user_id) ? 'prize' : ''}" href="#/zvejys/${r.user_id}">
+    <a class="list-row board-row ${r.user_id === me ? 'mine' : ''} ${pay.has(r.user_id) ? 'prize' : ''}" href="#/t/${t.id}/dalyvis/${r.user_id}">
       <span class="rank">${r.rank}</span>
       ${avatar(r.nickname)}
       <span class="grow stack-1">
@@ -609,7 +609,7 @@ export async function boardView(ctx, [id], query) {
       ${board.length ? html`
         ${prizeN ? html`<p class="fund-note" data-fund-note>${icon('trophy', 18)}<span>Prizų fondas <b>${eur(t.prize_fund_cents)}</b> · apdovanojam${prizeN === 1 ? 'a' : 'os'} <b>${count(prizeN, 'vieta', 'vietos', 'vietų')}</b></span></p>` : ''}
         <div class="podium">${podium.map(([r, pos]) => html`
-          <a class="podium-col p${pos}" href="#/zvejys/${r.user_id}" aria-label="${r.rank} vieta: ${r.user_id === me ? 'tu' : r.nickname}, ${scoreText(t, r.score_mm)}">
+          <a class="podium-col p${pos}" href="#/t/${t.id}/dalyvis/${r.user_id}" aria-label="${r.rank} vieta: ${r.user_id === me ? 'tu' : r.nickname}, ${scoreText(t, r.score_mm)}">
             <span class="who">
               ${pos === 1 ? html`<span class="lead-ic" aria-hidden="true">${icon('trophy', 15)}</span>` : ''}
               ${avatar(r.nickname, `ring-${pos}`)}

@@ -5,6 +5,7 @@ import { icon } from './icons.js';
 import { count } from './lib/format.js';
 import { tournamentsView, standingsView } from './views/tournaments.js';
 import { tournamentView, boardView, tvView, teamBoardView, duelsView } from './views/tournament.js';
+import { participantView } from './views/participant.js';
 import { leaguesView, leagueView } from './views/leagues.js';
 import { statsView } from './views/stats.js';
 import { adminLogView } from './views/adminlog.js';
@@ -36,6 +37,7 @@ const ROUTES = [
   [/^\/$/, tournamentsView],
   [/^\/t\/([\w-]+)$/, tournamentView],
   [/^\/t\/([\w-]+)\/lentele$/, boardView],
+  [/^\/t\/([\w-]+)\/dalyvis\/([\w-]+)$/, participantView],
   [/^\/t\/([\w-]+)\/tv$/, tvView],
   [/^\/t\/([\w-]+)\/klubai$/, teamBoardView],
   [/^\/t\/([\w-]+)\/dvikovos$/, duelsView],
