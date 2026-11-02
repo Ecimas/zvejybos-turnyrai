@@ -1,7 +1,7 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { cm, shortDate, count, plural } from '../lib/format.js';
-import { thumb, hydratePhotos, backButton, empty, avatar, loginPrompt, notFound, defaultNickname, banNotice } from '../ui.js';
+import { thumb, hydratePhotos, backButton, empty, avatar, loginPrompt, defaultNickname, banNotice } from '../ui.js';
 import { feat } from '../lib/clubs.js';
 import { canCreateTournament } from '../lib/features.js';
 import { introDone } from './intro.js';
@@ -10,9 +10,9 @@ import { weatherEnabled } from './capture.js';
 import { BAN_DAYS, BAN_REASONS, banUntilText } from '../lib/bans.js';
 import { permsOf, rolesOf, roleLabel, isStaff, can } from '../lib/roles.js';
 import { pushSupport, currentSubscription, enablePush, disablePush, NOTIFY_KINDS } from '../lib/push.js';
-import { followBlock, mountFollow } from './social.js';
+import { followBlock } from './social.js';
 
-function badges(catches, tcount, compact = false) {
+export function badges(catches, tcount, compact = false) {
   const list = computeBadges(catches, tcount);
   const earned = list.filter((b) => b.earned).length;
   const next = list.filter((b) => !b.earned).sort((a, b) => b.progress - a.progress)[0];
@@ -46,7 +46,7 @@ function download(name, text) {
 
 const MONTHS = ['Sau', 'Vas', 'Kov', 'Bal', 'Geg', 'Bir', 'Lie', 'Rgp', 'Rgs', 'Spa', 'Lap', 'Grd'];
 
-function stats(catches, species) {
+export function stats(catches, species) {
   const ok = catches.filter((c) => c.status === 'approved');
   const best = new Map();
   for (const c of ok) {
@@ -68,7 +68,7 @@ function stats(catches, species) {
   return { ok, records, months, year, speciesCount: best.size };
 }
 
-function seasonChart(s) {
+export function seasonChart(s) {
   const max = Math.max(1, ...s.months.map((m) => m.n));
   const label = s.months.filter((m) => !m.future).map((m) => `${m.label} ${m.n}`).join(', ');
   return html`<section class="card hero stack">
@@ -83,7 +83,7 @@ function seasonChart(s) {
   </section>`;
 }
 
-function records(s, top = 0) {
+export function records(s, top = 0) {
   if (!s.records.length) return '';
   const more = top && s.records.length > top;
   return html`<section class="stack">
@@ -353,61 +353,8 @@ export async function profileView(ctx, _params, query) {
   };
 }
 
-export async function anglerView(ctx, [id]) {
-  const { backend, state } = ctx;
-  const p = await backend.profile(id);
-  if (!p) return { nav: 'lenteles', html: notFound('#/lenteles', 'Žvejys nerastas') };
-  const moderating = can(state, 'ban') && id !== state.user?.id;
-  const [catches, tcount, ban, follow, clubs] = await Promise.all([
-    backend.userCatches(id), backend.userTournamentCount(id),
-    moderating ? backend.userBan(id).catch(() => null) : null,
-    backend.followStats && feat(state, 'social_follow') ? backend.followStats(id).catch(() => null) : null,
-    backend.userClubs ? backend.userClubs(id).catch(() => []) : []
-  ]);
-  const s = stats(catches, state.species);
-  const gallery = s.ok.slice().sort((a, b) => b.captured_at_device.localeCompare(a.captured_at_device)).slice(0, 12);
-
-  return {
-    nav: 'lenteles',
-    title: p.nickname,
-    html: html`<div class="screen">
-      <header class="top-bar"><button class="icon-btn" data-back aria-label="Atgal">${icon('back', 22, 2.2)}</button><span></span><span></span></header>
-      <header class="profile-head">
-        ${avatar(p.nickname, 'avatar-xl')}
-        <div class="grow stack-1">
-          <h1 class="display-md" tabindex="-1">${p.nickname}</h1>
-          <span class="muted">${p.region || ''}</span>
-          ${roleBadges(p)}
-          ${follow ? followBlock(follow, id === state.user?.id, !!state.user && !state.ban) : ''}
-        </div>
-      </header>
-      ${clubs.length ? html`<p class="row gap-8 wrap">${clubs.map((c) => html`<a class="badge badge-mine club-badge" href="#/klubas/${c.id}">${icon('users', 12, 2.6)}${c.name}</a>`)}</p>` : ''}
-      ${statGrid(s, tcount)}
-      ${records(s)}
-      ${gallery.length ? html`<section class="stack">
-        <h2 class="h2">Laimikiai</h2>
-        <div class="gallery">${gallery.map((c) => html`<a href="#/l/${c.id}"><figure>
-          ${thumb(c.photo_path, 104)}
-          <figcaption><span class="strong">${cm(c.length_mm)}</span> <span class="muted small">${state.species.find((x) => x.id === c.species_id)?.name_lt ?? ''}</span></figcaption>
-        </figure></a>`)}</div>
-      </section>` : empty('Patvirtintų laimikių dar nėra')}
-      <p class="center small muted">${icon('lock', 14)} Laimikių vietos nerodomos</p>
-      ${moderating ? modCard(p, ban) : ''}
-    </div>`,
-    mount(root) {
-      hydratePhotos(root, backend);
-      if (moderating) mountModCard(root, ctx, p);
-      mountFollow(root, ctx, id);
-      root.querySelector('[data-back]').addEventListener('click', () => {
-        if (history.length > 1) history.back();
-        else ctx.navigate('#/lenteles');
-      });
-    }
-  };
-}
-
 // Moderatoriaus veiksmai kito žvejo profilyje: blokuoti / atblokuoti, netinkamą slapyvardį pakeisti automatiniu.
-function modCard(p, ban) {
+export function modCard(p, ban) {
   return html`<section class="card stack mod-card" aria-labelledby="mod-h">
     <h2 class="h2 row gap-8" id="mod-h">${icon('shield', 20)}Moderatoriui</h2>
     ${isStaff(p) ? html`<p class="small muted">Tai komandos narys – blokuoti negalima. Pirma atimk jo roles (Komanda ir rolės).</p>`
@@ -429,7 +376,7 @@ function modCard(p, ban) {
   </section>`;
 }
 
-function mountModCard(root, ctx, p) {
+export function mountModCard(root, ctx, p) {
   const { backend } = ctx;
   const form = root.querySelector('[data-ban-form]');
   form?.addEventListener('submit', async (e) => {
@@ -475,7 +422,7 @@ function mountModCard(root, ctx, p) {
 }
 
 // Komandos nario rolės – matomos visiems, kad žvejai žinotų, kas tikrina.
-function roleBadges(p) {
+export function roleBadges(p) {
   const roles = rolesOf(p);
   if (!roles.length) return '';
   return html`<span class="row gap-8 wrap" data-roles>${roles.map((r) => html`<span class="badge badge-role">${icon(r === 'organizer' ? 'trophy' : 'shield', 12, 2.6)}${roleLabel(r)}</span>`)}</span>`;
