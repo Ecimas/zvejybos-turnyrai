@@ -1655,8 +1655,30 @@ def main():
         expect(mine).to_contain_text("81 cm")
         expect(page.locator(".my-sticky")).to_contain_text("#10")
         expect(page.locator(".podium-col.p1")).to_contain_text("Ąžuolas_K")
+        # Prizinės vietos: fondas, prizų riba, kiek trūksta iki prizinės vietos
+        expect(page.locator("[data-fund-note]")).to_contain_text("apdovanojamos 3 vietos")
+        expect(page.locator("[data-prize-line]")).to_have_text(re.compile(r"Prizų riba · 3 vieta", re.I))
+        expect(page.locator("[data-my-gap]")).to_contain_text("Iki prizinės vietos (#3) trūksta")
+        expect(page.locator(".my-sticky .meter")).to_have_count(1)
+        expect(page.locator(".board-row.prize")).to_have_count(0)
         shot(page, "08-lentele")
-        step("lentelė su mano vieta")
+        # 8 prizinės vietos: 4–8 pažymėtos, riba po 8-os, aš (#10) – už ribos
+        page.evaluate("""() => { const k = Object.keys(localStorage).find(x => { try { return JSON.parse(localStorage.getItem(x)).tournaments; } catch { return false; } });
+            const db = JSON.parse(localStorage.getItem(k)); db.tournaments.find(t => t.id === 't-taure').prize_split = [30, 20, 14, 10, 8, 7, 6, 5];
+            localStorage.setItem(k, JSON.stringify(db)); }""")
+        page.reload()
+        expect(page.locator("[data-fund-note]")).to_contain_text("apdovanojamos 8 vietos")
+        expect(page.locator(".board-row.prize")).to_have_count(5)
+        expect(page.locator(".board-row.prize .prize-amt")).to_have_count(5)
+        expect(page.locator("[data-prize-line]")).to_have_text(re.compile(r"Prizų riba · 8 vieta", re.I))
+        expect(page.locator("[data-my-gap]")).to_contain_text("Iki prizinės vietos (#8) trūksta")
+        shot(page, "08b-lentele-8-prizai")
+        page.evaluate("""() => { const k = Object.keys(localStorage).find(x => { try { return JSON.parse(localStorage.getItem(x)).tournaments; } catch { return false; } });
+            const db = JSON.parse(localStorage.getItem(k)); db.tournaments.find(t => t.id === 't-taure').prize_split = [50, 30, 20];
+            localStorage.setItem(k, JSON.stringify(db)); }""")
+        page.reload()
+        expect(page.locator("[data-fund-note]")).to_contain_text("apdovanojamos 3 vietos")
+        step("lentelė su mano vieta, prizinėmis vietomis ir prizų riba")
 
         page.locator(".podium-col.p1").click()
         expect(page.get_by_role("heading", name="Ąžuolas_K")).to_be_visible()

@@ -544,16 +544,28 @@ export async function boardView(ctx, [id], query) {
       </div>`
     };
   }
-  const podium = [board[1], board[0], board[2]].filter(Boolean);
+  // Podiumas „laiptais“: 2 – 1 – 3 (vieta pagal poziciją lentelėje; lygiosios rodomos tuo pačiu numeriu).
+  const podium = [[board[1], 2], [board[0], 1], [board[2], 3]].filter(([r]) => r);
   const rest = board.slice(3);
   const myIdx = board.findIndex((r) => r.user_id === me);
   const mine = board[myIdx];
   const above = myIdx > 0 ? board[myIdx - 1] : null;
   const pay = div ? new Map() : prizeMap(t, board);
   const prizeTag = (r) => (pay.get(r.user_id) ? html`<span class="prize-amt">${eur(pay.get(r.user_id))}</span>` : '');
+  // Prizinės vietos: paskutinė apmokama eilutė – „prizų riba“.
+  const prizeN = pay.size ? (t.prize_split || []).length : 0;
+  const lastPaid = pay.size ? board.reduce((acc, r, i) => (pay.has(r.user_id) ? i : acc), -1) : -1;
+  const edge = lastPaid >= 0 ? board[lastPaid] : null;
+  const prizeGap = () => {
+    if (!mine || !edge || pay.has(mine.user_id)) return null;
+    const gap = edge.score_mm - mine.score_mm;
+    return gap > 0 ? `Iki prizinės vietos (#${edge.rank}) trūksta ${scoreText(t, gap)}` : gapText(edge, mine, t);
+  };
+  const meter = mine && edge && !pay.has(mine.user_id) && Number(edge.score_mm) > 0
+    ? Math.max(4, Math.min(100, Math.round((Number(mine.score_mm) / Number(edge.score_mm)) * 100))) : null;
 
   const row = (r) => html`<li>
-    <a class="list-row board-row ${r.user_id === me ? 'mine' : ''}" href="#/zvejys/${r.user_id}">
+    <a class="list-row board-row ${r.user_id === me ? 'mine' : ''} ${pay.has(r.user_id) ? 'prize' : ''}" href="#/zvejys/${r.user_id}">
       <span class="rank">${r.rank}</span>
       ${avatar(r.nickname)}
       <span class="grow stack-1">
@@ -581,23 +593,28 @@ export async function boardView(ctx, [id], query) {
       ${sponsorStrip(t, 'Lentelę remia')}
 
       ${board.length ? html`
-        <div class="podium">${podium.map((r) => html`
-          <a class="podium-col p${r.rank}" href="#/zvejys/${r.user_id}">
-            ${avatar(r.nickname, `ring-${r.rank}`)}
-            <span class="small strong ellipsis">${r.user_id === me ? 'Tu' : r.nickname}</span>
-            <span class="num-md">${scoreText(t, r.score_mm)}</span>
-            ${prizeTag(r)}
-            <span class="rank r${r.rank}">${r.rank}</span>
+        ${prizeN ? html`<p class="fund-note" data-fund-note>${icon('trophy', 18)}<span>Prizų fondas <b>${eur(t.prize_fund_cents)}</b> · apdovanojam${prizeN === 1 ? 'a' : 'os'} <b>${count(prizeN, 'vieta', 'vietos', 'vietų')}</b></span></p>` : ''}
+        <div class="podium">${podium.map(([r, pos]) => html`
+          <a class="podium-col p${pos}" href="#/zvejys/${r.user_id}" aria-label="${r.rank} vieta: ${r.user_id === me ? 'tu' : r.nickname}, ${scoreText(t, r.score_mm)}">
+            <span class="who">
+              ${pos === 1 ? html`<span class="lead-ic" aria-hidden="true">${icon('trophy', 22)}</span>` : ''}
+              ${avatar(r.nickname, `ring-${pos}`)}
+              <span class="small strong ellipsis">${r.user_id === me ? 'Tu' : r.nickname}</span>
+              <span class="num-md">${scoreText(t, r.score_mm)}</span>
+            </span>
+            <span class="blk"><span class="rank r${pos}">${r.rank}</span>${prizeTag(r)}</span>
           </a>`)}</div>
-        ${rest.length ? html`<ol class="stack-6 plain">${rest.map(row)}</ol>` : ''}
+        ${rest.length && lastPaid >= 0 && lastPaid < 3 ? html`<div class="prize-line" data-prize-line>Prizų riba · ${edge.rank} vieta</div>` : ''}
+        ${rest.length ? html`<ol class="stack-6 plain">${rest.map((r, i) => html`${row(r)}${i + 3 === lastPaid && i < rest.length - 1 ? html`<li class="prize-line" data-prize-line>Prizų riba · ${edge.rank} vieta</li>` : ''}`)}</ol>` : ''}
         <p class="center small muted">${count(board.length, 'dalyvis', 'dalyviai', 'dalyvių')} su įskaitytais laimikiais${div ? ` diviziono „${div.name}“ lentelėje` : ''}${pay.size && p !== 'done' && !div ? ' · sumos – jei turnyras baigtųsi dabar' : ''}</p>
       ` : empty('Lentelė dar tuščia', p === 'soon' ? `Turnyras prasidės ${dateTime(t.starts_at)}.` : 'Kai moderatorius patvirtins pirmus laimikius, jie atsiras čia.')}
     </div>
     ${mine ? html`<div class="my-sticky">
       <span class="rank-big accent">#${mine.rank}</span>
       <span class="grow stack-1">
-        <span class="strong">Tu · ${scoreText(t, mine.score_mm)}</span>
-        <span class="small">${above ? gapText(above, mine, t) : 'Tu pirmauji'}${p === 'live' ? ` · ${timeLabel(t).toLowerCase()}` : ''}</span>
+        <span class="strong">Tu · ${scoreText(t, mine.score_mm)}${pay.has(mine.user_id) ? ` · ${eur(pay.get(mine.user_id))}` : ''}</span>
+        <span class="small" data-my-gap>${prizeGap() || (above ? gapText(above, mine, t) : 'Tu pirmauji')}${p === 'live' ? ` · ${timeLabel(t).toLowerCase()}` : ''}</span>
+        ${meter !== null ? html`<span class="meter" aria-hidden="true"><i style="width:${meter}%"></i></span>` : ''}
       </span>
     </div>` : ''}`,
     mount(root) {

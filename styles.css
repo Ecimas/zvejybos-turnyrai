@@ -288,17 +288,37 @@ ol.plain { list-style: none; margin: 0; padding: 0; }
 .ring-2 { box-shadow: 0 0 0 2px var(--soft); }
 .ring-3 { box-shadow: 0 0 0 2px #C98B5E; }
 
-.podium { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-items: end; }
-.podium-col {
-  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px;
-  padding: 14px 8px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line);
-  color: var(--text); text-decoration: none; min-width: 0;
-}
-.podium-col.p1 { min-height: 196px; background: var(--surface-2); border-color: var(--line-2); }
-.podium-col.p2 { min-height: 170px; }
-.podium-col.p3 { min-height: 156px; }
-.podium-col .avatar { width: 48px; height: 48px; border-radius: 24px; font-size: 18px; background: var(--bg); }
-.podium-col > span { max-width: 100%; }
+/* Podiumas „laiptais“: 2 – 1 – 3, pirmos vietos laiptelis aukščiausias ir oranžinis */
+.podium { display: grid; grid-template-columns: 1fr 1.15fr 1fr; gap: 6px; align-items: end; margin-top: 6px; }
+.podium-col { display: flex; flex-direction: column; align-items: center; min-width: 0; color: var(--text); text-decoration: none; text-align: center; }
+.podium-col .who { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-bottom: 8px; min-width: 0; max-width: 100%; }
+.podium-col .who > span { max-width: 100%; }
+.podium-col .avatar { width: 50px; height: 50px; border-radius: 25px; font-size: 18px; background: var(--surface-2); }
+.podium-col .num-md { line-height: 1; }
+.podium-col .blk { width: 100%; border-radius: 14px 14px 4px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 10px; }
+.podium-col .blk .rank { width: auto; font-family: 'Barlow Condensed', sans-serif; font-weight: 800; line-height: 1; }
+.podium-col.p1 .blk { height: 150px; background-color: var(--accent); background-image: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--surface))); }
+.podium-col.p1 .blk .rank, .podium-col.p1 .blk .prize-amt { color: var(--on-accent); }
+.podium-col.p1 .blk .rank { font-size: 64px; }
+.podium-col.p1 .blk .prize-amt { font-size: 15px; }
+.podium-col.p1 .avatar { width: 66px; height: 66px; border-radius: 33px; font-size: 24px; }
+.podium-col.p1 .num-md { font-size: 30px; }
+.podium-col.p2 .blk { height: 108px; background-color: var(--surface); background-image: linear-gradient(180deg, color-mix(in srgb, var(--soft) 45%, var(--surface)), var(--surface)); border: 1px solid var(--line-2); }
+.podium-col.p2 .blk .rank { font-size: 44px; }
+.podium-col.p3 .blk { height: 80px; background-color: var(--surface); background-image: linear-gradient(180deg, color-mix(in srgb, #C98B5E 30%, var(--surface)), var(--surface)); border: 1px solid var(--line); }
+.podium-col.p3 .blk .rank { font-size: 34px; }
+.podium-col.p3 .avatar { width: 42px; height: 42px; border-radius: 21px; font-size: 15px; }
+.podium-col.p3 .num-md { font-size: 21px; }
+.podium-col .lead-ic { color: var(--accent-ink); margin-bottom: -2px; }
+/* Prizinės vietos (4+) ir prizų riba */
+.board-row.prize { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); box-shadow: inset 3px 0 0 var(--accent); }
+.board-row.prize .rank { color: var(--accent-ink); }
+.prize-line { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; margin: 6px 0; list-style: none; }
+.prize-line::before, .prize-line::after { content: ''; flex: 1; border-top: 1.5px dashed var(--line-2); }
+.fund-note { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); margin: 0; }
+.fund-note b { color: var(--text); }
+.my-sticky .meter { display: block; height: 4px; border-radius: 2px; background: var(--line); margin-top: 4px; width: 100%; overflow: hidden; }
+.my-sticky .meter i { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
 
 .my-sticky {
   position: fixed; left: 50%; transform: translateX(-50%);
