@@ -56,7 +56,7 @@ export async function clubChatView(ctx, [id]) {
           ${reacts.length ? html`<span class="cm-reacts">${reacts.map(([e, n]) => html`<span class="${(m.mine || []).includes(e) ? 'mine' : ''}">${e} ${n}</span>`)}</span>` : ''}
           <div class="cm-acts" data-cm-acts hidden>
             ${m.deleted ? '' : html`<span class="row gap-4">${EMOJI.map((e) => html`<button type="button" class="cm-emoji ${(m.mine || []).includes(e) ? 'on' : ''}" data-react="${e}" aria-label="Reakcija ${e}" aria-pressed="${(m.mine || []).includes(e)}">${e}</button>`)}</span>`}
-            <span class="row gap-4 wrap">
+            <span class="cm-tools">
               ${!mine && !m.deleted && m.sender_id ? html`<button type="button" class="btn-text small" data-cm-report>Pranešti</button>` : ''}
               ${admin && !m.deleted ? html`<button type="button" class="btn-text small" data-cm-pin>${chat.pin_id === m.id ? 'Atsegti' : 'Prisegti'}</button>` : ''}
               ${canMute ? html`<button type="button" class="btn-text small" data-cm-mute="24">Nutildyti 24 val.</button><button type="button" class="btn-text small" data-cm-mute="168">7 d.</button>` : ''}

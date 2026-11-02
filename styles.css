@@ -1400,6 +1400,9 @@ body.has-appbar { --top-offset: calc(60px + env(safe-area-inset-top)); }
 .cm-reacts span.mine { border-color: var(--accent); }
 .cm-acts { display: flex; flex-direction: column; gap: 6px; padding: 8px 4px 4px; }
 .cm-acts[hidden] { display: none; }
+.cm-tools { display: flex; flex-wrap: wrap; column-gap: 16px; row-gap: 0; align-items: center; }
+.cm-tools .btn-text { min-height: 40px; padding: 6px 0; }
+.cm-tools .btn-text.bad { color: var(--bad); }
 .cm-emoji { width: 44px; height: 44px; border-radius: 22px; border: 1px solid var(--line-2); background: var(--surface); font-size: 20px; cursor: pointer; }
 .cm-emoji.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--surface)); }
 .cm-pin { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line-2);
