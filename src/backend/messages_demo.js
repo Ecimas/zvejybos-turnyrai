@@ -99,14 +99,153 @@ export function messagesDemo({ getDb, save, ME, perms, leaderboard }) {
       return { id: c.id, tournament_id: c.tournament_id, tournament_title: c.kind === 'support' ? 'Pagalba' : t?.title ?? '–', kind: c.kind, i_organize: c.organizer_id === ME,
         other_id: other, other_nick: other ? nick(other) : null, prize_place: c.prize_place, prize_cents: c.prize_cents, handed_at: c.handed_at,
         deadline_at: c.deadline_at, blocked: !!c.blocked_by, blocked_by_me: c.blocked_by === ME, last_message_at: c.last_message_at,
-        last_body: last?.body ?? null, last_mine: last?.sender_id === ME, last_system: !!last && last.sender_id === null, unread: unreadOf(c) };
+        last_body: last?.body ?? null, last_mine: last?.sender_id === ME, last_system: !!last && last.sender_id === null, unread: unreadOf(c),
+        other_wrote: !!other && msgs.some((m) => m.sender_id === other) };
     })
     .sort((a, b) => (a.last_message_at < b.last_message_at ? 1 : -1));
+
+  // ---- „Svarbu“: pranešimų centras (demo – keli pavyzdiniai pranešimai)
+  const notices = () => {
+    const x = getDb();
+    if (!x.user_notices) {
+      const mine = (x.catches || []).filter((c) => c.user_id === ME && c.status === 'approved').slice(0, 1);
+      x.user_notices = mine.map((c, i) => ({ id: i + 1, kind: 'review', title: 'Laimikis patvirtintas',
+        body: `${c.length_mm / 10} cm – įskaitytas į turnyrus`, url: '#/dienorastis', created_at: new Date(Date.now() - 3 * D).toISOString() }));
+      x.notices_seen_at = new Date(Date.now() - 4 * D).toISOString();
+    }
+    return x.user_notices;
+  };
+  const noticesUnread = () => notices().filter((n) => n.created_at > (getDb().notices_seen_at || '')).length;
+
+  // ---- Klubų pokalbiai (demo)
+  const clubOn = () => getDb().features?.club_chat !== false;
+  const memberOf = (clubId, user = ME) => (db.club_members || []).find((m) => m.club_id === clubId && m.user_id === user);
+  const isClubAdmin = (clubId) => ['owner', 'admin'].includes(memberOf(clubId)?.role);
+  const cstate = (clubId, user = ME) => {
+    const x = getDb();
+    x.club_chat_state ||= [];
+    let st = x.club_chat_state.find((r) => r.club_id === clubId && r.user_id === user);
+    if (!st) { st = { club_id: clubId, user_id: user, read_at: null, push: true, muted_until: null }; x.club_chat_state.push(st); }
+    return st;
+  };
+  const cmsgs = (clubId) => {
+    const x = getDb();
+    x.club_messages ||= [];
+    x.club_reactions ||= [];
+    // Pirmą kartą – keli kitų narių pranešimai, kad pokalbis nebūtų tuščias
+    if (!x.club_chat_seeded?.[clubId]) {
+      x.club_chat_seeded = { ...(x.club_chat_seeded || {}), [clubId]: true };
+      const others = (db.club_members || []).filter((m) => m.club_id === clubId && m.user_id !== ME);
+      const texts = ['Labas visiems! Kas savaitgalį važiuoja prie vandens?', 'Aš šeštadienį 6:00 – slėgis kyla, vėjas silpnas 🎣', 'Galiu paimti du žmones, rašykit.'];
+      others.slice(0, 3).forEach((m, i) => x.club_messages.push({ id: Date.now() - 1000 + i, club_id: clubId, sender_id: m.user_id, body: texts[i], catch: null,
+        deleted_at: null, created_at: new Date(Date.now() - (5 - i) * 3600e3).toISOString() }));
+    }
+    return x.club_messages.filter((m) => m.club_id === clubId).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+  };
+  const chatRow = (c) => {
+    const m = memberOf(c.id);
+    const list = cmsgs(c.id);
+    const last = list[list.length - 1];
+    const st = cstate(c.id);
+    const since = st.read_at && st.read_at > m.joined_at ? st.read_at : m.joined_at;
+    const pin = c.chat_pin_id ? list.find((x) => x.id === c.chat_pin_id && !x.deleted_at) : null;
+    return { club_id: c.id, name: c.name, logo_path: c.logo_path || null, logo_url: c.logo_path ? (getDb().logos || {})[c.logo_path] || null : null,
+      members: (db.club_members || []).filter((x) => x.club_id === c.id).length, my_role: m.role, push: st.push, muted_until: st.muted_until,
+      last_at: last?.created_at || m.joined_at, last_body: last ? (last.deleted_at ? 'Žinutė ištrinta' : last.body || '🐟 Pasidalino laimikiu') : null,
+      last_nick: last ? nick(last.sender_id) : null, last_mine: last?.sender_id === ME,
+      unread: list.filter((x) => !x.deleted_at && x.sender_id !== ME && x.created_at > since).length, pin_body: pin ? pin.body || '🐟 laimikis' : null };
+  };
+  const myClubChats = () => (db.clubs || []).filter((c) => memberOf(c.id)).map(chatRow).sort((a, b) => (a.last_at < b.last_at ? 1 : -1));
+  const findClubMsg = (id) => (getDb().club_messages || []).find((m) => m.id === id);
 
   return {
     async unreadCount() {
       await finishDue();
-      return listMine().reduce((s, x) => s + x.unread, 0);
+      return listMine().reduce((s, x) => s + x.unread, 0) + noticesUnread() + myClubChats().reduce((s, x) => s + x.unread, 0);
+    },
+    async notices() {
+      const seen = getDb().notices_seen_at || '';
+      return notices().slice().sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).map((n) => ({ ...n, unread: n.created_at > seen }));
+    },
+    async markNoticesSeen() { getDb().notices_seen_at = nowIso(); save(); },
+    async clubChats() { return myClubChats(); },
+    async clubChat(clubId) {
+      const c = (db.clubs || []).find((x) => x.id === clubId);
+      if (!c || !memberOf(clubId)) return null;
+      const reactions = getDb().club_reactions || [];
+      const row = chatRow(c);
+      const messages = cmsgs(clubId).map((m) => {
+        const rs = reactions.filter((r) => r.message_id === m.id);
+        return { id: m.id, sender_id: m.sender_id, nickname: nick(m.sender_id), role: memberOf(clubId, m.sender_id)?.role ?? null,
+          body: m.deleted_at ? null : m.body, catch: m.deleted_at ? null : m.catch, deleted: !!m.deleted_at, created_at: m.created_at,
+          reactions: rs.reduce((o, r) => ({ ...o, [r.emoji]: (o[r.emoji] || 0) + 1 }), {}), mine: rs.filter((r) => r.user_id === ME).map((r) => r.emoji) };
+      });
+      return { ...row, pin_id: c.chat_pin_id || null, messages };
+    },
+    async clubChatSend(clubId, body, catchId = null) {
+      if (!memberOf(clubId)) throw new Error('Neturi teisės');
+      if (!clubOn()) throw new Error('Klubų pokalbiai šiuo metu išjungti');
+      if (banned()) throw new Error('Tavo paskyra užblokuota');
+      const st = cstate(clubId);
+      if (st.muted_until && st.muted_until > nowIso()) throw new Error('Klubo valdytojas laikinai nutildė tave šiame pokalbyje');
+      const text = String(body || '').trim() || null;
+      if (text && text.length > 2000) throw new Error('Žinutė turi būti 1–2000 simbolių');
+      let card = null;
+      if (catchId) {
+        const c = (getDb().catches || []).find((x) => x.id === catchId && x.user_id === ME && x.status !== 'rejected');
+        if (!c) throw new Error('Šio laimikio pasidalinti negalima');
+        card = { id: c.id, species_id: c.species_id, length_mm: c.length_mm, weight_g: c.weight_g ?? null, captured_at: c.captured_at_device, status: c.status };
+      }
+      if (!text && !card) throw new Error('Žinutė turi būti 1–2000 simbolių');
+      cmsgs(clubId);
+      msgSeq += 1;
+      const m = { id: Date.now() * 100 + (msgSeq % 100), club_id: clubId, sender_id: ME, body: text, catch: card, deleted_at: null, created_at: nowIso() };
+      getDb().club_messages.push(m);
+      st.read_at = m.created_at;
+      save();
+      return m.id;
+    },
+    async clubChatRead(clubId) { if (memberOf(clubId)) { cstate(clubId).read_at = nowIso(); save(); } },
+    async clubChatReact(messageId, emoji) {
+      const m = findClubMsg(messageId);
+      if (!m || m.deleted_at || !memberOf(m.club_id)) throw new Error('Neturi teisės');
+      if (!['👍', '🔥', '🎣'].includes(emoji)) throw new Error('Netinkama reakcija');
+      const x = getDb();
+      const i = x.club_reactions.findIndex((r) => r.message_id === messageId && r.user_id === ME && r.emoji === emoji);
+      if (i >= 0) { x.club_reactions.splice(i, 1); save(); return false; }
+      x.club_reactions.push({ message_id: messageId, user_id: ME, emoji });
+      save();
+      return true;
+    },
+    async clubChatDelete(messageId) {
+      const m = findClubMsg(messageId);
+      if (!m || (m.sender_id !== ME && !isClubAdmin(m.club_id))) throw new Error('Neturi teisės');
+      Object.assign(m, { body: null, catch: null, deleted_at: m.deleted_at || nowIso() });
+      const c = db.clubs.find((x) => x.id === m.club_id);
+      if (c?.chat_pin_id === m.id) c.chat_pin_id = null;
+      save();
+    },
+    async clubChatPin(clubId, messageId) {
+      if (!isClubAdmin(clubId)) throw new Error('Neturi teisės');
+      db.clubs.find((x) => x.id === clubId).chat_pin_id = messageId || null;
+      save();
+    },
+    async clubChatMute(clubId, userId, hours) {
+      if (!isClubAdmin(clubId) || userId === ME || memberOf(clubId, userId)?.role === 'owner') throw new Error('Neturi teisės');
+      if (!memberOf(clubId, userId)) throw new Error('Nario nėra');
+      cstate(clubId, userId).muted_until = hours > 0 ? new Date(Date.now() + hours * 3600e3).toISOString() : null;
+      save();
+    },
+    async clubChatSetPush(clubId, on) { if (!memberOf(clubId)) throw new Error('Neturi teisės'); cstate(clubId).push = !!on; save(); },
+    async clubChatReport(messageId, reason) {
+      const m = findClubMsg(messageId);
+      if (!m || !memberOf(m.club_id) || m.sender_id === ME || m.deleted_at) throw new Error('Neturi teisės');
+      const x = getDb();
+      x.club_message_reports ||= [];
+      if (!x.club_message_reports.some((r) => r.message_id === messageId && r.reporter_id === ME)) {
+        x.club_message_reports.push({ message_id: messageId, reporter_id: ME, reason: reason || null, created_at: nowIso() });
+      }
+      save();
     },
     async conversations() {
       await finishDue();

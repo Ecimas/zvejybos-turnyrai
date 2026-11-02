@@ -22,36 +22,103 @@ export { businessDaysLeft };
 // Žinučių mygtukas su neperskaitytų skaičiumi (skaičių įrašo app.js po atvaizdavimo).
 export const inboxButton = () => html`<a class="ic-badge" href="#/zinutes" aria-label="Žinutės" data-inbox-btn>${icon('chat', 20)}<b data-unread hidden></b></a>`;
 
-export async function inboxView(ctx) {
+const NOTICE_IC = { review: 'check', overtaken: 'bars', start: 'clock', announcement: 'megaphone' };
+const TABS = [['svarbu', 'Svarbu'], ['zmones', 'Žmonės'], ['klubai', 'Klubai']];
+
+export async function inboxView(ctx, _params, query) {
   const { backend, state } = ctx;
   if (!state.user) {
     return { nav: 'turnyrai', title: 'Žinutės', html: html`<div class="screen">${backButton('#/')}<h1 class="display-lg" tabindex="-1">Žinutės</h1>${loginPrompt('Prisijunk, kad matytum žinutes.')}</div>` };
   }
-  const list = await backend.conversations();
+  const [list, notes, clubs] = await Promise.all([
+    backend.conversations(),
+    backend.notices ? backend.notices().catch(() => []) : [],
+    backend.clubChats ? backend.clubChats().catch(() => []) : []
+  ]);
+  const sum = (arr, f) => arr.reduce((n, x) => n + (f(x) || 0), 0);
+  const systems = list.filter((c) => c.kind === 'system');
+  const people = list.filter((c) => c.kind !== 'system');
+  // Laimėjimai prisegti „Svarbu“ viršuje, kol prizas įteiktas
+  const pins = people.filter((c) => c.kind === 'org' && !c.i_organize && c.prize_place && !c.handed_at);
+  const counts = {
+    svarbu: sum(systems, (c) => c.unread) + notes.filter((n) => n.unread).length,
+    zmones: sum(people, (c) => c.unread),
+    klubai: sum(clubs, (c) => c.unread)
+  };
+  const wanted = query?.get?.('skiltis');
+  const tab = TABS.some(([k]) => k === wanted) ? wanted
+    : counts.svarbu ? 'svarbu' : counts.zmones ? 'zmones' : counts.klubai ? 'klubai' : pins.length || systems.length || notes.length ? 'svarbu' : 'zmones';
+
+  const unreadDot = (n) => (n ? html`<span class="dotn" aria-label="${count(n, 'nauja žinutė', 'naujos žinutės', 'naujų žinučių')}">${n}</span>` : '');
   const row = (c) => {
-    const sys = c.kind === 'system';
     const team = c.kind === 'support' && !c.i_organize;
-    const name = sys ? 'Žvejybos turnyrai' : team ? 'Žvejybos turnyrų komanda'
+    const name = team ? 'Žvejybos turnyrų komanda'
       : `${c.other_nick || '–'} · ${c.kind === 'support' ? 'pagalba' : c.i_organize ? 'dalyvis' : 'organizatorius'}`;
-    const sub = c.prize_place ? `🏆 ${c.tournament_title} · ${c.prize_place} vieta${c.handed_at ? ' · įteikta' : ''}` : c.tournament_title;
+    const sub = c.prize_place ? html`<span class="chip-pz">🏆 ${c.prize_place} vieta${c.prize_cents ? ` · ${eur(c.prize_cents)}` : ''}${c.handed_at ? ' · įteikta' : ''}</span> ${c.tournament_title}` : c.tournament_title;
     const preview = c.last_body ? `${c.last_mine ? 'Tu: ' : ''}${c.last_body}` : 'Pokalbis pradėtas';
     return html`<li><a class="th ${c.unread ? 'unread' : ''}" href="#/zinutes/${c.id}" data-thread="${c.id}">
-      ${sys ? html`<span class="avatar th-sys" aria-hidden="true">${icon('trophy', 20)}</span>`
-        : team ? html`<span class="avatar th-team" aria-hidden="true"><img src="icons/icon.svg" alt="" width="40" height="40"></span>` : avatar(c.other_nick || '?')}
+      ${team ? html`<span class="avatar th-team" aria-hidden="true"><img src="icons/icon.svg" alt="" width="40" height="40"></span>` : avatar(c.other_nick || '?')}
       <span class="th-nm"><span class="strong ellipsis">${name}</span><span class="th-t ellipsis">${sub}</span><span class="th-p ellipsis">${preview}</span></span>
-      <span class="th-meta"><span>${whenShort(c.last_message_at)}</span>${c.unread ? html`<span class="dotn" aria-label="${count(c.unread, 'nauja žinutė', 'naujos žinutės', 'naujų žinučių')}">${c.unread}</span>` : ''}</span>
+      <span class="th-meta"><span>${whenShort(c.last_message_at)}</span>${unreadDot(c.unread)}</span>
     </a></li>`;
   };
+  const pinCard = (c) => {
+    const step = c.handed_at ? 3 : c.other_wrote ? 2 : 1;
+    return html`<article class="imp-card" data-pin="${c.id}">
+      <span class="pinlbl">${icon('trophy', 13)}Laimėjai prizą</span>
+      <div class="imp-top"><span class="pl">#${c.prize_place}</span><span class="stack-1 min0"><b class="ellipsis">${c.tournament_title}</b>
+        <span class="small muted">${c.prize_cents ? html`Prizas <b class="accent-ink">${eur(c.prize_cents)}</b>` : 'Daiktinis prizas'}</span></span></div>
+      <ol class="steps3 plain" aria-label="Prizo eiga">
+        <li class="ok"><i></i>Pranešta</li>
+        <li class="${step >= 2 ? 'ok' : 'now'}"><i></i>${step >= 2 ? 'Organizatorius parašė' : 'Laukiam organizatoriaus'}</li>
+        <li class="${step >= 3 ? 'ok' : step === 2 ? 'now' : ''}"><i></i>Prizas įteiktas</li>
+      </ol>
+      <a class="btn btn-primary" href="#/zinutes/${c.id}">${icon('chat', 18)}Pokalbis su organizatoriumi${c.unread ? html` <span class="dotn inv">${c.unread}</span>` : ''}</a>
+    </article>`;
+  };
+  // „Svarbu“: rezultatų pokalbiai ir programėlės pranešimai – pagal laiką
+  const items = [
+    ...systems.map((c) => ({ at: c.last_message_at, unread: c.unread > 0, href: `#/zinutes/${c.id}`, ic: 'bars', hot: true,
+      title: `${c.tournament_title}${c.prize_place ? ' · prizas' : ' baigėsi'}`, body: c.last_body || '' })),
+    ...notes.map((n) => ({ at: n.created_at, unread: n.unread, href: /^#\/[\w\-/?=&]*$/.test(n.url) ? n.url : '#/', ic: NOTICE_IC[n.kind] || 'alert', hot: false,
+      title: n.title, body: n.body }))
+  ].sort((x, y) => (x.at < y.at ? 1 : -1));
+  const noticeRow = (x) => html`<li><a class="sys-row ${x.unread ? 'unread' : ''}" href="${x.href}" data-notice>
+    <span class="ic ${x.hot ? 'o' : ''}" aria-hidden="true">${icon(x.ic, 20)}</span>
+    <span class="tx"><b class="ellipsis">${x.title}</b><span class="clamp-2">${x.body}</span></span>
+    <span class="th-meta"><span>${whenShort(x.at)}</span>${x.unread ? html`<span class="dot-new" aria-label="Nauja"></span>` : ''}</span></a></li>`;
+  const clubRow = (c) => html`<li><a class="th ${c.unread ? 'unread' : ''}" href="#/klubas/${c.club_id}/pokalbis" data-club-thread="${c.club_id}">
+      ${c.logo_url ? html`<span class="avatar th-team" aria-hidden="true"><img src="${c.logo_url}" alt="" width="40" height="40"></span>` : html`<span class="avatar th-club" aria-hidden="true">${c.name.slice(0, 2).toUpperCase()}</span>`}
+      <span class="th-nm"><span class="strong ellipsis">${c.name}</span><span class="th-t ellipsis">Klubo pokalbis · ${count(c.members, 'narys', 'nariai', 'narių')}</span>
+        <span class="th-p ellipsis">${c.last_body ? `${c.last_mine ? 'Tu' : c.last_nick || '–'}: ${c.last_body}` : 'Dar niekas neparašė – pradėk pokalbį'}</span></span>
+      <span class="th-meta"><span>${whenShort(c.last_at)}</span>${unreadDot(c.unread)}</span>
+    </a></li>`;
+
+  const body = tab === 'svarbu' ? html`
+      ${pins.length ? html`<p class="sec-k">Prisegta, kol prizas įteiktas</p>${pins.map(pinCard)}` : ''}
+      ${items.length ? html`${pins.length ? html`<p class="sec-k">Pranešimai</p>` : ''}<ul class="plain ibx" data-notices>${items.map(noticeRow)}</ul>`
+        : pins.length ? '' : empty('Svarbių pranešimų nėra', 'Čia matysi turnyrų rezultatus, laimėjimus, patvirtintus laimikius ir kitus programėlės pranešimus.')}`
+    : tab === 'zmones' ? html`
+      ${people.length ? html`<ul class="plain inbox" data-inbox>${people.map(row)}</ul>`
+        : empty('Pokalbių dar nėra', 'Klausimą organizatoriui gali užduoti turnyro puslapyje, o komandai – skiltyje „Pagalba“.')}
+      <p class="small muted">Žinutes mato tik pokalbio dalyviai. Kitų žvejų kontaktų niekas nemato.</p>`
+    : html`
+      ${clubs.length ? html`<ul class="plain inbox" data-clubs>${clubs.map(clubRow)}</ul>`
+        : empty('Klubų pokalbių nėra', 'Prisijunk prie klubo – jo nariai turi bendrą pokalbį.', html`<a class="btn" href="#/klubai">${icon('users', 18)}Klubai</a>`)}`;
+
   return {
     nav: 'turnyrai',
     title: 'Žinutės',
     html: html`<div class="screen">
       <header class="top-bar">${backButton('#/')}<span class="muted strong">Žinutės</span><span></span></header>
       <h1 class="sr-only" tabindex="-1">Žinutės</h1>
-      ${list.length ? html`<ul class="plain inbox" data-inbox>${list.map(row)}</ul>`
-        : empty('Žinučių dar nėra', 'Kai turnyras baigsis, čia gausi rezultatą. Klausimą organizatoriui gali užduoti turnyro puslapyje.')}
-      <p class="small muted">Žinutes mato tik pokalbio dalyviai. Rašyti gali turnyro organizatorius ir jo turnyro dalyviai.</p>
-    </div>`
+      <nav class="seg3" aria-label="Žinučių skiltys">${TABS.map(([k, label]) => html`<a href="#/zinutes?skiltis=${k}" aria-current="${k === tab ? 'page' : 'false'}" class="${k === tab ? 'on' : ''}" data-itab="${k}">${label}${counts[k] ? html` <span class="cnt">${counts[k]}</span>` : ''}</a>`)}</nav>
+      <div class="stack" data-tab-body="${tab}">${body}</div>
+    </div>`,
+    mount() {
+      // Peržiūrėjus „Svarbu“ – pranešimai pažymimi perskaitytais (rezultatų pokalbiai – kai atidaromi)
+      if (tab === 'svarbu' && notes.some((n) => n.unread) && backend.markNoticesSeen) backend.markNoticesSeen().catch(() => {});
+    }
   };
 }
 

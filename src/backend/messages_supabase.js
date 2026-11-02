@@ -76,6 +76,66 @@ export function messagesSupabase({ sb, check, uid, friendly }) {
       if (error) throw fail(error, [], 'Nepavyko įkelti');
       return data || [];
     },
+    // ---- „Svarbu“: pranešimų centras (0037)
+    async notices() {
+      const { data, error } = await sb.rpc('my_notices');
+      if (error) return [];
+      return data || [];
+    },
+    async markNoticesSeen() {
+      await sb.rpc('mark_notices_seen');
+    },
+    // ---- Klubų pokalbiai (0037)
+    async clubChats() {
+      const { data, error } = await sb.rpc('my_club_chats');
+      if (error) return [];
+      return (data || []).map((x) => ({ ...x, members: Number(x.members) || 0, unread: Number(x.unread) || 0, logo_url: x.logo_path ? sb.storage.from('club-images').getPublicUrl(x.logo_path).data.publicUrl : null }));
+    },
+    async clubChat(clubId) {
+      const [chats, msgs, pin] = await Promise.all([
+        sb.rpc('my_club_chats'),
+        sb.rpc('club_chat_messages', { p_club: clubId }),
+        sb.from('clubs').select('chat_pin_id').eq('id', clubId).maybeSingle()
+      ]);
+      if (chats.error) throw fail(chats.error, [], 'Nepavyko įkelti pokalbio');
+      const club = (chats.data || []).find((x) => x.club_id === clubId);
+      if (!club) return null;
+      if (msgs.error) throw fail(msgs.error, [], 'Nepavyko įkelti žinučių');
+      return { ...club, members: Number(club.members) || 0, pin_id: pin.data?.chat_pin_id ?? null,
+        messages: (msgs.data || []).map((m) => ({ ...m, reactions: m.reactions || {}, mine: m.mine || [] })) };
+    },
+    async clubChatSend(clubId, body, catchId = null) {
+      const { data, error } = await sb.rpc('club_chat_send', { p_club: clubId, p_body: body || null, p_catch: catchId });
+      if (error) throw fail(error, [[/muted/, 'Klubo valdytojas laikinai nutildė tave šiame pokalbyje'], [/feature_off/, 'Klubų pokalbiai šiuo metu išjungti'],
+        [/catch_invalid/, 'Šio laimikio pasidalinti negalima']], 'Nepavyko išsiųsti');
+      return data;
+    },
+    async clubChatRead(clubId) { await sb.rpc('club_chat_read', { p_club: clubId }); },
+    async clubChatReact(messageId, emoji) {
+      const { data, error } = await sb.rpc('club_chat_react', { p_message: messageId, p_emoji: emoji });
+      if (error) throw fail(error, [], 'Nepavyko');
+      return data;
+    },
+    async clubChatDelete(messageId) {
+      const { error } = await sb.rpc('club_chat_delete', { p_message: messageId });
+      if (error) throw fail(error, [], 'Nepavyko ištrinti');
+    },
+    async clubChatPin(clubId, messageId) {
+      const { error } = await sb.rpc('club_chat_pin', { p_club: clubId, p_message: messageId });
+      if (error) throw fail(error, [], 'Nepavyko prisegti');
+    },
+    async clubChatMute(clubId, userId, hours) {
+      const { error } = await sb.rpc('club_chat_mute', { p_club: clubId, p_user: userId, p_hours: hours });
+      if (error) throw fail(error, [], 'Nepavyko nutildyti');
+    },
+    async clubChatSetPush(clubId, on) {
+      const { error } = await sb.rpc('club_chat_set_push', { p_club: clubId, p_on: !!on });
+      if (error) throw fail(error, [], 'Nepavyko pakeisti');
+    },
+    async clubChatReport(messageId, reason) {
+      const { error } = await sb.rpc('club_chat_report', { p_message: messageId, p_reason: reason || null });
+      if (error) throw fail(error, [], 'Nepavyko pranešti');
+    },
     async resolveMessageReport(id) {
       const { error } = await sb.rpc('resolve_message_report', { p_report: id });
       if (error) throw fail(error, [], 'Nepavyko');

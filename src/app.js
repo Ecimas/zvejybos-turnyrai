@@ -30,6 +30,7 @@ import { inviteView, takeInvite } from './views/invite.js';
 import { privacyView, rulesView } from './views/pages.js';
 import { inboxView, chatView, reportedMessagesView } from './views/messages.js';
 import { helpView } from './views/help.js';
+import { clubChatView } from './views/clubchat.js';
 
 const ROUTES = [
   [/^\/$/, tournamentsView],
@@ -68,6 +69,7 @@ const ROUTES = [
   [/^\/klubai$/, clubsView],
   [/^\/klubas\/([\w-]+)$/, clubView],
   [/^\/klubas\/([\w-]+)\/zemelapis$/, clubMapView],
+  [/^\/klubas\/([\w-]+)\/pokalbis$/, clubChatView],
   [/^\/klubu-lyga$/, clubLeagueView],
   [/^\/privatumas$/, privacyView],
   [/^\/taisykles$/, rulesView],

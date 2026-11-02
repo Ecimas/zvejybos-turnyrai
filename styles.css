@@ -1352,3 +1352,64 @@ body.has-appbar { --top-offset: calc(60px + env(safe-area-inset-top)); }
 .team-card { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 18px; border: 1.5px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
 .team-card img { width: 48px; height: 48px; border-radius: 12px; flex: none; }
+/* Žinutės: skiltys „Svarbu“, „Žmonės“, „Klubai“ */
+.seg3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 4px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+.seg3 a { min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 12px; font-weight: 700; color: var(--muted); font-size: 15px; text-decoration: none; }
+.seg3 a.on { background: var(--accent); color: var(--on-accent); }
+.seg3 .cnt { min-width: 20px; height: 20px; border-radius: 10px; font-size: 11.5px; font-weight: 800; display: inline-grid; place-items: center; padding: 0 5px; background: var(--accent); color: var(--on-accent); }
+.seg3 a.on .cnt { background: var(--on-accent); color: var(--accent); }
+.sec-k { margin: 4px 0 -4px; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.imp-card { border: 1.5px solid var(--accent); border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 10px;
+  background-color: var(--surface); background-image: linear-gradient(160deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), var(--surface) 70%); }
+.imp-top { display: flex; gap: 12px; align-items: center; }
+.imp-top .pl { font-family: 'Barlow Condensed', sans-serif; font-size: 40px; font-weight: 800; color: var(--accent-ink); line-height: 1; }
+.pinlbl { font-size: 11.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--accent-ink); display: flex; gap: 5px; align-items: center; }
+.steps3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 0; padding: 0; list-style: none; }
+.steps3 li { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.steps3 i { height: 5px; border-radius: 3px; background: var(--line-2); }
+.steps3 .ok i { background: var(--ok); } .steps3 .ok { color: var(--text); }
+.steps3 .now i { background: var(--accent); } .steps3 .now { color: var(--accent-ink); font-weight: 700; }
+.dotn.inv { background: var(--on-accent); color: var(--accent); }
+.ibx { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+.sys-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; color: var(--text); text-decoration: none; }
+.ibx li + li .sys-row { border-top: 1px solid var(--line); }
+.sys-row .ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--surface-2); color: var(--soft); }
+.sys-row .ic.o { background: color-mix(in srgb, var(--accent) 20%, var(--surface)); color: var(--accent-ink); }
+.sys-row .tx { display: flex; flex-direction: column; min-width: 0; font-size: 14px; gap: 2px; }
+.sys-row .tx span { color: var(--muted); font-size: 13px; }
+.dot-new { width: 10px; height: 10px; border-radius: 5px; background: var(--accent); display: inline-block; }
+.chip-pz { font-size: 11.5px; font-weight: 800; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent-ink); }
+.th-club { background: color-mix(in srgb, var(--accent) 22%, var(--surface)) !important; color: var(--accent-ink); font-weight: 800; }
+.clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* Klubo pokalbis */
+.cm-list { gap: 4px; }
+.cm-li { display: flex; gap: 8px; align-items: flex-start; }
+.cm-li.me { justify-content: flex-end; }
+.cm-av { width: 34px; height: 34px; font-size: 13px; flex: none; margin-top: 4px; }
+.cm-av-sp { width: 34px; flex: none; }
+.cm-col { display: flex; flex-direction: column; min-width: 0; max-width: 84%; }
+.cm-li.me .cm-col { align-items: flex-end; }
+.cm-b { max-width: 100%; text-align: left; border: 0; font: inherit; cursor: pointer; white-space: normal; display: flex; flex-direction: column; gap: 4px; }
+.cm-b small { margin-top: 0; }
+.cm-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.cm-name { font-size: 12.5px; font-weight: 800; color: var(--accent-ink); display: flex; gap: 6px; align-items: center; }
+.cm-role { font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: var(--surface); color: var(--soft); border: 1px solid var(--line-2); }
+.cm-del { opacity: .7; }
+.cm-reacts { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+.cm-reacts span { font-size: 12.5px; padding: 2px 8px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line-2); }
+.cm-reacts span.mine { border-color: var(--accent); }
+.cm-acts { display: flex; flex-direction: column; gap: 6px; padding: 8px 4px 4px; }
+.cm-acts[hidden] { display: none; }
+.cm-emoji { width: 44px; height: 44px; border-radius: 22px; border: 1px solid var(--line-2); background: var(--surface); font-size: 20px; cursor: pointer; }
+.cm-emoji.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--surface)); }
+.cm-pin { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line-2);
+  color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.cm-pin svg { flex: none; color: var(--accent-ink); }
+.cm-fish { width: 48px; height: 48px; border-radius: 24px; border: 1px solid var(--line-2); background: var(--surface); color: var(--text); display: grid; place-items: center; flex: none; cursor: pointer; }
+.cc-card { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 12px; background: var(--bg); color: var(--text); }
+.b.me .cc-card { background: rgba(255, 255, 255, .35); color: var(--on-accent); }
+.b.me .cc-card .muted { color: var(--on-accent); opacity: .8; }
+.cc-card svg { flex: none; color: var(--accent-ink); }
+.cc-pick { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; padding: 10px 14px; background: transparent; border: 0; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.ibx li + li .cc-pick { border-top: 1px solid var(--line); }
+.cm-empty { padding: 30px 0; }

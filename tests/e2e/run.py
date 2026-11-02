@@ -822,8 +822,8 @@ def features_panel_demo_test(page, base):
     page.goto(base + "#/moderavimas/funkcijos")
     expect(page.get_by_role("heading", name="Programėlės funkcijos")).to_be_visible()
     expect(page.locator("nav.mod-tabs a[aria-current='page'] .t-tab-l")).to_have_text("Funkcijos")
-    expect(page.locator("[data-feature]")).to_have_count(18)
-    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("18/18")
+    expect(page.locator("[data-feature]")).to_have_count(19)
+    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("19/19")
 
     def toggle(key, on):
         box = page.locator(f"[data-feature='{key}']")
@@ -834,7 +834,7 @@ def features_panel_demo_test(page, base):
     # Sekimas išjungtas: nuorodos dingsta, puslapis praneša; įjungus – grįžta
     toggle("social_follow", False)
     expect(page.locator("[data-feature-row='social_follow'] .af-off")).to_contain_text("Išjungta")
-    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("17/18")
+    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("18/19")
     page.goto(base + "#/lenteles")
     expect(page.locator("a[href='#/klubai']").first).to_be_visible()
     expect(page.locator("[data-follow-link]")).to_have_count(0)
@@ -877,7 +877,7 @@ def features_panel_demo_test(page, base):
     expect(log).to_contain_text("išjungė „Sekimas ir naujienos“")
     for key in ["social_follow", "leagues", "duels", "blank_trips", "weather"]:
         toggle(key, True)
-    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("18/18")
+    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("19/19")
     page.goto(base + "#/dienorastis")
     expect(page.locator("[data-blank-open]")).to_be_visible()
     page.goto(base + "#/naujas")
@@ -1164,12 +1164,23 @@ def messages_demo_test(page, base):
     """Vidinės žinutės (0036): rezultato žinutė prizininkui, pokalbis, blokavimas, prizininkai organizatoriui."""
     page.goto(base + "#/")
     badge = page.locator("[data-inbox-btn] [data-unread]")
-    expect(badge).to_have_text("1")
+    total = page.evaluate("async () => window.__zt.backend.unreadCount()")
+    assert total >= 1, total
+    expect(badge).to_have_text(str(total))
     page.locator("[data-inbox-btn]").click()
+    # „Svarbu“: laimėjimas prisegtas viršuje, kol prizas įteiktas
+    page.goto(base + "#/zinutes?skiltis=svarbu")
+    pin = page.locator("[data-pin]").first
+    expect(pin).to_contain_text("Rugsėjo plėšrūnai")
+    expect(pin).to_contain_text("60 €")
+    expect(pin).to_contain_text("Laukiam organizatoriaus")
+    shot(page, "zinutes-svarbu")
+    page.locator("[data-itab=zmones]").click()
     th = page.locator("[data-thread]").first
     expect(th).to_contain_text("Ąžuolas_K · organizatorius")
-    expect(th).to_contain_text("Rugsėjo plėšrūnai · 1 vieta")
+    expect(th).to_contain_text("1 vieta · 60 €")
     expect(th.locator(".dotn")).to_have_text("1")
+    expect(page.locator("[data-itab=zmones] .cnt")).to_have_text("1")
     shot(page, "zinutes")
     th.click()
     card = page.locator("[data-result]")
@@ -1188,8 +1199,8 @@ def messages_demo_test(page, base):
     expect(page.get_by_label("Žinutė", exact=True)).to_have_count(0)
     page.get_by_role("button", name="Atblokuoti").click()
     expect(page.get_by_label("Žinutė", exact=True)).to_be_visible()
-    page.goto(base + "#/")
-    expect(badge).to_be_hidden()
+    page.goto(base + "#/zinutes?skiltis=zmones")
+    expect(page.locator("[data-itab=zmones] .cnt")).to_have_count(0)
     step("žinutės: rezultatas prizininkui, atsakymas, blokavimas, neperskaitytų skaičius")
 
     # Dalyvis rašo vykstančio turnyro organizatoriui
@@ -1236,9 +1247,8 @@ def messages_demo_test(page, base):
     person.get_by_role("button", name="Rašyti žinutę").click()
     expect(page.locator(".chat-name")).to_have_text("MariųVilkas")
     # Organizatoriaus paties rezultatas – sisteminė žinutė, atsakyti negalima
-    page.goto(base + "#/zinutes")
-    sys_th = page.locator("[data-thread]", has_text="Žvejybos turnyrai").first
-    expect(sys_th).to_contain_text("Draugų iššūkis")
+    page.goto(base + "#/zinutes?skiltis=svarbu")
+    sys_th = page.locator("[data-notice]", has_text="Draugų iššūkis").first
     sys_th.click()
     expect(page.locator("[data-result]")).to_contain_text("Užėmei 3 vietą iš 3")
     expect(page.locator("[data-sys-foot]")).to_contain_text("atsakyti į ją negalima")
@@ -1272,11 +1282,77 @@ def help_demo_test(page, base):
     page.get_by_role("button", name="Siųsti").click()
     expect(page.locator(".b.me")).to_contain_text("Kaip pakeisti slapyvardį?")
     expect(page.locator(".b-event")).to_contain_text("komanda atsakys")
-    page.goto(base + "#/zinutes")
+    page.goto(base + "#/zinutes?skiltis=zmones")
     expect(page.locator("[data-thread]", has_text="Žvejybos turnyrų komanda")).to_contain_text("Pagalba")
     page.locator("#appbar").get_by_role("link", name="Žvejybos turnyrai – į pradžią").click()
     expect(page.get_by_role("heading", name="Turnyrai", level=1)).to_be_visible()
     step("viršutinė juosta, pagalba ir pokalbis su komanda")
+
+
+def club_chat_demo_test(page, base):
+    """Klubo bendras pokalbis (0037): žinutė, reakcija, laimikio kortelė, valdytojo veiksmai, pranešimai."""
+    page.evaluate("""() => { const k = 'zt-demo-v1'; const d = JSON.parse(localStorage.getItem(k)); const me = '00000000-0000-4000-8000-000000000001';
+        const m = d.club_members.find(x => x.club_id === 'club-kaunas' && x.user_id === me);
+        if (m) m.role = 'admin'; else d.club_members.push({ club_id: 'club-kaunas', user_id: me, role: 'admin', joined_at: new Date(Date.now() - 864e5 * 3).toISOString() });
+        localStorage.setItem(k, JSON.stringify(d)); }""")
+    page.reload()
+    page.goto(base + "#/klubas/club-kaunas")
+    page.locator("[data-club-chat-link]").click()
+    expect(page.locator(".chat-name")).to_have_text("Kauno lydekininkai")
+    expect(page.locator("#appbar")).to_be_hidden()
+    others = page.locator(".cm-li:not(.me)")
+    expect(others.first).to_be_visible()
+    page.get_by_label("Žinutė klubui").fill("Labas klubui! Šeštadienį 6:00 prie marių.")
+    page.get_by_role("button", name="Siųsti").click()
+    mine = page.locator(".cm-li.me", has_text="Labas klubui!")
+    expect(mine).to_be_visible()
+    expect(page.get_by_label("Žinutė klubui")).to_have_value("")
+    # Reakcija į kito nario žinutę
+    first = others.first
+    first.locator("[data-cm-open]").click()
+    first.get_by_role("button", name="Reakcija 👍").click()
+    expect(page.locator(".cm-li:not(.me)").first.locator(".cm-reacts")).to_contain_text("👍 1")
+    # Valdytojas: prisegti savo žinutę
+    page.locator(".cm-li.me", has_text="Labas klubui!").locator("[data-cm-open]").click()
+    page.locator(".cm-li.me", has_text="Labas klubui!").get_by_role("button", name="Prisegti").click()
+    expect(page.locator("#toast")).to_have_text("Žinutė prisegta")
+    expect(page.locator("[data-pin-box]")).to_contain_text("Labas klubui!")
+    # Nutildyti kitą narį
+    o = page.locator(".cm-li:not(.me)", has=page.locator("[data-cm-mute]")).first
+    o.locator("[data-cm-open]").click()
+    o.get_by_role("button", name="Nutildyti 24 val.").click()
+    expect(page.locator("#toast")).to_contain_text("nutildytas 24 val.")
+    # Pasidalinti laimikiu
+    page.get_by_role("button", name="Pasidalinti laimikiu").click()
+    picker = page.locator("[data-catch-picker]")
+    expect(picker).to_contain_text("Vieta nerodoma")
+    picker.locator("[data-pick]").first.click()
+    expect(page.locator("#toast")).to_have_text("Laimikis pasidalintas su klubu")
+    expect(page.locator(".cm-li.me .cc-card").last).to_contain_text("cm")
+    shot(page, "klubo-pokalbis")
+    # Ištrinti prisegtą – prisegimas nuimamas
+    page.locator(".cm-li.me", has_text="Labas klubui!").locator("[data-cm-open]").click()
+    page.locator(".cm-li.me", has_text="Labas klubui!").get_by_role("button", name="Ištrinti").click()
+    expect(page.locator("#toast")).to_have_text("Žinutė ištrinta")
+    expect(page.locator("[data-pin-box] .cm-pin")).to_have_count(0)
+    expect(page.locator(".cm-del").first).to_contain_text("Žinutė ištrinta")
+    # Pranešimai apie naujas žinutes
+    page.get_by_role("button", name="Pokalbio nustatymai").click()
+    page.locator("[data-push]").uncheck()
+    expect(page.locator("#toast")).to_have_text("Pranešimai išjungti")
+    # Žinutės → Klubai
+    page.goto(base + "#/zinutes?skiltis=klubai")
+    expect(page.locator("[data-club-thread='club-kaunas']")).to_contain_text("Kauno lydekininkai")
+    expect(page.locator("[data-club-thread='club-kaunas']")).to_contain_text("Tu: 🐟 Pasidalino laimikiu")
+    shot(page, "zinutes-klubai")
+    # Išjungus funkciją – rašyti negalima
+    page.evaluate("() => { const k = 'zt-demo-v1'; const d = JSON.parse(localStorage.getItem(k)); d.features.club_chat = false; localStorage.setItem(k, JSON.stringify(d)); }")
+    page.reload()
+    page.goto(base + "#/klubas/club-kaunas/pokalbis")
+    expect(page.locator("[data-chat-off]")).to_be_visible()
+    page.evaluate("() => { const k = 'zt-demo-v1'; const d = JSON.parse(localStorage.getItem(k)); d.features.club_chat = true; localStorage.setItem(k, JSON.stringify(d)); }")
+    page.reload()
+    step("klubo pokalbis: žinutė, reakcija, prisegimas, nutildymas, laimikis, ištrynimas, pranešimai, jungiklis")
 
 
 def map_demo_test(page, base):
@@ -1970,6 +2046,7 @@ def main():
         custom_rules_demo_test(page, base)
         diary_plus_demo_test(page, base)
         help_demo_test(page, base)
+        club_chat_demo_test(page, base)
 
         ctx.close()
 

@@ -20,7 +20,8 @@ export const FEATURE_GROUPS = [
     ['club_posts', 'Klubo pranešimai', 'Valdytojų pranešimai nariams.'],
     ['club_tips', 'Patarimai', 'Narių patarimai ir „patinka“.'],
     ['club_reactions', 'Reakcijos', '👍 🔥 🎣 prie klubo draugų laimikių.'],
-    ['club_comments', 'Komentarai', 'Komentarai prie klubo draugų laimikių.']
+    ['club_comments', 'Komentarai', 'Komentarai prie klubo draugų laimikių.'],
+    ['club_chat', 'Klubų pokalbiai', 'Bendri klubo narių pokalbiai žinutėse. Išjungus – rašyti nebegalima, senos žinutės lieka.']
   ]],
   ['Klubai – veikla', [
     ['club_trips', 'Išvykos', 'Bendros išvykos ir „važiuoju“.'],

@@ -11,7 +11,7 @@ export const READS = ['myProfile', 'species', 'tournaments', 'tournament', 'lead
   'followingFeed', 'clubs', 'club', 'myClubs', 'userClubs', 'clubCatches', 'teamLeaderboard', 'myChecks', 'myBan',
   'myOrganizerRequest', 'blankTrips', 'announcements', 'profile', 'userTournamentCount', 'myReport',
   'features', 'clubPosts', 'clubTrips', 'catchSocial', 'catchComments', 'clubChallenge', 'clubRecords', 'clubLeague', 'clubPerk',
-  'clubJoinRequests', 'myJoinRequest', 'modCounts', 'featureAdmin', 'banner', 'myScoringRules', 'myGoals', 'participantsAdmin', 'conversations', 'conversation', 'unreadCount', 'prizeStatus', 'reportedMessages'];
+  'clubJoinRequests', 'myJoinRequest', 'modCounts', 'featureAdmin', 'banner', 'myScoringRules', 'myGoals', 'participantsAdmin', 'conversations', 'conversation', 'unreadCount', 'prizeStatus', 'reportedMessages', 'notices', 'clubChats', 'clubChat'];
 
 // Veiksmai, kuriems būtinas ryšys (laimikio siuntimas – ne čia, jis laukia eilėje).
 export const WRITES = ['signIn', 'verifyCode', 'signInWithGoogle', 'updateProfile', 'createTournament', 'updateTournament', 'deleteTournament',
@@ -25,7 +25,8 @@ export const WRITES = ['signIn', 'verifyCode', 'signInWithGoogle', 'updateProfil
   'postClub', 'deleteClubPost', 'likeClubPost', 'createTrip', 'rsvpTrip', 'deleteTrip', 'react', 'addComment', 'deleteComment',
   'reportComment', 'dismissCommentReport', 'saveClubPerk', 'setFeature', 'setBanner', 'saveScoringRule', 'deleteScoringRule', 'addGoal', 'deleteGoal',
   'uploadTournamentCover', 'setTournamentCover', 'removeParticipant', 'setParticipantDivision', 'regenerateInvite', 'notifyRuleChange',
-  'startConversation', 'startSupport', 'sendMessage', 'markRead', 'setPrizeHanded', 'blockConversation', 'reportMessage', 'resolveMessageReport'];
+  'startConversation', 'startSupport', 'sendMessage', 'markRead', 'setPrizeHanded', 'blockConversation', 'reportMessage', 'resolveMessageReport',
+  'markNoticesSeen', 'clubChatSend', 'clubChatRead', 'clubChatReact', 'clubChatDelete', 'clubChatPin', 'clubChatMute', 'clubChatSetPush', 'clubChatReport'];
 
 export const OFFLINE_TEXT = 'Reikia interneto ryšio – pabandyk, kai atsiras';
 

@@ -135,6 +135,8 @@ export async function clubView(ctx, [id], query) {
     admin && backend.clubJoinRequests ? safe(backend.clubJoinRequests(id), []) : [],
     me && !member && !club.open && backend.myJoinRequest ? safe(backend.myJoinRequest(id), null) : null
   ]);
+  // Klubo bendras pokalbis (0037): neperskaitytų skaičius mygtukui
+  const chatInfo = member && f('club_chat') && backend.clubChats ? (await safe(backend.clubChats(), [])).find((x) => x.club_id === id) || null : null;
   const social = member && (f('club_reactions') || f('club_comments')) && backend.catchSocial
     ? await safe(backend.catchSocial(catches.map((c) => c.id)), {}) : {};
   const leaguePos = league.findIndex((c) => c.id === id) + 1;
@@ -310,6 +312,7 @@ export async function clubView(ctx, [id], query) {
       ${club.description ? html`<p class="prewrap">${club.description}</p>` : ''}
       ${member || leaguePos ? html`<div class="row gap-8 wrap">${member ? html`<span class="badge badge-mine">${owner ? 'Tu – savininkas' : my.role === 'admin' ? 'Tu – administratorius' : 'Tu – narys'}</span>` : ''}
         ${leaguePos ? html`<span class="badge">${icon('trophy', 13)} Klubų lygoje #${leaguePos}</span>` : ''}</div>` : ''}
+      ${member && f('club_chat') ? html`<a class="btn btn-primary btn-lg" href="#/klubas/${id}/pokalbis" data-club-chat-link>${icon('chat', 20)}Klubo pokalbis${chatInfo?.unread ? html` <span class="dotn inv">${chatInfo.unread}</span>` : ''}</a>` : ''}
       ${!me ? loginPrompt('Prisijunk, kad prisijungtum prie klubo.')
         : member || state.ban ? ''
         : club.open ? html`<form class="card stack-2" data-join-form><button class="btn btn-primary" type="submit">${icon('plus', 18, 2.6)}Prisijungti prie klubo</button></form>`
