@@ -14,7 +14,8 @@ export const FEATURE_GROUPS = [
     ['duels', 'Dvikovos', 'Naujų dvikovų turnyrų kūrimas. Jau vykstančios dvikovos tęsiasi.']
   ]],
   ['Bendruomenė', [
-    ['social_follow', 'Sekimas ir naujienos', 'Žvejų sekimas ir sekamų žvejų laimikių srautas.']
+    ['social_follow', 'Sekimas ir naujienos', 'Žvejų sekimas ir sekamų žvejų laimikių srautas.'],
+    ['direct_messages', 'Asmeninės žinutės', 'Žvejai gali rašyti vienas kitam (mygtukas „Rašyti“ profilyje). Išjungus – nauji pokalbiai ir žinutės negalimi, senos lieka.']
   ]],
   ['Klubai – bendravimas', [
     ['club_posts', 'Klubo pranešimai', 'Valdytojų pranešimai nariams.'],

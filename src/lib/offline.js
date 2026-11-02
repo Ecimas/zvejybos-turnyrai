@@ -25,7 +25,7 @@ export const WRITES = ['signIn', 'verifyCode', 'signInWithGoogle', 'updateProfil
   'postClub', 'deleteClubPost', 'likeClubPost', 'createTrip', 'rsvpTrip', 'deleteTrip', 'react', 'addComment', 'deleteComment',
   'reportComment', 'dismissCommentReport', 'saveClubPerk', 'setFeature', 'setBanner', 'saveScoringRule', 'deleteScoringRule', 'addGoal', 'deleteGoal',
   'uploadTournamentCover', 'setTournamentCover', 'removeParticipant', 'setParticipantDivision', 'regenerateInvite', 'notifyRuleChange',
-  'startConversation', 'startSupport', 'sendMessage', 'markRead', 'setPrizeHanded', 'blockConversation', 'reportMessage', 'resolveMessageReport',
+  'startConversation', 'startDirect', 'startSupport', 'sendMessage', 'markRead', 'setPrizeHanded', 'blockConversation', 'reportMessage', 'resolveMessageReport',
   'markNoticesSeen', 'clubChatSend', 'clubChatRead', 'clubChatReact', 'clubChatDelete', 'clubChatPin', 'clubChatMute', 'clubChatSetPush', 'clubChatReport'];
 
 export const OFFLINE_TEXT = 'Reikia interneto ryšio – pabandyk, kai atsiras';

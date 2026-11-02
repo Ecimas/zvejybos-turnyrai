@@ -4,7 +4,8 @@ export function messagesSupabase({ sb, check, uid, friendly }) {
   const fail = (error, more = [], fallback = 'Nepavyko') => friendly(error, [NOT_YET,
     [/not allowed/, 'Neturi teisės'], [/blocked/, 'Pokalbis užblokuotas'], [/banned/, 'Tavo paskyra užblokuota'],
     [/read_only/, 'Į automatinę žinutę atsakyti negalima'], [/body_invalid/, 'Žinutė turi būti 1–2000 simbolių'],
-    [/rate_limit/, 'Per daug žinučių – palauk kelias minutes'], ...more], fallback);
+    [/rate_limit/, 'Per daug žinučių – palauk kelias minutes'], [/feature_off/, 'Asmeninės žinutės šiuo metu išjungtos'],
+    [/dm_limit/, 'Per parą galima pradėti ne daugiau 15 naujų pokalbių'], ...more], fallback);
   return {
     async unreadCount() {
       const { data, error } = await sb.rpc('my_unread_count');
@@ -33,12 +34,19 @@ export function messagesSupabase({ sb, check, uid, friendly }) {
         const { data: p } = await sb.from('profiles').select('nickname').eq('id', other).maybeSingle();
         otherNick = p?.nickname ?? '–';
       }
-      return { ...c, tournament_title: c.kind === 'support' ? 'Pagalba' : c.tournaments?.title ?? '–', tournament_format: c.tournaments?.format, i_organize: side,
+      return { ...c, tournament_title: c.kind === 'support' ? 'Pagalba' : c.kind === 'direct' ? null : c.tournaments?.title ?? '–', tournament_format: c.tournaments?.format,
+        i_organize: side && c.kind !== 'direct',
         other_id: other, other_nick: otherNick, blocked: !!c.blocked_by, blocked_by_me: c.blocked_by === me, messages: msgs || [] };
     },
     async startConversation(tournamentId, userId = null) {
       const { data, error } = await sb.rpc('start_conversation', { p_tournament: tournamentId, p_user: userId });
       if (error) throw fail(error, [], 'Nepavyko pradėti pokalbio');
+      return data;
+    },
+    // Asmeninis pokalbis su žveju (0039): grąžina esamą arba sukuria naują.
+    async startDirect(userId) {
+      const { data, error } = await sb.rpc('start_direct', { p_user: userId });
+      if (error) throw fail(error, [[/does not exist|schema cache|could not find/i, 'Asmeninės žinutės dar neįdiegtos serveryje']], 'Nepavyko pradėti pokalbio');
       return data;
     },
     async startSupport() {

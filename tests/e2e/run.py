@@ -822,8 +822,8 @@ def features_panel_demo_test(page, base):
     page.goto(base + "#/moderavimas/funkcijos")
     expect(page.get_by_role("heading", name="Programėlės funkcijos")).to_be_visible()
     expect(page.locator("nav.mod-tabs a[aria-current='page'] .t-tab-l")).to_have_text("Funkcijos")
-    expect(page.locator("[data-feature]")).to_have_count(19)
-    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("19/19")
+    expect(page.locator("[data-feature]")).to_have_count(20)
+    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("20/20")
     # Vietos skaitiklis: šiame įrenginyje įkeltos laimikių nuotraukos
     card = page.locator("[data-storage]")
     expect(card).to_be_visible()
@@ -842,7 +842,7 @@ def features_panel_demo_test(page, base):
     # Sekimas išjungtas: nuorodos dingsta, puslapis praneša; įjungus – grįžta
     toggle("social_follow", False)
     expect(page.locator("[data-feature-row='social_follow'] .af-off")).to_contain_text("Išjungta")
-    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("18/19")
+    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("19/20")
     page.goto(base + "#/lenteles")
     expect(page.locator("a[href='#/klubai']").first).to_be_visible()
     expect(page.locator("[data-follow-link]")).to_have_count(0)
@@ -885,7 +885,7 @@ def features_panel_demo_test(page, base):
     expect(log).to_contain_text("išjungė „Sekimas ir naujienos“")
     for key in ["social_follow", "leagues", "duels", "blank_trips", "weather"]:
         toggle(key, True)
-    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("19/19")
+    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("20/20")
     page.goto(base + "#/dienorastis")
     expect(page.locator("[data-blank-open]")).to_be_visible()
     page.goto(base + "#/naujas")
@@ -1317,6 +1317,73 @@ def participant_demo_test(page, base):
     page.goto(base + "#/t/t-taure/dalyvis/00000000-0000-4000-8000-00000000ffff")
     expect(page.get_by_text("Žvejys nerastas")).to_be_visible()
     step("dalyvis turnyre: vieta, statistika, laimikiai, profilis, paslėpta lentelė")
+
+
+def angler_profile_demo_test(page, base):
+    """Žvejo profilis: viršus, turnyrų istorija, statistika, galerija su filtrais, asmeninės žinutės."""
+    uid = page.evaluate("() => Object.values(JSON.parse(localStorage.getItem('zt-demo-v1')).profiles).find(p => p.nickname === 'MariųVilkas').id")
+    page.goto(base + f"#/zvejys/{uid}")
+    hero = page.locator("[data-ap-hero]")
+    expect(hero.get_by_role("heading", name="MariųVilkas")).to_be_visible()
+    expect(hero).to_contain_text("Narys nuo")
+    follow = hero.get_by_role("button", name="Sekti")
+    expect(follow).to_be_visible()
+    box = follow.bounding_box()
+    assert box["width"] >= 120, f"„Sekti“ mygtukas per siauras: {box}"
+    expect(page.locator("[data-ap-stats] .stat-box")).to_have_count(4)
+    # Turnyrų istorija → dalyvio puslapis tame turnyre
+    rows = page.locator("[data-ap-history] [data-ap-tour]")
+    assert rows.count() >= 1
+    first = rows.first
+    tid = first.get_attribute("data-ap-tour")
+    first.click()
+    expect(page).to_have_url(re.compile(rf"#/t/{tid}/dalyvis/{uid}$"))
+    page.go_back()
+    expect(page.locator("[data-ap-hero]")).to_be_visible()
+    # Galerija: didžiausi pirmi, filtras pagal rūšį
+    gal = page.locator("[data-ap-gallery]")
+    gal.locator("[data-sort=big]").click()
+    lens = [int(x) for x in gal.locator("[data-gi]:not([hidden])").evaluate_all("els => els.map(e => e.dataset.len)")]
+    assert lens == sorted(lens, reverse=True) and lens, lens
+    chips = gal.locator("[data-sp]:not([data-sp=''])")
+    if chips.count():
+        sp = chips.first.get_attribute("data-sp")
+        chips.first.click()
+        shown = gal.locator("[data-gi]:not([hidden])").evaluate_all("els => els.map(e => e.dataset.spId)")
+        assert shown and all(x == sp for x in shown), shown
+        gal.locator("[data-sp='']").click()
+    shot(page, "zvejo-profilis")
+    # Asmeninė žinutė
+    page.get_by_role("button", name="Rašyti").click()
+    expect(page.locator(".chat-name")).to_have_text("MariųVilkas")
+    expect(page.get_by_role("link", name="Asmeninė žinutė · profilis")).to_be_visible()
+    page.get_by_label("Žinutė", exact=True).fill("Labas! Kur gaudai ešerius?")
+    page.get_by_role("button", name="Siųsti").click()
+    expect(page.locator(".chat")).to_contain_text("Labas! Kur gaudai ešerius?")
+    page.locator("[data-chat-menu]").click()
+    expect(page.locator("[data-chat-menu-box]")).not_to_contain_text("Turnyras")
+    page.goto(base + "#/zinutes?skiltis=zmones")
+    row = page.locator("[data-inbox] [data-thread]", has_text="Asmeninė žinutė")
+    expect(row).to_have_count(1)
+    expect(row).to_contain_text("MariųVilkas")
+    expect(row).to_contain_text("Tu: Labas! Kur gaudai ešerius?")
+    # Tas pats pokalbis, ne naujas
+    page.goto(base + f"#/zvejys/{uid}")
+    page.get_by_role("button", name="Rašyti").click()
+    expect(page.locator(".chat")).to_contain_text("Labas! Kur gaudai ešerius?")
+    # Savo profilis kitų akimis – be „Sekti“ ir „Rašyti“
+    page.goto(base + "#/zvejys/00000000-0000-4000-8000-000000000001")
+    expect(page.locator("[data-ap-own]")).to_be_visible()
+    expect(page.get_by_role("button", name="Rašyti")).to_have_count(0)
+    # Išjungus asmenines žinutes – mygtuko nėra
+    page.evaluate("""() => { const d = JSON.parse(localStorage.getItem('zt-demo-v1')); d.features.direct_messages = false; localStorage.setItem('zt-demo-v1', JSON.stringify(d)); }""")
+    page.reload()
+    page.goto(base + f"#/zvejys/{uid}")
+    expect(page.locator("[data-ap-hero]")).to_be_visible()
+    expect(page.get_by_role("button", name="Rašyti")).to_have_count(0)
+    page.evaluate("""() => { const d = JSON.parse(localStorage.getItem('zt-demo-v1')); d.features.direct_messages = true; localStorage.setItem('zt-demo-v1', JSON.stringify(d)); }""")
+    page.reload()
+    step("žvejo profilis: istorija, galerija, asmeninės žinutės")
 
 
 def help_demo_test(page, base):
@@ -2112,6 +2179,7 @@ def main():
         custom_rules_demo_test(page, base)
         diary_plus_demo_test(page, base)
         participant_demo_test(page, base)
+        angler_profile_demo_test(page, base)
         help_demo_test(page, base)
         club_chat_demo_test(page, base)
 

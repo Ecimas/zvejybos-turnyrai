@@ -61,7 +61,8 @@ function bestPlace(history) {
 function heroCard(p, ctx, { follow, clubs, medals, best, isMe }) {
   const { state } = ctx;
   const loggedIn = !!state.user && !state.ban;
-  const canWrite = loggedIn && !isMe && feat(state, 'direct_messages');
+  // Tik kai serveryje jau įdiegta (jungiklis aiškiai įjungtas) – kitaip mygtuko nerodom.
+  const canWrite = loggedIn && !isMe && state.features?.direct_messages === true;
   return html`<section class="card ap-hero" data-ap-hero>
     <div class="ap-top">
       ${avatar(p.nickname, 'avatar-xl')}
@@ -77,7 +78,7 @@ function heroCard(p, ctx, { follow, clubs, medals, best, isMe }) {
       : loggedIn ? html`<div class="ap-actions">
         ${follow ? html`<button class="btn ${follow.i_follow ? 'btn-ghost' : 'btn-primary'}" type="button" data-follow aria-pressed="${follow.i_follow}">
           ${follow.i_follow ? html`${icon('check', 18, 3)}Seki` : html`${icon('plus', 18, 2.6)}Sekti`}</button>` : ''}
-        ${canWrite ? html`<a class="btn btn-ghost" href="#/zinutes/naujas/${p.id}" data-ap-write>${icon('chat', 18)}Rašyti</a>` : ''}
+        ${canWrite ? html`<button class="btn btn-ghost" type="button" data-ap-write>${icon('chat', 18)}Rašyti</button>` : ''}
       </div>` : ''}
     ${medals.prizes || medals[1] || medals[2] || medals[3] ? html`<div class="ap-medals" data-ap-medals aria-label="Turnyrų apdovanojimai">
       ${[1, 2, 3].filter((n) => medals[n]).map((n) => html`<span class="ap-medal" data-medal="${n}"><span aria-hidden="true">${MEDAL[n]}</span><b>×${medals[n]}</b><span class="sr-only">${n} vieta</span></span>`)}
@@ -222,6 +223,17 @@ export async function anglerView(ctx, [id]) {
       if (moderating) mountModCard(root, ctx, p);
       mountFollow(root, ctx, id);
       mountGallery(root);
+      root.querySelector('[data-ap-write]')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        try {
+          const cid = await backend.startDirect(id);
+          ctx.navigate(`#/zinutes/${cid}`);
+        } catch (err) {
+          btn.disabled = false;
+          ctx.toast(err.message || 'Nepavyko pradėti pokalbio');
+        }
+      });
       root.querySelector('[data-hist-more]')?.addEventListener('click', (e) => {
         root.querySelectorAll('[data-hist-extra]').forEach((x) => { x.hidden = false; });
         e.currentTarget.remove();
