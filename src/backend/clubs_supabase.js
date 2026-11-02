@@ -61,6 +61,26 @@ export function clubsPlusSupabase({ sb, check, uid, getUser, friendly }) {
       return Object.fromEntries(data.map((f) => [f.key, f.enabled]));
     },
     async setFeature(key, on) { await rpc('set_feature', { p_key: key, p_on: !!on }, 'Nepavyko pakeisti'); },
+    // Administravimo panelei: jungikliai su „kas ir kada“ ir paskutiniai pakeitimai.
+    async featureAdmin() {
+      const [f, l] = await Promise.all([
+        sb.from('app_features').select('key, enabled, updated_at, updated_by'),
+        sb.from('app_feature_log').select('key, enabled, changed_at, changed_by').order('changed_at', { ascending: false }).limit(15)
+      ]);
+      if (f.error) throw fail(f.error, 'Nepavyko įkelti funkcijų');
+      const log = l.error ? [] : l.data;
+      const names = await nicks([...f.data.map((x) => x.updated_by), ...log.map((x) => x.changed_by)]);
+      return {
+        features: f.data.map((x) => ({ key: x.key, enabled: x.enabled, updated_at: x.updated_at, by: names.get(x.updated_by) ?? null })),
+        log: log.map((x) => ({ key: x.key, enabled: x.enabled, at: x.changed_at, by: names.get(x.changed_by) ?? null }))
+      };
+    },
+    async banner() {
+      const { data, error } = await sb.from('app_banner').select('body, tone, updated_at').eq('id', 1).maybeSingle();
+      if (error || !data?.body) return null;
+      return data;
+    },
+    async setBanner(body, tone = 'info') { await rpc('set_banner', { p_body: body || '', p_tone: tone }, 'Nepavyko išsaugoti skelbimo'); },
 
     async clubs() {
       const { data } = await trySelect((nw) => sb.from('clubs').select(`${nw ? NEW_COLS : OLD_COLS}, club_members(count)`).order('name'));

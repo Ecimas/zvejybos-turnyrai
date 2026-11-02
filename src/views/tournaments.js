@@ -6,6 +6,7 @@ import { eur } from '../lib/prizes.js';
 import { hasUnseen } from '../lib/seen.js';
 import { checkBanners } from './check.js';
 import { sortSponsors, logoTile, trackViews } from '../lib/sponsors.js';
+import { feat } from '../lib/clubs.js';
 
 const SEGMENTS = [
   ['visi', 'Visi'],
@@ -220,9 +221,9 @@ export async function standingsView(ctx) {
     html: html`<div class="screen">
       <header class="page-head"><h1 class="display-lg" tabindex="-1">Lentelės</h1></header>
       <nav class="grid-2 social-links" aria-label="Bendruomenė">
-        <a class="card card-link row gap-8" href="#/sekami">${icon('star', 20)}<span class="strong grow">Sekami</span>${icon('chevron', 16)}</a>
-        <a class="card card-link row gap-8" href="#/klubai">${icon('users', 20)}<span class="strong grow">Klubai</span>${icon('chevron', 16)}</a>
-        <a class="card card-link row gap-8 span-2" href="#/lygos">${icon('trophy', 20)}<span class="strong grow">Sezono lygos</span>${icon('chevron', 16)}</a>
+        ${feat(ctx.state, 'social_follow') ? html`<a class="card card-link row gap-8" href="#/sekami" data-follow-link>${icon('star', 20)}<span class="strong grow">Sekami</span>${icon('chevron', 16)}</a>` : ''}
+        <a class="card card-link row gap-8 ${feat(ctx.state, 'social_follow') ? '' : 'span-2'}" href="#/klubai">${icon('users', 20)}<span class="strong grow">Klubai</span>${icon('chevron', 16)}</a>
+        ${feat(ctx.state, 'leagues') ? html`<a class="card card-link row gap-8 span-2" href="#/lygos" data-leagues-link>${icon('trophy', 20)}<span class="strong grow">Sezono lygos</span>${icon('chevron', 16)}</a>` : ''}
       </nav>
       ${rows.length ? html`<div class="stack">${rows.map(({ t, mine, total }) => html`
         <a class="card card-link row" href="#/t/${t.id}/lentele">

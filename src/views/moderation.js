@@ -17,7 +17,8 @@ let tabState = null;
 const MOD_TABS = [['#/moderavimas', 'queue', 'Laimikiai', 'review', 'fish'], ['#/moderavimas/pranesimai', 'reports', 'Pranešimai', 'disputes', 'alert'],
   ['#/moderavimas/gincai', 'disputes', 'Ginčai', 'disputes', 'chat'], ['#/moderavimas/blokuoti', 'bans', 'Blokuoti', 'ban', 'lock'],
   ['#/moderavimas/turnyrai', 'tlog', 'Turnyrai', 'tournaments', 'trophy'],
-  ['#/moderavimas/komanda', 'team', 'Komanda', 'roles', 'users'], ['#/moderavimas/statistika', 'stats', 'Statistika', 'roles', 'bars']];
+  ['#/moderavimas/komanda', 'team', 'Komanda', 'roles', 'users'], ['#/moderavimas/statistika', 'stats', 'Statistika', 'roles', 'bars'],
+  ['#/moderavimas/funkcijos', 'features', 'Funkcijos', 'roles', 'sliders']];
 function tabs(active) {
   const items = MOD_TABS.filter(([, , , perm]) => can(tabState, perm));
   if (items.length < 2) return '';

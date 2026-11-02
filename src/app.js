@@ -11,7 +11,9 @@ import { adminLogView } from './views/adminlog.js';
 import { sponsorsView } from './views/sponsors.js';
 import { organizerView } from './views/organizer.js';
 import { startPresence } from './lib/presence.js';
-import { captureView } from './views/capture.js';
+import { captureView, setWeatherFeature } from './views/capture.js';
+import { adminFeaturesView } from './views/admin.js';
+import { feat } from './lib/clubs.js';
 import { catchView } from './views/catch.js';
 import { diaryView } from './views/diary.js';
 import { profileView, anglerView } from './views/profile.js';
@@ -52,6 +54,7 @@ const ROUTES = [
   [/^\/moderavimas\/blokuoti$/, bansView],
   [/^\/moderavimas\/patikros$/, checksView],
   [/^\/moderavimas\/statistika$/, statsView],
+  [/^\/moderavimas\/funkcijos$/, adminFeaturesView],
   [/^\/moderavimas\/turnyrai$/, adminLogView],
   [/^\/patikra\/([\w-]+)$/, checkView],
   [/^\/zemelapis$/, mapView],
@@ -129,8 +132,23 @@ async function main() {
   }
 
   ctx.state.species = await backend.species().catch(() => []);
-  // Funkcijų jungikliai (0029): nežinomos – įjungtos.
-  ctx.state.features = (await backend.features?.().catch(() => ({}))) || {};
+  // Funkcijų jungikliai (0029/0031): nežinomos – įjungtos. Ir skelbimas visiems.
+  async function loadSettings() {
+    const [features, banner] = await Promise.all([backend.features?.().catch(() => null), backend.banner?.().catch(() => null)]);
+    if (features) ctx.state.features = features;
+    ctx.state.banner = banner ?? null;
+    setWeatherFeature(feat(ctx.state, 'weather'));
+  }
+  ctx.state.features = {};
+  await loadSettings();
+  // Grįžus į programėlę (po ≥ 1 min.) – naujausi jungikliai ir skelbimas.
+  let settingsAt = Date.now();
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || Date.now() - settingsAt < 60e3) return;
+    settingsAt = Date.now();
+    await loadSettings();
+    showBanner();
+  });
   await loadUser();
   const presence = startPresence(ctx);
   backend.onAuth(async () => {
@@ -140,6 +158,26 @@ async function main() {
     presence.reset();
     presence.touch();
   });
+
+  // Skelbimas visiems: juosta virš turinio; žvejys gali ją paslėpti (iki kito skelbimo).
+  const bannerEl = document.createElement('div');
+  bannerEl.id = 'app-banner';
+  $('#view').before(bannerEl);
+  function showBanner() {
+    const b = ctx.state.banner;
+    let hidden = '';
+    try { hidden = localStorage.getItem('zt-banner-hide') || ''; } catch { /* nėra saugyklos */ }
+    const show = !!b?.body && hidden !== String(b.updated_at) && !document.body.classList.contains('dark-screen');
+    bannerEl.hidden = !show;
+    bannerEl.innerHTML = show ? String(html`<div class="app-banner app-banner-${b.tone === 'warn' ? 'warn' : 'info'}" role="status" data-app-banner>
+      ${icon(b.tone === 'warn' ? 'alert' : 'megaphone', 20)}<span class="grow">${b.body}</span>
+      <button type="button" class="app-banner-x" data-banner-hide aria-label="Paslėpti skelbimą">${icon('x', 16, 2.4)}</button></div>`) : '';
+    bannerEl.querySelector('[data-banner-hide]')?.addEventListener('click', () => {
+      try { localStorage.setItem('zt-banner-hide', String(b.updated_at)); } catch { /* nėra saugyklos */ }
+      showBanner();
+    });
+  }
+  ctx.showBanner = showBanner;
 
   async function refreshStatus() {
     const items = await ctx.outbox.list().catch(() => []);
@@ -233,6 +271,7 @@ async function main() {
       }
     }
     hydrateModTabs(main, backend);
+    showBanner();
     if (!keepScroll) main.querySelector('h1')?.focus({ preventScroll: true });
     refreshStatus();
   }

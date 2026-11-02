@@ -21,8 +21,10 @@ export function isMissingFunction(err) {
   return code === 'PGRST202' || code === '42883' || /could not find the function/i.test(err?.message || '');
 }
 
+const FEATURE_OFF = 'Ši funkcija šiuo metu išjungta';
 function friendly(err, map, fallback) {
   const m = String(err?.message || '');
+  if (/feature_off/.test(m)) return new Error(FEATURE_OFF);
   for (const [re, text] of map) if (re.test(m)) return new Error(text);
   return fallback ? new Error(fallback) : err;
 }
@@ -46,7 +48,7 @@ export async function createSupabaseBackend(url, anonKey) {
     return user.id;
   };
   const check = ({ data, error }) => {
-    if (error) throw error;
+    if (error) throw /feature_off/.test(String(error.message || '')) ? new Error(FEATURE_OFF) : error;
     return data;
   };
 

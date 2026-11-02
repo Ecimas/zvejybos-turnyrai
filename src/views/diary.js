@@ -2,6 +2,7 @@ import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { cm, dateTime, count, longDate, plural } from '../lib/format.js';
 import { statusChip, thumb, hydratePhotos, empty, loginPrompt } from '../ui.js';
+import { feat } from '../lib/clubs.js';
 import { weatherLine, fetchWeather } from '../lib/weather.js';
 import { recordIds } from '../lib/records.js';
 import { weatherEnabled } from './capture.js';
@@ -166,7 +167,7 @@ export async function diaryView(ctx) {
     html: html`<div class="screen">
       <header class="page-head d-head">
         <h1 class="display-lg" tabindex="-1">Dienoraštis</h1>
-        <button class="d-btn" data-blank-open aria-expanded="false" aria-label="Nieko nekibo – įrašyti žvejybą be laimikio">${icon('minus', 16, 2.6)}Nieko nekibo</button>
+        <button class="d-btn" data-blank-open aria-expanded="false" aria-label="Nieko nekibo – įrašyti žvejybą be laimikio" ${feat(ctx.state, 'blank_trips') ? '' : 'hidden'}>${icon('minus', 16, 2.6)}Nieko nekibo</button>
       </header>
       ${checkBanners(checks)}
 

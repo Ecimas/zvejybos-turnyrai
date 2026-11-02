@@ -2,7 +2,8 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { cm, shortDate, count } from '../lib/format.js';
-import { backButton, empty, thumb, hydratePhotos, avatar, loginPrompt, notFound } from '../ui.js';
+import { backButton, empty, thumb, hydratePhotos, avatar, loginPrompt, notFound, featureOffScreen } from '../ui.js';
+import { feat } from '../lib/clubs.js';
 
 const sp = (state, id) => state.species.find((s) => s.id === id)?.name_lt ?? '';
 
@@ -16,6 +17,7 @@ function catchList(state, list) {
 // ---------------------------------------------------------------- Sekimas
 export async function feedView(ctx) {
   const { backend, state } = ctx;
+  if (!feat(state, 'social_follow')) return featureOffScreen('Sekami žvejai', 'Sekimas šiuo metu išjungtas', '#/profilis', 'lenteles');
   if (!state.user) {
     return { nav: 'lenteles', title: 'Sekami žvejai', html: html`<div class="screen"><h1 class="display-lg" tabindex="-1">Sekami žvejai</h1>${loginPrompt('Prisijunk, kad sektum žvejus.')}</div>` };
   }

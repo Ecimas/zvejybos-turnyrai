@@ -6,11 +6,16 @@ const D = 24 * H;
 const iso = (ms) => new Date(Date.now() + ms).toISOString();
 const rid = (p) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-export const FEATURE_KEYS = ['map_vector', 'club_posts', 'club_trips', 'club_reactions', 'club_comments', 'club_tips', 'club_challenge',
-  'club_records', 'club_league', 'club_map', 'club_perks', 'club_tournament'];
+import { FEATURE_KEYS } from '../lib/features.js';
+
+export { FEATURE_KEYS };
 
 export function seedClubsPlus(db, ME, logos = {}) {
-  db.features ||= Object.fromEntries(FEATURE_KEYS.map((k) => [k, true]));
+  db.features ||= {};
+  FEATURE_KEYS.forEach((k) => { if (!(k in db.features)) db.features[k] = true; });
+  db.feature_meta ||= {};
+  db.feature_log ||= [];
+  db.banner ||= { body: null, tone: 'info', updated_at: null };
   db.club_join_requests ||= [];
   db.catch_reactions ||= [];
   db.catch_comments ||= [];
@@ -71,7 +76,32 @@ export function clubsPlusDemo({ getDb, save, ME, perms }) {
     async setFeature(key, on) {
       if (!perms().has('roles')) throw new Error('Neturi teisės');
       if (!(key in db.features)) throw new Error('Tokios funkcijos nėra');
+      if (db.features[key] === !!on) return;
       db.features[key] = !!on;
+      const at = new Date().toISOString();
+      db.feature_meta[key] = { updated_at: at, by: ME };
+      db.feature_log.unshift({ key, enabled: !!on, at, by: ME });
+      db.feature_log.splice(30);
+      save();
+    },
+    async featureAdmin() {
+      if (!perms().has('roles')) throw new Error('Neturi teisės');
+      return {
+        features: Object.entries(db.features).map(([key, enabled]) => ({ key, enabled, updated_at: db.feature_meta[key]?.updated_at ?? null,
+          by: db.feature_meta[key] ? nick(db.feature_meta[key].by) : null })),
+        log: db.feature_log.slice(0, 15).map((x) => ({ ...x, by: nick(x.by) }))
+      };
+    },
+    async banner() { return db.banner?.body ? { ...db.banner } : null; },
+    async setBanner(body, tone = 'info') {
+      if (!perms().has('roles')) throw new Error('Neturi teisės');
+      if (!['info', 'warn'].includes(tone)) throw new Error('Netinkamas tipas');
+      const text = String(body || '').trim();
+      if (text && (text.length < 3 || text.length > 240)) throw new Error('Skelbimas – nuo 3 iki 240 simbolių');
+      const at = new Date().toISOString();
+      db.banner = { body: text || null, tone, updated_at: at };
+      db.feature_log.unshift({ key: 'banner', enabled: !!text, at, by: ME });
+      db.feature_log.splice(30);
       save();
     },
     async clubs() {

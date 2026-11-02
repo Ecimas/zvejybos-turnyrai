@@ -144,3 +144,11 @@ export function openPhoto(src, alt = '') {
   box.querySelector('.lightbox-close').focus();
   return close;
 }
+
+// Ekranas, kai funkciją išjungė administratorius (duomenys neištrinti – įjungus grįš).
+export function featureOffScreen(title, message, back, nav) {
+  return { nav, title, html: html`<div class="screen">
+    <header class="top-bar">${backButton(back)}<span class="muted strong">${title}</span><span></span></header>
+    <h1 class="sr-only" tabindex="-1">${title}</h1>
+    <div data-feature-off>${empty(message, 'Ją išjungė programėlės administratorius. Pabandyk vėliau.')}</div></div>` };
+}

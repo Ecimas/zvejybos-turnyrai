@@ -2,6 +2,7 @@ import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { cm, shortDate, count, plural } from '../lib/format.js';
 import { thumb, hydratePhotos, backButton, empty, avatar, loginPrompt, notFound, defaultNickname, banNotice } from '../ui.js';
+import { feat } from '../lib/clubs.js';
 import { computeBadges } from '../lib/badges.js';
 import { weatherEnabled } from './capture.js';
 import { BAN_DAYS, BAN_REASONS, banUntilText } from '../lib/bans.js';
@@ -116,7 +117,7 @@ export async function profileView(ctx, _params, query) {
     perms.has('disputes') ? backend.openDisputes().catch(() => []) : [],
     perms.has('disputes') ? backend.openReports().catch(() => []) : [],
     backend.blankTrips().catch(() => []),
-    backend.followStats ? backend.followStats(state.user.id).catch(() => null) : null,
+    backend.followStats && feat(state, 'social_follow') ? backend.followStats(state.user.id).catch(() => null) : null,
     backend.myClubs ? backend.myClubs().catch(() => []) : [],
     perms.has('roles') && backend.organizerRequests ? backend.organizerRequests().catch(() => []) : []
   ]);
@@ -195,7 +196,7 @@ export async function profileView(ctx, _params, query) {
         ${trips.length ? html`<p class="card small" data-luck>${icon('book', 16)} Žvejybos dienų: <strong>${allDays.size}</strong> · su laimikiu <strong>${catchDays.size}</strong> (${luck} %)</p>` : ''}
         <nav class="p-quick" aria-label="Greitos nuorodos">
           <a class="p-q" href="#/klubai">${icon('users', 20)}<span>Klubai</span></a>
-          <a class="p-q" href="#/sekami">${icon('star', 20)}<span>Sekami</span></a>
+          ${feat(state, 'social_follow') ? html`<a class="p-q" href="#/sekami">${icon('star', 20)}<span>Sekami</span></a>` : ''}
           <a class="p-q" href="#/zemelapis">${icon('pin', 20)}<span>Žemėlapis</span></a>
           <a class="p-q" href="#/zvejys/${p.id}">${icon('user', 20)}<span>Kaip mane mato</span></a>
         </nav>
@@ -217,8 +218,8 @@ export async function profileView(ctx, _params, query) {
                 <option value="dark" ${theme === 'dark' ? 'selected' : ''}>Tamsi</option>
                 <option value="light" ${theme === 'light' ? 'selected' : ''}>Šviesi (lauke)</option>
               </select></label>
-            <label class="list-row">${icon('sun', 20)}<span class="grow stack-1"><span class="strong">Oras prie laimikio</span><span class="small muted">Temperatūra, vėjas, slėgis (Open-Meteo)</span></span>
-              <input type="checkbox" class="switch" role="switch" data-weather-toggle ${weatherEnabled() ? 'checked' : ''}></label>
+            ${feat(state, 'weather') ? html`<label class="list-row">${icon('sun', 20)}<span class="grow stack-1"><span class="strong">Oras prie laimikio</span><span class="small muted">Temperatūra, vėjas, slėgis (Open-Meteo)</span></span>
+              <input type="checkbox" class="switch" role="switch" data-weather-toggle ${weatherEnabled() ? 'checked' : ''}></label>` : ''}
           </div></div>
         <div class="stack-2"><h2 class="p-sec">Turnyrai</h2>
           <div class="list">
@@ -289,7 +290,7 @@ export async function profileView(ctx, _params, query) {
         try { localStorage.setItem('zt-theme', e.target.value); } catch { /* nėra saugyklos */ }
         ctx.applyTheme();
       });
-      root.querySelector('[data-weather-toggle]').addEventListener('change', (e) => {
+      root.querySelector('[data-weather-toggle]')?.addEventListener('change', (e) => {
         try { localStorage.setItem('zt-weather', e.target.checked ? 'on' : 'off'); } catch { /* nėra saugyklos */ }
       });
       root.querySelector('[data-export]').addEventListener('click', async (e) => {
@@ -354,7 +355,7 @@ export async function anglerView(ctx, [id]) {
   const [catches, tcount, ban, follow, clubs] = await Promise.all([
     backend.userCatches(id), backend.userTournamentCount(id),
     moderating ? backend.userBan(id).catch(() => null) : null,
-    backend.followStats ? backend.followStats(id).catch(() => null) : null,
+    backend.followStats && feat(state, 'social_follow') ? backend.followStats(id).catch(() => null) : null,
     backend.userClubs ? backend.userClubs(id).catch(() => []) : []
   ]);
   const s = stats(catches, state.species);

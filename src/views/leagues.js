@@ -2,12 +2,14 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { count, dateTime } from '../lib/format.js';
-import { backButton, empty, avatar, notFound, phaseBadge } from '../ui.js';
+import { backButton, empty, avatar, notFound, phaseBadge, featureOffScreen } from '../ui.js';
+import { feat } from '../lib/clubs.js';
 
 const POINTS_TEXT = 'Taškai už vietą etape: 25, 18, 15, 12, 10, 8, 6, 4, 2, 1.';
 
 export async function leaguesView(ctx) {
   const { backend, state } = ctx;
+  if (!feat(state, 'leagues')) return featureOffScreen('Sezono lygos', 'Sezono lygos šiuo metu išjungtos', '#/lenteles', 'lenteles');
   const list = await backend.leagues();
   const year = new Date().getFullYear();
   return {
@@ -55,6 +57,7 @@ export async function leaguesView(ctx) {
 
 export async function leagueView(ctx, [id]) {
   const { backend, state } = ctx;
+  if (!feat(state, 'leagues')) return featureOffScreen('Lyga', 'Sezono lygos šiuo metu išjungtos', '#/lenteles', 'lenteles');
   const l = await backend.league(id);
   if (!l) return { nav: 'lenteles', html: notFound('#/lygos', 'Lyga nerasta') };
   const me = state.user?.id;

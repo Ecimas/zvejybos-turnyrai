@@ -11,7 +11,11 @@ import { recordFor, fromQueue } from '../lib/records.js';
 import { fetchWeather, weatherLine } from '../lib/weather.js';
 import { syncClock, clockOffsetS } from '../lib/clock.js';
 
+// Oras: įjungtas, jei leidžia ir administratorius (jungiklis „weather“), ir pats žvejys (profilyje).
+let weatherFeature = true;
+export function setWeatherFeature(on) { weatherFeature = on !== false; }
 export function weatherEnabled() {
+  if (!weatherFeature) return false;
   try { return localStorage.getItem('zt-weather') !== 'off'; } catch { return true; }
 }
 

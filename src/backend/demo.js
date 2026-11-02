@@ -271,6 +271,8 @@ export function createDemoBackend({ photos } = {}) {
     });
   };
 
+  // Funkcijų jungikliai (kaip serverio feature_guard): išjungus – naujo kurti negalima.
+  const mustFeature = (k) => { if (db.features?.[k] === false) throw new Error('Ši funkcija šiuo metu išjungta'); };
   const api = {
     mode: 'demo',
     async init() {},
@@ -306,6 +308,8 @@ export function createDemoBackend({ photos } = {}) {
       const { species_ids, species_pct = {}, sponsors = [], divisions = [], ...rest } = data;
       const recent = db.tournaments.filter((t) => t.organizer_id === ME && Date.now() - new Date(t.created_at) < D).length;
       if (recent >= 10) throw new Error('Per parą galima sukurti ne daugiau kaip 10 turnyrų');
+      if (rest.format === 'duels') mustFeature('duels');
+      if (rest.league_id) mustFeature('leagues');
       checkLeague(rest.league_id);
       if ((rest.visibility || 'public') === 'public' && !permsOf(db.profiles[ME]).has('publish')) throw new Error('Viešus turnyrus kuria patvirtinti organizatoriai – sukurk turnyrą su kvietimu');
       db.tournaments.push(formatRules({ id, organizer_id: ME, visibility: 'public', fee_cents: 0, leaderboard_hidden: false,
@@ -322,6 +326,8 @@ export function createDemoBackend({ photos } = {}) {
       const asOrganizer = isOrganizerBeforeStart(t);
       if (!t || (!asOrganizer && !isTournamentAdmin())) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
       const { species_ids, species_pct = {}, sponsors, divisions, ...rest } = data;
+      if (rest.format === 'duels' && t.format !== 'duels') mustFeature('duels');
+      if (rest.league_id && rest.league_id !== t.league_id) mustFeature('leagues');
       const started = Date.now() >= new Date(t.starts_at).getTime();
       if (!asOrganizer && started) {
         if (RULE_KEYS.some((k) => k in rest && !same(rest[k], t[k])) || species_ids || divisions) throw new Error('Prasidėjusio turnyro taisyklių keisti negalima');
@@ -568,6 +574,7 @@ export function createDemoBackend({ photos } = {}) {
       return db.leagues.filter((l) => l.owner_id === ME).map(({ id, name, season }) => ({ id, name, season }));
     },
     async createLeague({ name, season, description }) {
+      mustFeature('leagues');
       const n = String(name || '').trim();
       if (!LEAGUE_NAME.test(n) || n.length < 3 || n.length > 60) throw new Error('Pavadinime gali būti raidės, skaičiai, tarpai ir . , - _ ( ) (3–60 simbolių)');
       if (!(season >= 2024 && season <= 2100)) throw new Error('Netinkamas sezonas');
@@ -817,6 +824,7 @@ export function createDemoBackend({ photos } = {}) {
     },
     async follow(userId) {
       if (userId === ME) throw new Error('Savęs sekti negalima');
+      mustFeature('social_follow');
       if (!db.follows.some((f) => f.follower_id === ME && f.followee_id === userId)) db.follows.push({ follower_id: ME, followee_id: userId, created_at: new Date().toISOString() });
       save();
     },
@@ -1055,6 +1063,7 @@ export function createDemoBackend({ photos } = {}) {
       return db.blank_trips.filter((b) => b.user_id === ME).sort((a, b) => b.trip_date.localeCompare(a.trip_date));
     },
     async addBlankTrip(trip) {
+      mustFeature('blank_trips');
       const today = new Date().toISOString().slice(0, 10);
       if (trip.trip_date > today) throw new Error('Data negali būti ateityje');
       if (db.blank_trips.filter((b) => b.user_id === ME && Date.now() - new Date(b.created_at) < D).length >= 10) {

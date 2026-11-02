@@ -390,7 +390,7 @@ def clubs_demo_test(page, base):
     expect(rc).to_be_visible()
     # Skiltys: visos matomos be slinkimo (dvi eilutės), skaičiukas – kiek laukia
     mt = page.locator("nav.mod-tabs")
-    expect(mt.locator("a")).to_have_count(7)
+    expect(mt.locator("a")).to_have_count(8)
     expect(mt.locator("a[aria-current='page'] .t-tab-l")).to_have_text("Laimikiai")
     geo = page.evaluate("""() => { const n = document.querySelector('nav.mod-tabs');
       const ys = [...n.querySelectorAll('a')].map((a) => Math.round(a.getBoundingClientRect().top));
@@ -724,6 +724,105 @@ def admin_demo_test(page, base):
     expect(page.locator("[data-log-row=update]")).not_to_contain_text("Pabaiga")  # nepakeistas laikas – ne pakeitimas
     shot(page, "admin-zurnalas")
     step("administratorius pašalina turnyrą su priežastimi, žurnalas")
+
+
+def features_panel_demo_test(page, base):
+    """Administravimo panelė: jungikliai veikia iškart, skelbimas visiems, žurnalas."""
+    page.goto(base + "#/moderavimas/funkcijos")
+    expect(page.get_by_role("heading", name="Programėlės funkcijos")).to_be_visible()
+    expect(page.locator("nav.mod-tabs a[aria-current='page'] .t-tab-l")).to_have_text("Funkcijos")
+    expect(page.locator("[data-feature]")).to_have_count(17)
+    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("17/17")
+
+    def toggle(key, on):
+        box = page.locator(f"[data-feature='{key}']")
+        box.click()
+        expect(page.locator("#toast")).to_contain_text("Įjungta" if on else "Išjungta visiems")
+        expect(page.locator(f"[data-feature='{key}']")).to_be_checked(checked=on)
+
+    # Sekimas išjungtas: nuorodos dingsta, puslapis praneša; įjungus – grįžta
+    toggle("social_follow", False)
+    expect(page.locator("[data-feature-row='social_follow'] .af-off")).to_contain_text("Išjungta")
+    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("16/17")
+    page.goto(base + "#/lenteles")
+    expect(page.locator("a[href='#/klubai']").first).to_be_visible()
+    expect(page.locator("[data-follow-link]")).to_have_count(0)
+    page.goto(base + "#/sekami")
+    expect(page.locator("[data-feature-off]")).to_contain_text("Sekimas šiuo metu išjungtas")
+    page.goto(base + "#/profilis")
+    expect(page.locator(".p-quick a[href='#/sekami']")).to_have_count(0)
+    # Serveris (demo) irgi neleidžia sekti
+    err = page.evaluate("""async () => { const me = window.__zt.state.user.id;
+      const other = Object.keys(JSON.parse(localStorage.getItem('zt-demo-v1')).profiles).find((k) => k !== me);
+      try { await window.__zt.backend.follow(other); return ''; } catch (e) { return e.message; } }""")
+    assert "išjungta" in err, err
+
+    # Lygos ir dvikovos
+    page.goto(base + "#/moderavimas/funkcijos")
+    toggle("leagues", False)
+    toggle("duels", False)
+    page.goto(base + "#/lenteles")
+    expect(page.locator("[data-leagues-link]")).to_have_count(0)
+    page.goto(base + "#/lygos")
+    expect(page.locator("[data-feature-off]")).to_contain_text("Sezono lygos šiuo metu išjungtos")
+    page.goto(base + "#/naujas")
+    expect(page.locator("[data-format='biggest']")).to_be_visible()
+    expect(page.locator("[data-format='duels']")).to_have_count(0)
+    expect(page.locator("select[name='league_id']")).to_have_count(0)
+
+    # „Nieko nekibo“ ir orai
+    page.goto(base + "#/moderavimas/funkcijos")
+    toggle("blank_trips", False)
+    toggle("weather", False)
+    page.goto(base + "#/dienorastis")
+    expect(page.locator("[data-blank-open]")).to_be_hidden()
+    page.goto(base + "#/profilis?skiltis=nustatymai")
+    expect(page.locator("[data-weather-toggle]")).to_have_count(0)
+
+    # Žurnalas ir grąžinimas
+    page.goto(base + "#/moderavimas/funkcijos")
+    log = page.locator("[data-feature-log]")
+    expect(log).to_contain_text("išjungė „Orai“")
+    expect(log).to_contain_text("išjungė „Sekimas ir naujienos“")
+    for key in ["social_follow", "leagues", "duels", "blank_trips", "weather"]:
+        toggle(key, True)
+    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("17/17")
+    page.goto(base + "#/dienorastis")
+    expect(page.locator("[data-blank-open]")).to_be_visible()
+    page.goto(base + "#/naujas")
+    expect(page.locator("[data-format='duels']")).to_be_visible()
+    step("administravimo panelė: jungikliai paslepia ir grąžina funkcijas, demo „serveris“ neleidžia, žurnalas")
+
+    # Skelbimas visiems
+    page.goto(base + "#/moderavimas/funkcijos")
+    form = page.locator("[data-banner-form]")
+    form.locator("textarea").fill("Šeštadienį 9–10 val. atnaujinimas")
+    form.locator("[data-tone='warn']").click()
+    form.get_by_role("button", name="Rodyti visiems").click()
+    expect(page.locator("#toast")).to_have_text("Skelbimas rodomas visiems")
+    shot(page, "admin-funkcijos")
+    page.goto(base + "#/")
+    bar = page.locator("[data-app-banner]")
+    expect(bar).to_contain_text("Šeštadienį 9–10 val. atnaujinimas")
+    expect(bar).to_have_class(re.compile("app-banner-warn"))
+    shot(page, "admin-skelbimas")
+    page.reload()  # išlieka ir paleidus iš naujo
+    expect(page.locator("[data-app-banner]")).to_be_visible()
+    page.get_by_role("button", name="Paslėpti skelbimą").click()
+    expect(page.locator("[data-app-banner]")).to_have_count(0)
+    page.reload()
+    expect(page.locator("#app-banner")).to_be_hidden()
+    # Naujas skelbimas vėl matomas net paslėpus seną
+    page.goto(base + "#/moderavimas/funkcijos")
+    page.locator("[data-banner-form] textarea").fill("Nauja: klubų lyga!")
+    page.locator("[data-banner-form] [data-tone='info']").click()
+    page.get_by_role("button", name="Atnaujinti").click()
+    expect(page.locator("[data-app-banner]")).to_contain_text("Nauja: klubų lyga!")
+    page.get_by_role("button", name="Nuimti").click()
+    expect(page.locator("#toast")).to_have_text("Skelbimas nuimtas")
+    expect(page.locator("[data-app-banner]")).to_have_count(0)
+    expect(page.locator("[data-feature-log]")).to_contain_text("nuėmė skelbimą")
+    step("skelbimas visiems: rodomas visur, galima paslėpti sau, naujas vėl matomas, nuimamas")
 
 
 def map_demo_test(page, base):
@@ -1353,6 +1452,7 @@ def main():
         sponsors_demo_test(page, base)
         organizer_demo_test(page, base)
         admin_demo_test(page, base)
+        features_panel_demo_test(page, base)
 
         ctx.close()
 

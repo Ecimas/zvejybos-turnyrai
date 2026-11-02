@@ -2,6 +2,7 @@ import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { phase, LATE_JOIN, COEFS, coefText, count } from '../lib/format.js';
 import { backButton, loginPrompt, empty, banNotice } from '../ui.js';
+import { feat } from '../lib/clubs.js';
 import { PRESETS, eur, parseEur, validateSplit, placeAmounts, sponsorTotal } from '../lib/prizes.js';
 import { can } from '../lib/roles.js';
 
@@ -107,7 +108,7 @@ export async function createView(ctx, [editId] = [], query) {
             <button type="button" data-format="biggest" aria-pressed="${format === 'biggest'}">Didžiausia žuvis</button>
             <button type="button" data-format="top_n_sum" aria-pressed="${format === 'top_n_sum'}">Kelių ilgių suma</button>
             <button type="button" data-format="species_points" aria-pressed="${format === 'species_points'}">Taškai už rūšį</button>
-            <button type="button" data-format="duels" aria-pressed="${format === 'duels'}">Dvikovos</button>
+            ${feat(state, 'duels') || t?.format === 'duels' ? html`<button type="button" data-format="duels" aria-pressed="${format === 'duels'}">Dvikovos</button>` : ''}
           </div>
           <p class="small muted" data-format-hint>${FORMAT_HINT[format]}</p>
           <label class="field" data-topn ${format === 'biggest' ? 'hidden' : ''}><span class="small muted" data-topn-label>${TOPN_LABEL[format] || ''}</span>
@@ -157,7 +158,7 @@ export async function createView(ctx, [editId] = [], query) {
           <button type="button" class="btn btn-ghost" data-add-div>${icon('plus', 18, 2.6)}Pridėti divizioną</button>
         </fieldset>
 
-        ${myLeagues.length || t?.league_id ? html`<label class="field"><span class="small muted strong">Sezono lyga</span>
+        ${!feat(state, 'leagues') && !t?.league_id ? '' : myLeagues.length || t?.league_id ? html`<label class="field"><span class="small muted strong">Sezono lyga</span>
           <select name="league_id" ${dis}><option value="">Be lygos</option>${myLeagues.map((l) => html`<option value="${l.id}" ${t?.league_id === l.id ? 'selected' : ''}>${l.name} · ${l.season}</option>`)}</select>
           <span class="small muted">Vietos šiame turnyre duos taškų lygos lentelėje.</span></label>`
         : html`<p class="small muted">Rengi kelis etapus per sezoną? <a class="link" href="#/lygos">Sukurk sezono lygą</a> ir įtrauk į ją turnyrus.</p>`}

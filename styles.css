@@ -735,6 +735,31 @@ fieldset[disabled] button { cursor: not-allowed; }
 .mod-tabs a[aria-current="page"] .tab-badge { background: var(--on-accent); color: var(--accent); }
 .mod-tabs .mt-s3 { grid-column: span 3; } .mod-tabs .mt-s4 { grid-column: span 4; } .mod-tabs .mt-s6 { grid-column: span 6; } .mod-tabs .mt-s12 { grid-column: span 12; }
 .mod-tabs .t-tab-ic .tab-badge { left: 14px; }
+
+/* Administravimo panelė: funkcijų jungikliai */
+.af-group { display: flex; flex-direction: column; }
+.af-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); cursor: pointer; }
+.af-h + .af-row { border-top: 0; }
+.af-row .grow { min-width: 0; }
+.af-off { color: var(--bad); font-weight: 700; }
+.af-h { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 800; margin: 0 0 2px; }
+.af-sum { display: flex; align-items: center; gap: 14px; }
+.af-big { font-family: 'Barlow Condensed', sans-serif; font-size: 34px; font-weight: 700; color: var(--accent-ink); line-height: 1; flex: none; }
+.af-log li { padding: 8px 0; border-top: 1px solid var(--line); }
+.af-log li:first-child { border-top: 0; }
+[data-banner-card] textarea { width: 100%; resize: vertical; }
+
+/* Skelbimas visiems (juosta virš turinio) */
+#app-banner { padding: 10px 16px 0; max-width: 640px; margin: 0 auto; }
+#app-banner[hidden] { display: none; }
+.app-banner { display: flex; align-items: center; gap: 10px; padding: 10px 6px 10px 14px; border-radius: 14px; font-weight: 600; line-height: 1.35;
+  background: var(--surface); border: 1px solid var(--accent); color: var(--text); overflow-wrap: anywhere; }
+.app-banner > svg { flex: none; color: var(--accent); }
+.app-banner-warn { background: var(--bad-bg); border-color: var(--bad); }
+.app-banner-warn > svg { color: var(--bad); }
+.app-banner-preview { padding-right: 14px; }
+.app-banner-x { flex: none; width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 12px;
+  background: transparent; color: var(--muted); cursor: pointer; }
 .sponsor-logos-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 6px; }
 .sponsor-logos-row .sponsor-logo { width: 100%; min-width: 0; height: 44px; }
 .tab-badge { display: inline-flex; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--on-accent);
