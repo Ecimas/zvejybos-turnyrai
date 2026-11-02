@@ -1417,6 +1417,18 @@ def help_demo_test(page, base):
     expect(page.locator("[data-thread]", has_text="Žvejybos turnyrų komanda")).to_contain_text("Pagalba")
     page.locator("#appbar").get_by_role("link", name="Žvejybos turnyrai – į pradžią").click()
     expect(page.get_by_role("heading", name="Turnyrai", level=1)).to_be_visible()
+    # Nuoroda į „Rėmėjams“ puslapį: Pagalba ir turnyro prizų skiltis; pats puslapis veikia
+    page.goto(base + "#/pagalba")
+    expect(page.locator(".help-links [data-sponsors-page]")).to_have_attribute("href", "remejams.html")
+    page.goto(base + "#/t/t-taure?skiltis=prizai")
+    expect(page.locator(".sponsor-invite")).to_be_visible()
+    page.locator(".sponsor-invite").click()
+    expect(page).to_have_url(re.compile(r"/remejams\.html$"))
+    expect(page.get_by_role("heading", level=1)).to_contain_text("Jūsų ženklas ten")
+    expect(page.locator("a[href^='mailto:zvejybosturnyrai@gmail.com']").first).to_be_visible()
+    assert page.evaluate("() => document.documentElement.scrollWidth") <= 390
+    page.goto(base)
+    expect(page.get_by_role("heading", name="Turnyrai", level=1)).to_be_visible()
     step("viršutinė juosta, pagalba ir pokalbis su komanda")
 
 
