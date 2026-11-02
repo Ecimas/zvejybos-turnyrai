@@ -203,7 +203,7 @@ def main():
                     if r == "#/l/demo-c1" and page.get_by_role("button", name="Pranešti apie įtartiną laimikį").count():
                         page.get_by_role("button", name="Pranešti apie įtartiną laimikį").click()
                     if r == "#/dienorastis":
-                        page.get_by_role("button", name="Nieko nekibo").click()
+                        page.get_by_role("button", name="Išvyka").click()
                         if page.get_by_role("button", name="Nesutinku su sprendimu").count():
                             page.get_by_role("button", name="Nesutinku su sprendimu").first.click()
                     if r == "#/profilis":

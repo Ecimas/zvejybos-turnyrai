@@ -871,6 +871,24 @@ export async function createSupabaseBackend(url, anonKey) {
       if (!user) return null;
       return check(await sb.from('catch_reports').select('id, status, reason').eq('catch_id', catchId).eq('reporter_id', user.id).maybeSingle());
     },
+    // Dienoraščio tikslai (0034): tik savi.
+    async myGoals() {
+      const { data, error } = await sb.from('diary_goals').select('id, kind, species_id, target, period, created_at').order('created_at');
+      return error ? [] : data;
+    },
+    async addGoal({ kind, species_id = null, target, period }) {
+      const { data, error } = await sb.from('diary_goals').insert({ kind, species_id, target, period })
+        .select('id, kind, species_id, target, period, created_at').single();
+      if (error) {
+        throw friendly(error, [[/does not exist|schema cache|could not find/i, 'Ši funkcija dar neįdiegta serveryje'],
+          [/goal_limit/, 'Daugiausia 12 tikslų – ištrink pasiektus'], [/check constraint|violates check/i, 'Patikrink tikslą']], 'Nepavyko išsaugoti tikslo');
+      }
+      return data;
+    },
+    async deleteGoal(id) {
+      check(await sb.from('diary_goals').delete().eq('id', id));
+    },
+
     // Savos taškų taisyklės (0033): tik savo, kuria organizatoriai.
     async myScoringRules() {
       const { data, error } = await sb.from('scoring_rules').select('id, name, rules, updated_at, tournaments(count)').order('updated_at', { ascending: false });
@@ -930,7 +948,12 @@ export async function createSupabaseBackend(url, anonKey) {
       return check(await sb.from('blank_trips').select('*').eq('user_id', user.id).order('trip_date', { ascending: false }));
     },
     async addBlankTrip(trip) {
-      const { error } = await sb.from('blank_trips').insert(trip);
+      let { error } = await sb.from('blank_trips').insert(trip);
+      // Kol 0034 neįdiegta – be vietos.
+      if (error && trip.place && /place|schema cache|column/i.test(error.message || '')) {
+        const { place, ...rest } = trip;
+        ({ error } = await sb.from('blank_trips').insert(rest));
+      }
       if (error) throw friendly(error, [[/trip_limit/, 'Per parą galima įrašyti ne daugiau kaip 10 išvykų'], [/trip_in_future/, 'Data negali būti ateityje']], 'Nepavyko išsaugoti');
     },
     async deleteBlankTrip(id) {

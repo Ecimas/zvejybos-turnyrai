@@ -371,11 +371,11 @@ def more_real_tests(page, base):
 
     # „Nieko nekibo“ – privatus įrašas serveryje
     go(page, base + "#/dienorastis")
-    page.get_by_role("button", name="Nieko nekibo").click()
+    page.get_by_role("button", name="Išvyka").click()
     page.get_by_label("Kiek valandų").fill("2")
     page.locator("[data-blank-form]").get_by_label("Pastabos (nebūtina)").fill("Drumstas vanduo")
     page.locator("[data-blank-form]").get_by_role("button", name="Išsaugoti").click()
-    expect(page.locator(".trip-card")).to_contain_text("Nieko nekibo · 2 val.")
+    expect(page.locator(".trip-card")).to_contain_text(re.compile(r"(Nieko nekibo|Išvyka) · 2 val\."))
     trips = fake(page, "return db.blank_trips;")
     assert len(trips) == 1 and trips[0]["user_id"] == me and trips[0]["notes"] == "Drumstas vanduo" and trips[0]["hours"] == 2, trips
     ins = calls(page, "from", table="blank_trips", op="insert")[-1]["rows"][0]

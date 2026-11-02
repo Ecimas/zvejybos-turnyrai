@@ -1064,6 +1064,26 @@ export function createDemoBackend({ photos } = {}) {
     async myReport(catchId) {
       return db.reports.find((r) => r.catch_id === catchId && r.reporter_id === ME) || null;
     },
+    async myGoals() {
+      return (db.goals ||= []).filter((g) => g.user_id === ME).map((g) => ({ ...g }));
+    },
+    async addGoal({ kind, species_id = null, target, period }) {
+      const list = (db.goals ||= []);
+      const t = Number(target);
+      const max = { length: 300, count: 1000, species: 50, days: 366, new_species: 1 }[kind];
+      if (!max || !Number.isInteger(t) || t < 1 || t > max || !['month', 'season', 'ever'].includes(period)
+        || (kind === 'new_species' && period !== 'ever')) throw new Error('Patikrink tikslą');
+      if (list.filter((g) => g.user_id === ME).length >= 12) throw new Error('Daugiausia 12 tikslų – ištrink pasiektus');
+      const g = { id: `g-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, user_id: ME, kind, species_id: species_id || null,
+        target: t, period, created_at: new Date().toISOString() };
+      list.push(g);
+      save();
+      return { ...g };
+    },
+    async deleteGoal(id) {
+      db.goals = (db.goals || []).filter((g) => !(g.id === id && g.user_id === ME));
+      save();
+    },
     async myScoringRules() {
       return scoringRules().filter((x) => x.owner_id === ME)
         .map((x) => ({ ...structuredClone(x), used: db.tournaments.filter((t) => t.scoring_rule_id === x.id).length }))

@@ -87,24 +87,28 @@ def community_demo_tests(page, base):
     """Nieko nekibo, pranešimai apie laimikius, organizatoriaus pranešimai."""
     # „Nieko nekibo“
     page.goto(base + "#/dienorastis")
-    page.get_by_role("button", name="Nieko nekibo").click()
-    expect(page.get_by_text("Žvejojai, bet nieko nepagavai?")).to_be_visible()
+    page.get_by_role("button", name="Išvyka").click()
+    expect(page.locator("[data-blank-form]")).to_contain_text("Žvejybos išvyka")
+    page.locator("[data-blank-form]").get_by_label("Vieta (nebūtina)").fill("Kauno marios")
     page.get_by_label("Kiek valandų").fill("30")
     page.locator("[data-blank-form]").get_by_role("button", name="Išsaugoti").click()
     expect(page.locator("#toast")).to_have_text("Valandų: nuo 0,5 iki 24")
     page.get_by_label("Kiek valandų").fill("3,5")
     page.locator("[data-blank-form]").get_by_label("Pastabos (nebūtina)").fill("Stiprus vėjas <b>banga</b>")
+    # Jei demo žvejys šiandien jau pagavo žuvį – išvyka su laimikiais, kitaip – „Nieko nekibo“.
+    fished_today = page.evaluate("""() => { const me = window.__zt.state.user.id; const d = JSON.parse(localStorage.getItem('zt-demo-v1'));
+      const t = new Date().toDateString(); return d.catches.some(c => c.user_id === me && c.status !== 'rejected' && new Date(c.captured_at_device).toDateString() === t); }""")
     page.locator("[data-blank-form]").get_by_role("button", name="Išsaugoti").click()
-    expect(page.locator("#toast")).to_have_text("Išsaugota. Kitą kartą tikrai užkibs!")
+    expect(page.locator("#toast")).to_have_text("Išvyka išsaugota" if fished_today else "Išsaugota. Kitą kartą tikrai užkibs!")
     trip = page.locator(".trip-card")
-    expect(trip).to_contain_text("Nieko nekibo · 3,5 val.")
+    expect(trip).to_contain_text("Išvyka: Kauno marios · 3,5 val." if fished_today else "Nieko nekibo · Kauno marios · 3,5 val.")
     expect(trip).to_contain_text("Stiprus vėjas <b>banga</b>")
     expect(trip).to_contain_text("°C")  # oras paimtas, nes data – šiandien
     shot(page, "15-nieko-nekibo")
     page.goto(base + "#/profilis")
     expect(page.locator("[data-luck]")).to_contain_text("Žvejybos dienų")
     page.goto(base + "#/dienorastis")
-    page.get_by_role("button", name="Ištrinti išvyką be laimikio").click()
+    page.get_by_role("button", name="Ištrinti išvyką").click()
     expect(page.locator(".trip-card")).to_have_count(0)
     step("„Nieko nekibo“: įrašas su oru, statistika, ištrynimas")
 
@@ -966,6 +970,101 @@ def custom_rules_demo_test(page, base):
     step("taisyklių ištrynimas (turnyras lieka su kopija), užraktas po starto, tik organizatoriams")
 
 
+def forecast_route(route):
+    import time
+    now = int(time.time())
+    hours = [now - 6 * 3600 + i * 3600 for i in range(36)]
+    body = {"hourly": {"time": hours, "temperature_2m": [8.2] * 36, "surface_pressure": [1014 - i * 0.4 for i in range(36)],
+                       "wind_speed_10m": [3.1] * 36, "wind_direction_10m": [225] * 36, "weather_code": [3] * 36},
+            "daily": {"sunrise": [now - 3 * 3600], "sunset": [now + 6 * 3600]}}
+    route.fulfill(status=200, content_type="application/json", headers={"Access-Control-Allow-Origin": "*"}, body=json.dumps(body))
+
+
+def diary_plus_demo_test(page, base):
+    """Dienoraštis: prognozė, sezonas, skiltys (kolekcija, įžvalgos, tikslai), išvyka su laimikiais."""
+    fc_re = re.compile(r"https://api\.open-meteo\.com/.*hourly=.*")
+    page.route(fc_re, forecast_route)
+    page.evaluate("() => { localStorage.removeItem('zt-fc-loc'); localStorage.removeItem('zt-forecast'); sessionStorage.removeItem('zt-dtab'); }")
+    page.goto(base + "#/dienorastis")
+    fc = page.locator("[data-forecast]")
+    expect(fc).to_contain_text("Kibimo prognozė tavo vietoje")
+    fc.get_by_role("button", name="Rodyti prognozę").click()
+    expect(fc.locator("[data-fc-label]")).to_contain_text("Kibimas –")
+    expect(fc).to_contain_text("8°")
+    expect(fc).to_contain_text("PV vėjas")
+    expect(fc).to_contain_text("Geriausias laikas")
+    loc = page.evaluate("() => JSON.parse(localStorage.getItem('zt-fc-loc'))")
+    assert loc == {"lat": 54.9, "lng": 23.9}, loc
+    expect(page.locator("[data-stat='days']")).to_be_visible()
+    shot(page, "dienorastis-prognoze")
+    step("dienoraštis: kibimo prognozė (vieta tik telefone, suapvalinta), sezono santrauka")
+
+    # Kolekcija
+    page.get_by_role("tab", name="Kolekcija").click()
+    album = page.locator("[data-album]")
+    expect(album).to_be_visible()
+    caught = page.evaluate("""() => { const me = window.__zt.state.user.id; const d = JSON.parse(localStorage.getItem('zt-demo-v1'));
+      return new Set(d.catches.filter(c => c.user_id === me && c.status !== 'rejected').map(c => c.species_id)).size; }""")
+    expect(album.locator("a.alb-t")).to_have_count(caught)
+    expect(album.locator(".alb-lk").first).to_contain_text("dar nepagauta")
+    expect(page.locator("[data-collection]")).to_contain_text(f"{caught} / ")
+    expect(page.locator("[data-diary-badges] .chip").first).to_be_visible()
+    shot(page, "dienorastis-kolekcija")
+    # Įžvalgos
+    page.get_by_role("tab", name="Įžvalgos").click()
+    expect(page.locator("[data-insight='daypart']")).to_contain_text("pagauta")
+    expect(page.locator("[data-insight='days'] .hm i")).to_have_count(84)
+    expect(page.locator("[data-insight='baits']")).to_be_visible()
+    shot(page, "dienorastis-izvalgos")
+    step("dienoraštis: rūšių kolekcija ir ženkleliai, įžvalgos (paros laikas, masalai, orai, žvejybos dienos)")
+
+    # Tikslai
+    page.get_by_role("tab", name="Tikslai").click()
+    expect(page).to_have_url(re.compile(r"skiltis=tikslai"))
+    expect(page.locator("[data-goals-empty]")).to_be_visible()
+    page.locator("[data-goal-kind='length']").click()
+    form = page.locator("[data-goal-form]")
+    form.get_by_label("Rūšis").select_option(label="Lydeka")
+    form.get_by_label("Ilgis nuo, cm").fill("80")
+    form.get_by_role("button", name="Išsaugoti tikslą").click()
+    expect(page.locator("#toast")).to_have_text("Tikslas išsaugotas")
+    goal = page.locator("[data-goal]", has_text="Lydeka ≥ 80 cm šį sezoną")
+    expect(goal).to_be_visible()
+    page.locator("[data-goal-kind='count']").click()
+    page.locator("[data-goal-form]").get_by_label("Kiek laimikių").fill("abc")
+    page.locator("[data-goal-form]").get_by_role("button", name="Išsaugoti tikslą").click()
+    expect(page.locator("#toast")).to_have_text("Įrašyk sveiką skaičių")
+    page.locator("[data-goal-form]").get_by_label("Kiek laimikių").fill("1000")
+    page.locator("[data-goal-form]").get_by_role("button", name="Šį sezoną").click()
+    page.locator("[data-goal-form]").get_by_role("button", name="Išsaugoti tikslą").click()
+    expect(page.locator("[data-goal]", has_text="1000 laimikių šį sezoną")).to_contain_text("iš 1000")
+    page.reload()
+    expect(page.get_by_role("tab", name="Tikslai")).to_have_attribute("aria-selected", "true")
+    expect(page.locator("[data-goal]")).to_have_count(2)
+    shot(page, "dienorastis-tikslai")
+    page.locator("[data-goal]", has_text="1000 laimikių").get_by_role("button", name=re.compile("Ištrinti tikslą")).click()
+    expect(page.locator("[data-goal]")).to_have_count(1)
+    step("dienoraštis: tikslai su pažanga, išsaugojimas, ištrynimas, skiltis išlieka")
+
+    # Išvyka tą dieną, kai pagauta žuvis – laimikiai priskiriami
+    day = page.evaluate("""() => { const me = window.__zt.state.user.id; const d = JSON.parse(localStorage.getItem('zt-demo-v1'));
+      const c = d.catches.filter(c => c.user_id === me && c.status !== 'rejected').sort((a, b) => a.captured_at_device < b.captured_at_device ? 1 : -1)[0];
+      const x = new Date(c.captured_at_device); const p = (n) => String(n).padStart(2, '0'); return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`; }""")
+    page.get_by_role("tab", name="Laimikiai").click()
+    page.get_by_role("button", name="Išvyka").click()
+    bf = page.locator("[data-blank-form]")
+    bf.get_by_label("Data").fill(day)
+    bf.get_by_label("Vieta (nebūtina)").fill("Kauno marios")
+    bf.get_by_label("Kiek valandų").fill("4")
+    bf.get_by_role("button", name="Išsaugoti").click()
+    expect(page.locator("#toast")).to_have_text("Išvyka išsaugota")
+    expect(page.locator(".trip-card.trip-ok")).to_contain_text("Išvyka: Kauno marios · 4 val.")
+    expect(page.locator(".trip-card.trip-ok")).to_contain_text("laimik")
+    page.get_by_role("button", name="Ištrinti išvyką").click()
+    page.unroute(fc_re, forecast_route)
+    step("išvyka su vieta: tos dienos laimikiai priskiriami automatiškai")
+
+
 def map_demo_test(page, base):
     page.goto(base + "#/profilis?skiltis=zvejyba")
     page.get_by_role("link", name="Žemėlapis").click()
@@ -1595,6 +1694,7 @@ def main():
         admin_demo_test(page, base)
         features_panel_demo_test(page, base)
         custom_rules_demo_test(page, base)
+        diary_plus_demo_test(page, base)
 
         ctx.close()
 
