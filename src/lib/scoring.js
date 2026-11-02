@@ -5,6 +5,8 @@
 export const SKEW_MS = 10 * 60 * 1000;      // telefono laikrodis gali skubėti ne daugiau
 export const GRACE_MS = 24 * 60 * 60 * 1000; // offline laimikiai priimami 24 val. po pabaigos
 
+import { customScores, tieKeys, fishPoints, fishEligible } from './custom_scoring.js';
+
 const ts = (d) => new Date(d).getTime();
 
 // Tikras laimikio laikas (kaip SQL public.catch_time, 0023): telefono laikas + žinomas skirtumas nuo serverio
@@ -51,6 +53,7 @@ export function isCounted(t, speciesIds, entered, c) {
 // entries: vartotojų ID arba { user_id, joined_at } masyvas; profiles: { [id]: { nickname, region } }
 // Taškai už rūšį: ilgis mm × rūšies koeficientas / 100 (sveikoji dalis, kaip SQL). Kitiems formatams – ilgis.
 export function catchPoints(t, c, speciesPct = {}) {
+  if (t.format === 'custom') return t.scoring && fishEligible(t.scoring, c) ? fishPoints(t.scoring, c, catchTime(c)) : 0;
   if (t.format !== 'species_points') return c.length_mm;
   return Math.floor((c.length_mm * (speciesPct[c.species_id] ?? 100)) / 100);
 }
@@ -64,6 +67,7 @@ export function computeLeaderboard({ tournament: t, speciesIds = [], speciesPct 
     if (!perUser.has(c.user_id)) perUser.set(c.user_id, []);
     perUser.get(c.user_id).push(c);
   }
+  if (t.format === 'custom') return customBoard(t, perUser, profiles);
   const limit = t.format === 'biggest' ? 1 : t.top_n;
   const rows = [];
   for (const [userId, list] of perUser) {
@@ -86,6 +90,29 @@ export function computeLeaderboard({ tournament: t, speciesIds = [], speciesPct 
     r.rank = prev && prev.score_mm === r.score_mm && prev.last_counted === r.last_counted ? prev.rank : i + 1;
   });
   return rows;
+}
+
+// Savos taisyklės: taškai, premijos ir lygiųjų tvarka – kaip SQL leaderboard_all (0033).
+function customBoard(t, perUser, profiles) {
+  const r = t.scoring;
+  if (!r) return [];
+  const fish = [...perUser.values()].flat().map((c) => ({ c, ms: catchTime(c) }));
+  const rows = customScores(r, fish).map((x) => ({
+    user_id: x.user_id,
+    nickname: profiles[x.user_id]?.nickname ?? '',
+    region: profiles[x.user_id]?.region ?? null,
+    score_mm: x.score_mm,
+    counted: x.counted,
+    last_counted: new Date(x.last_counted).toISOString(),
+    tie: tieKeys(r, x)
+  }));
+  const cmpTie = (a, b) => a.tie[0] - b.tie[0] || a.tie[1] - b.tie[1] || a.tie[2] - b.tie[2];
+  rows.sort((a, b) => b.score_mm - a.score_mm || cmpTie(a, b) || a.nickname.localeCompare(b.nickname));
+  rows.forEach((x, i) => {
+    const prev = rows[i - 1];
+    x.rank = prev && prev.score_mm === x.score_mm && cmpTie(prev, x) === 0 ? prev.rank : i + 1;
+  });
+  return rows.map(({ tie, ...x }) => x);
 }
 
 // Lentelė tik vieno diviziono dalyviams: vietos perskaičiuojamos kaip SQL rank().

@@ -192,7 +192,10 @@ export async function createSupabaseBackend(url, anonKey) {
     async createTournament(data) {
       const { species_ids, species_pct = {}, sponsors = [], divisions = [], ...rest } = data;
       const ins = await sb.from('tournaments').insert({ ...rest, organizer_id: uid() }).select('id').single();
-      if (ins.error) throw friendly(ins.error, [[/tournament_limit/, 'Per parą galima sukurti ne daugiau kaip 10 turnyrų'], [/league_owner/, 'Į lygą gali įtraukti tik lygos savininkas'],
+      if (ins.error) throw friendly(ins.error, [[/custom_not_allowed/, 'Savas taškų taisykles turnyrui gali pasirinkti tik organizatoriai'],
+        [/scoring_required/, 'Pasirink taškų taisykles'], [/scoring_locked/, 'Prasidėjusio turnyro taisyklių keisti negalima'],
+        [/tournaments_scoring_check|valid_scoring/, 'Netinkamos taškų taisyklės'],
+        [/tournament_limit/, 'Per parą galima sukurti ne daugiau kaip 10 turnyrų'], [/league_owner/, 'Į lygą gali įtraukti tik lygos savininkas'],
         [/public_not_allowed/, 'Viešus turnyrus kuria patvirtinti organizatoriai – sukurk turnyrą su kvietimu']]);
       const t = ins.data;
       if (species_ids.length) {
@@ -209,7 +212,10 @@ export async function createSupabaseBackend(url, anonKey) {
       const { species_ids, species_pct = {}, sponsors, divisions, ...rest } = data;
       const before = divisions ? check(await sb.from('tournament_divisions').select('id, name, sort').eq('tournament_id', id)) : [];
       const { data: rows, error } = await sb.from('tournaments').update(rest).eq('id', id).select('id');
-      if (error) throw friendly(error, [[/league_owner/, 'Į lygą gali įtraukti tik lygos savininkas'],
+      if (error) throw friendly(error, [[/custom_not_allowed/, 'Savas taškų taisykles turnyrui gali pasirinkti tik organizatoriai'],
+        [/scoring_required/, 'Pasirink taškų taisykles'], [/scoring_locked/, 'Prasidėjusio turnyro taisyklių keisti negalima'],
+        [/tournaments_scoring_check|valid_scoring/, 'Netinkamos taškų taisyklės'],
+        [/league_owner/, 'Į lygą gali įtraukti tik lygos savininkas'],
         [/started_rules_locked/, 'Prasidėjusio turnyro taisyklių keisti negalima'], [/ends_in_past/, 'Pabaiga negali būti praeityje'],
         [/public_not_allowed/, 'Viešus turnyrus kuria patvirtinti organizatoriai']]);
       if (!rows?.length) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
@@ -865,6 +871,32 @@ export async function createSupabaseBackend(url, anonKey) {
       if (!user) return null;
       return check(await sb.from('catch_reports').select('id, status, reason').eq('catch_id', catchId).eq('reporter_id', user.id).maybeSingle());
     },
+    // Savos taškų taisyklės (0033): tik savo, kuria organizatoriai.
+    async myScoringRules() {
+      const { data, error } = await sb.from('scoring_rules').select('id, name, rules, updated_at, tournaments(count)').order('updated_at', { ascending: false });
+      if (error) return [];
+      return data.map((r) => ({ id: r.id, name: r.name, rules: r.rules, updated_at: r.updated_at, used: r.tournaments?.[0]?.count ?? 0 }));
+    },
+    async saveScoringRule({ id, name, rules }) {
+      const q = id
+        ? sb.from('scoring_rules').update({ name, rules }).eq('id', id).select('id, name, rules').single()
+        : sb.from('scoring_rules').insert({ name, rules }).select('id, name, rules').single();
+      const { data, error } = await q;
+      if (error) {
+        throw friendly(error, [
+          [/does not exist|schema cache|could not find/i, 'Ši funkcija dar neįdiegta serveryje'],
+          [/rules_limit/, 'Galima išsaugoti iki 30 taisyklių rinkinių'],
+          [/scoring_rules_name_uniq|duplicate/, 'Taisyklės tokiu pavadinimu jau yra'],
+          [/row-level security|permission denied/i, 'Savas taisykles kuria tik organizatoriai'],
+          [/check constraint|violates check/i, 'Patikrink taisykles']
+        ], 'Nepavyko išsaugoti taisyklių');
+      }
+      return { ...data, used: 0 };
+    },
+    async deleteScoringRule(id) {
+      check(await sb.from('scoring_rules').delete().eq('id', id));
+    },
+
     // Moderavimo skilčių skaičiukai: tik kiekiai (be duomenų), kiekvienas atskirai – nepavykęs rodo 0.
     async modCounts() {
       const n = async (table, col, filter) => {

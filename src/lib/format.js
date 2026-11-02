@@ -102,12 +102,14 @@ export const FORMATS = {
   biggest: 'Didžiausia žuvis',
   top_n_sum: 'Kelių ilgių suma',
   species_points: 'Taškai už rūšį',
-  duels: 'Dvikovos'
+  duels: 'Dvikovos',
+  custom: 'Savos taisyklės'
 };
 
 export function describeFormat(t) {
   if (t.format === 'biggest') return 'Didžiausia žuvis';
   if (t.format === 'species_points') return t.top_n === 1 ? 'Taškai už rūšį · geriausia žuvis' : `Taškai už rūšį · TOP-${t.top_n}`;
+  if (t.format === 'custom') return 'Savos taškų taisyklės';
   if (t.format === 'duels') return t.top_n === 1 ? 'Dvikovos · didžiausia žuvis rate' : `Dvikovos · TOP-${t.top_n} suma rate`;
   return `TOP-${t.top_n} ilgių suma`;
 }
@@ -118,7 +120,7 @@ export function points(v) {
   return (Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',')) + ' tšk.';
 }
 
-export const isPoints = (t) => t?.format === 'species_points';
+export const isPoints = (t) => t?.format === 'species_points' || t?.format === 'custom';
 export const scoreText = (t, v) => (isPoints(t) ? points(v) : cm(v));
 
 // Rūšies koeficientas: 100 -> „×1“, 150 -> „×1,5“

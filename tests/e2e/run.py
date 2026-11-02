@@ -851,6 +851,121 @@ def features_panel_demo_test(page, base):
     step("skelbimas visiems: rodomas visur, galima paslėpti sau, naujas vėl matomas, nuimamas")
 
 
+def custom_rules_demo_test(page, base):
+    """Savos taškų taisyklės: kūrimas, keitimas, pasirinkimas turnyre, lentelė taškais, ištrynimas, tik organizatoriams."""
+    page.goto(base + "#/profilis?skiltis=zvejyba")
+    page.goto(base + "#/tasku-taisykles")
+    expect(page.get_by_role("heading", name="Mano taškų taisyklės")).to_be_visible()
+    expect(page.locator("[data-rule='rule-demo']")).to_contain_text("Kauno marių plėšrūnai")
+    expect(page.locator("[data-rule='rule-demo']")).to_contain_text("Lydeka ×1,5 nuo 50 cm, daugiausia 2")
+
+    # Kūrėjas
+    page.locator("[data-rule-new]").click()
+    rb = page.locator("[data-rules-builder]")
+    expect(rb).to_be_visible()
+    rb.locator("[data-rb-save]").click()
+    expect(rb.locator("[data-rb-error]")).to_contain_text("Pavadinimas")
+    rb.get_by_label("Pavadinimas").fill("Ešerių šventė")
+    rb.locator("[data-rb-base='fish']").click()
+    expect(rb.locator("[data-rb-all]")).to_contain_text("1 tšk. už žuvį")
+    rb.locator("[data-rb-add-sp]").select_option(label="Ešerys")
+    rb.locator("[data-sp-f='m']").first.fill("2")
+    rb.locator("[data-sp-f='min_cm']").first.fill("15")
+    rb.locator("[data-rb-add-b]").select_option("len_min")
+    rb.locator("[data-b-f='cm']").fill("30")
+    rb.locator("[data-b-f='add']").fill("+5")
+    rb.locator("[data-rb-add-b]").select_option("time")
+    rb.locator("[data-b-f='m']").fill("×1,5")
+    rb.locator("[data-rb-agg='all']").click()
+    rb.get_by_label("Lygiųjų taisyklė 1").select_option("most_fish")
+    expect(rb.locator("[data-rb-preview]")).to_contain_text("Ešerys 40 cm → 7 tšk.")  # 2 + 5
+    shot(page, "taisykles-kurimas")
+    rb.locator("[data-b-f='add']").fill("abc")
+    expect(rb.locator("[data-rb-preview]")).to_contain_text("Premija")
+    rb.locator("[data-b-f='add']").fill("+5")
+    rb.locator("[data-rb-save]").click()
+    expect(page.locator("#toast")).to_have_text("Taisyklės išsaugotos")
+    expect(page.locator("[data-rules-builder]")).to_have_count(0)
+    card = page.locator("[data-rules-list] [data-rule]", has_text="Ešerių šventė")
+    expect(card).to_contain_text("Kiekviena įskaitoma žuvis duoda rūšies taškų")
+    expect(card).to_contain_text("Ešerys 2 tšk. nuo 15 cm")
+    expect(card).to_contain_text("Pagauta 22–5 val.: ×1,5")
+    expect(card).to_contain_text("Lygiosios: daugiau žuvų")
+    # Keitimas
+    card.locator("[data-rule-edit]").click()
+    page.locator("[data-rules-builder]").get_by_label("Pavadinimas").fill("Ešerių šventė 2026")
+    page.locator("[data-rules-builder] [data-rb-save]").click()
+    expect(page.locator("[data-rules-list]")).to_contain_text("Ešerių šventė 2026")
+    step("taškų taisyklės: kūrėjas (rūšys, premijos, sumavimas, lygiosios, pavyzdys), išsaugojimas, keitimas")
+
+    # Turnyras su savomis taisyklėmis
+    page.goto(base + "#/naujas")
+    page.get_by_label("Pavadinimas").fill("Plėšrūnų taurė")
+    page.locator("[data-format=custom]").click()
+    expect(page.locator("[data-species-box]")).to_be_hidden()
+    expect(page.locator("[data-min-box]")).to_be_hidden()
+    page.locator("[data-submit]").click()
+    expect(page.locator("[data-error]")).to_contain_text("Pasirink arba sukurk taškų taisykles")
+    page.locator("[data-rule-pick='rule-demo']").click()
+    expect(page.locator("[data-rule-desc]")).to_contain_text("Žuvis nuo 70 cm: +20 tšk.")
+    shot(page, "taisykles-turnyras")
+    page.locator("[data-submit]").click()
+    expect(page.locator("#toast")).to_have_text("Turnyras sukurtas")
+    expect(page.get_by_role("heading", name="Plėšrūnų taurė")).to_be_visible()
+    page.locator("[data-tab=taisykles]").click()
+    rl = page.locator("[data-scoring-rules]")
+    expect(rl).to_contain_text("Žuvies taškai = ilgis cm × rūšies koeficientas")
+    expect(rl).to_contain_text("Sumuojamos 5 geriausios žuvys")
+    expect(page.locator("dl.list")).to_contain_text("Savos taškų taisyklės")
+    tid = page.evaluate("() => location.hash.split('/')[2].split('?')[0]")
+    t = page.evaluate(f"() => JSON.parse(localStorage.getItem('zt-demo-v1')).tournaments.find(t => t.id === '{tid}')")
+    assert t["format"] == "custom" and t["scoring_rule_id"] == "rule-demo" and t["min_length_mm"] == 0, t
+    page.goto(base + "#/tasku-taisykles")
+    expect(page.locator("[data-rule='rule-demo'] .rb-tag")).to_have_text("Naudota 1 turnyre")
+
+    # Vykstantis turnyras su savomis taisyklėmis: lentelė taškais
+    page.evaluate("""() => { const d = JSON.parse(localStorage.getItem('zt-demo-v1')); const t = d.tournaments.find(x => x.id === 't-taure');
+      t.format = 'custom'; t.scoring = { v: 1, base: 'cm', species: [], bonuses: [{ type: 'per_fish', add: 10 }], aggregate: { mode: 'best_n', n: 2 }, tiebreak: ['biggest_fish'] };
+      localStorage.setItem('zt-demo-v1', JSON.stringify(d)); }""")
+    page.reload()
+    page.goto(base + "#/t/t-taure/lentele")
+    expect(page.locator(".podium")).to_contain_text("tšk.")
+    board = page.evaluate("async () => window.__zt.backend.leaderboard('t-taure')")
+    top = board[0]
+    assert top["score_mm"] > 0 and top["rank"] == 1, top
+    step("turnyras su savomis taisyklėmis: pasirinkimas, aprašymas, kopija turnyre, lentelė taškais")
+
+    # Prasidėjusio turnyro taisyklių keisti negalima
+    err = page.evaluate("""async () => { try { await window.__zt.backend.updateTournament('t-taure', { scoring: { v: 1, base: 'fish', species: [], bonuses: [],
+      aggregate: { mode: 'all', n: 1 }, tiebreak: [] } }); return ''; } catch (e) { return e.message; } }""")
+    assert "taisykl" in err or "prasidėjo" in err, err
+
+    # Ištrynimas – turnyras lieka su kopija
+    page.goto(base + "#/tasku-taisykles")
+    page.once("dialog", lambda d: d.accept())
+    page.locator("[data-rule='rule-demo'] [data-rule-del]").click()
+    expect(page.locator("#toast")).to_have_text("Taisyklės ištrintos")
+    expect(page.locator("[data-rule='rule-demo']")).to_have_count(0)
+    page.goto(base + f"#/t/{tid}?skiltis=taisykles")
+    expect(page.locator("[data-scoring-rules]")).to_contain_text("Sumuojamos 5 geriausios žuvys")
+
+    # Ne organizatorius: savų taisyklių nėra
+    roles = page.evaluate("""() => { const d = JSON.parse(localStorage.getItem('zt-demo-v1')); const me = window.__zt.state.user.id;
+      const r = d.profiles[me].roles; d.profiles[me].roles = []; localStorage.setItem('zt-demo-v1', JSON.stringify(d)); return r; }""")
+    page.reload()
+    page.goto(base + "#/naujas")
+    expect(page.locator("[data-format=biggest]")).to_be_visible()
+    expect(page.locator("[data-format=custom]")).to_have_count(0)
+    page.goto(base + "#/tasku-taisykles")
+    expect(page.get_by_text("Savas taisykles kuria organizatoriai")).to_be_visible()
+    err = page.evaluate("""async () => { try { await window.__zt.backend.saveScoringRule({ name: 'Bandymas', rules: { v: 1, base: 'cm', species: [], bonuses: [],
+      aggregate: { mode: 'all', n: 1 }, tiebreak: [] } }); return ''; } catch (e) { return e.message; } }""")
+    assert "organizatoriai" in err, err
+    page.evaluate("(r) => { const d = JSON.parse(localStorage.getItem('zt-demo-v1')); d.profiles[window.__zt.state.user.id].roles = r; localStorage.setItem('zt-demo-v1', JSON.stringify(d)); }", roles)
+    page.reload()
+    step("taisyklių ištrynimas (turnyras lieka su kopija), užraktas po starto, tik organizatoriams")
+
+
 def map_demo_test(page, base):
     page.goto(base + "#/profilis?skiltis=zvejyba")
     page.get_by_role("link", name="Žemėlapis").click()
@@ -1479,6 +1594,7 @@ def main():
         organizer_demo_test(page, base)
         admin_demo_test(page, base)
         features_panel_demo_test(page, base)
+        custom_rules_demo_test(page, base)
 
         ctx.close()
 

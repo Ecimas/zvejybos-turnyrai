@@ -6,6 +6,7 @@ import { feat } from '../lib/clubs.js';
 import { canCreateTournament } from '../lib/features.js';
 import { PRESETS, eur, parseEur, validateSplit, placeAmounts, sponsorTotal } from '../lib/prizes.js';
 import { can } from '../lib/roles.js';
+import { openRulesBuilder, ruleCard, rulesLines, canCustomRules } from './rules.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 const local = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -15,7 +16,8 @@ const FORMAT_HINT = {
   biggest: 'Laimi didžiausią žuvį pagavęs žvejys.',
   top_n_sum: 'Sumuojami kelių ilgiausių žuvų ilgiai.',
   species_points: 'Taškai = ilgis cm × rūšies koeficientas. Retesnėms rūšims duok didesnį koeficientą.',
-  duels: 'Atkrintamosios poros: rate laimi daugiau pagavęs. Registracija tik iki starto; 8 dalyviai – 3 ratai, laikas padalinamas po lygiai.'
+  duels: 'Atkrintamosios poros: rate laimi daugiau pagavęs. Registracija tik iki starto; 8 dalyviai – 3 ratai, laikas padalinamas po lygiai.',
+  custom: 'Taškai skaičiuojami pagal tavo taisykles: rūšys ir jų minimumai, premijos, kas sumuojama. Rūšis ir min. ilgį nustato taisyklės.'
 };
 const TOPN_LABEL = {
   top_n_sum: 'Kiek ilgiausių žuvų sumuoti',
@@ -70,6 +72,13 @@ export async function createView(ctx, [editId] = [], query) {
   const myLeagues = backend.myLeagues ? await backend.myLeagues().catch(() => []) : [];
   let divisions = (t?.divisions || []).map((d) => ({ id: d.id, name: d.name }));
   let format = t?.format || 'biggest';
+  // Savos taškų taisyklės (0033): tik organizatoriams. Turnyras saugo taisyklių kopiją.
+  const canCustom = canCustomRules(state) || t?.format === 'custom';
+  let myRules = canCustom && backend.myScoringRules ? await backend.myScoringRules().catch(() => []) : [];
+  let chosenRule = t?.format === 'custom' && t.scoring
+    ? (myRules.find((x) => x.id === t.scoring_rule_id && JSON.stringify(x.rules) === JSON.stringify(t.scoring))
+      || { id: null, name: 'Šio turnyro taisyklės', rules: t.scoring })
+    : null;
   // Viešus turnyrus kuria tik organizatoriai (0028); seni vieši lieka vieši.
   const canPublic = can(state, 'publish') || t?.visibility === 'public';
   let visibility = t?.visibility || (canPublic ? 'public' : 'private');
@@ -113,13 +122,21 @@ export async function createView(ctx, [editId] = [], query) {
             <button type="button" data-format="top_n_sum" aria-pressed="${format === 'top_n_sum'}">Kelių ilgių suma</button>
             <button type="button" data-format="species_points" aria-pressed="${format === 'species_points'}">Taškai už rūšį</button>
             ${feat(state, 'duels') || t?.format === 'duels' ? html`<button type="button" data-format="duels" aria-pressed="${format === 'duels'}">Dvikovos</button>` : ''}
+            ${canCustom ? html`<button type="button" data-format="custom" aria-pressed="${format === 'custom'}">Savos taisyklės</button>` : ''}
           </div>
           <p class="small muted" data-format-hint>${FORMAT_HINT[format]}</p>
-          <label class="field" data-topn ${format === 'biggest' ? 'hidden' : ''}><span class="small muted" data-topn-label>${TOPN_LABEL[format] || ''}</span>
+          <label class="field" data-topn ${format === 'biggest' || format === 'custom' ? 'hidden' : ''}><span class="small muted" data-topn-label>${TOPN_LABEL[format] || ''}</span>
             <select name="top_n">${[1, 2, 3, 4, 5].map((n) => html`<option value="${n}" ${n === (t?.top_n || 3) ? 'selected' : ''}>${n}</option>`)}</select></label>
         </fieldset>
 
-        <fieldset class="field" ${dis}>
+        ${canCustom ? html`<fieldset class="field stack-2" data-custom ${format === 'custom' ? '' : 'hidden'} ${dis}>
+          <legend class="small muted strong">Taškų taisyklės</legend>
+          <div class="stack-2" data-rule-list></div>
+          ${locked ? '' : html`<button type="button" class="btn btn-ghost" data-rule-new>${icon('plus', 18, 2.6)}Kurti naujas taisykles</button>`}
+          <ul class="plain small muted rb-desc" data-rule-desc></ul>
+        </fieldset>` : ''}
+
+        <fieldset class="field" data-species-box ${format === 'custom' ? 'hidden' : ''} ${dis}>
           <legend class="small muted strong">Rūšys <span class="muted">(nieko nepažymėjus – visos)</span></legend>
           <div class="chips">${popular.map((s) => html`<button type="button" class="sp-chip" data-sp="${s.id}" aria-pressed="${picked.has(s.id)}">${s.name_lt}</button>`)}</div>
           <div class="list" data-coefs ${format === 'species_points' ? '' : 'hidden'}></div>
@@ -132,7 +149,7 @@ export async function createView(ctx, [editId] = [], query) {
             <input type="datetime-local" name="ends_at" required value="${local(end)}"></label>
         </div>
 
-        <label class="field"><span class="small muted strong">Minimalus ilgis, cm (nebūtina)</span>
+        <label class="field" data-min-box ${format === 'custom' ? 'hidden' : ''}><span class="small muted strong">Minimalus ilgis, cm (nebūtina)</span>
           <input type="number" name="min_cm" min="0" max="200" inputmode="numeric" placeholder="0" value="${t?.min_length_mm ? t.min_length_mm / 10 : ''}" ${dis}></label>
 
         <fieldset class="field">
@@ -226,10 +243,37 @@ export async function createView(ctx, [editId] = [], query) {
         if (e.target.dataset.coef) pct[e.target.dataset.coef] = Number(e.target.value);
       });
       renderCoefs();
+
+      // --- Savos taškų taisyklės ---
+      const ruleList = root.querySelector('[data-rule-list]');
+      const renderRules = () => {
+        if (!ruleList) return;
+        const all = chosenRule && !myRules.some((x) => x.id === chosenRule.id) ? [chosenRule, ...myRules] : myRules;
+        ruleList.innerHTML = String(all.length ? html`${all.map((rule) => ruleCard(state, rule, { selected: chosenRule === rule || (chosenRule?.id && chosenRule.id === rule.id), pick: !locked }))}`
+          : html`<p class="small muted" data-rule-empty>Savų taisyklių dar nėra – sukurk pirmąsias.</p>`);
+        root.querySelector('[data-rule-desc]').innerHTML = String(chosenRule ? html`${rulesLines(state, chosenRule.rules).map((l) => html`<li>${l}</li>`)}` : '');
+        ruleList.querySelectorAll('[data-rule-pick]').forEach((b) => b.addEventListener('click', () => {
+          chosenRule = all.find((x) => (x.id || '') === b.dataset.rulePick) || null;
+          renderRules();
+        }));
+      };
+      root.querySelector('[data-rule-new]')?.addEventListener('click', async () => {
+        const saved = await openRulesBuilder(ctx);
+        if (!saved) return;
+        myRules = [saved, ...myRules.filter((x) => x.id !== saved.id)];
+        chosenRule = saved;
+        renderRules();
+        root.querySelector('[data-custom]').scrollIntoView({ block: 'start' });
+      });
+      renderRules();
       root.querySelectorAll('[data-format]').forEach((b) => b.addEventListener('click', () => {
         format = b.dataset.format;
         root.querySelectorAll('[data-format]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-        root.querySelector('[data-topn]').hidden = format === 'biggest';
+        root.querySelector('[data-topn]').hidden = format === 'biggest' || format === 'custom';
+        const custom = root.querySelector('[data-custom]');
+        if (custom) custom.hidden = format !== 'custom';
+        root.querySelector('[data-species-box]').hidden = format === 'custom';
+        root.querySelector('[data-min-box]').hidden = format === 'custom';
         root.querySelector('[data-topn-label]').textContent = TOPN_LABEL[format] || '';
         root.querySelector('[data-format-hint]').textContent = FORMAT_HINT[format];
         root.querySelectorAll('[data-not-duels]').forEach((el) => { el.hidden = format === 'duels'; });
@@ -450,6 +494,8 @@ export async function createView(ctx, [editId] = [], query) {
           if (splitErr) return fail(`Prizinis fondas: ${splitErr.charAt(0).toLowerCase()}${splitErr.slice(1)}.`);
         }
         if (format === 'species_points' && !picked.size) return fail('Taškams už rūšį pažymėk bent vieną rūšį ir jos koeficientą.');
+        if (format === 'custom' && !chosenRule) return fail('Pasirink arba sukurk taškų taisykles.');
+        const customSpecies = format === 'custom' ? chosenRule.rules.species.map((s) => s.id) : null;
         const cleanDivs = divisions.map((d) => ({ ...d, name: d.name.trim() })).filter((d) => d.name || d.id);
         if (cleanDivs.some((d) => d.name.length < 2 || d.name.length > 30 || !DIV_NAME.test(d.name))) return fail('Diviziono pavadinimas: 2–30 raidžių, skaičių ar tarpų.');
         if (new Set(cleanDivs.map((d) => d.name.toLowerCase())).size !== cleanDivs.length) return fail('Divizionų pavadinimai turi skirtis.');
@@ -468,8 +514,10 @@ export async function createView(ctx, [editId] = [], query) {
           title,
           description: form.description.value.trim() || null,
           format,
-          top_n: format === 'biggest' ? 3 : format === 'top_n_sum' ? Math.max(2, Number(form.top_n.value)) : Number(form.top_n.value),
-          min_length_mm: Math.round(minCm * 10),
+          top_n: format === 'biggest' ? 3 : format === 'custom' ? 1 : format === 'top_n_sum' ? Math.max(2, Number(form.top_n.value)) : Number(form.top_n.value),
+          min_length_mm: format === 'custom' ? 0 : Math.round(minCm * 10),
+          // Tik savoms taisyklėms (kitaip serveris be 0033 nežinotų šių stulpelių).
+          ...(format === 'custom' ? { scoring: chosenRule.rules, scoring_rule_id: chosenRule.id || null } : {}),
           // Nepakeistas laikas – tikslus senasis (forma rodo tik minutes, todėl kitaip „pasikeistų“ sekundės).
           starts_at: t && form.starts_at.value === local(start) ? t.starts_at : startsAt.toISOString(),
           ends_at: t && form.ends_at.value === local(end) ? t.ends_at : endsAt.toISOString(),
@@ -481,7 +529,7 @@ export async function createView(ctx, [editId] = [], query) {
           prize_fund_cents: fund,
           prize_split: fund > 0 ? split.slice() : null,
           ...(t ? {} : { sponsors: cleanSponsors }), // esamo turnyro rėmėjai – skiltyje „Rėmėjai“ (su logotipais)
-          species_ids: [...picked],
+          species_ids: customSpecies || [...picked],
           species_pct: format === 'species_points' ? Object.fromEntries([...picked].map((sid) => [sid, pct[sid] ?? 100])) : {},
           divisions: cleanDivs,
           ...(form.league_id ? { league_id: form.league_id.value || null } : {})

@@ -1023,3 +1023,32 @@ input.switch:focus-visible { outline: 3px solid var(--accent); outline-offset: 2
 .mp-lf-bubble { background: none; border: 0; }
 .mp-lf-bubble span { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 16px; border: 2.5px solid #0A1822;
   color: #0A1822; font-weight: 800; font-size: 14px; box-shadow: 0 0 0 4px rgba(255,255,255,.35), 0 3px 8px rgba(0,0,0,.4); }
+
+/* Savos taškų taisyklės: kūrėjas virš ekrano */
+body.rb-open { overflow: hidden; }
+.rb-overlay { position: fixed; inset: 0; z-index: 60; background: var(--bg); overflow-y: auto; overscroll-behavior: contain; }
+.rb-screen { max-width: 640px; margin: 0 auto; padding-bottom: calc(32px + env(safe-area-inset-bottom)); }
+.rb-num { display: inline-flex; width: 26px; height: 26px; border-radius: 13px; background: var(--accent); color: var(--on-accent); font-weight: 800;
+  align-items: center; justify-content: center; font-size: 14px; flex: none; }
+.rb-t { display: grid; grid-template-columns: minmax(0, 1fr) 56px 60px 52px 32px; gap: 6px; align-items: center; font-size: 14px; }
+.rb-t .hd { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.rb-in { width: 100%; min-width: 0; min-height: 44px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--bg); color: var(--text);
+  text-align: center; font: inherit; font-weight: 700; padding: 0 4px; }
+.rb-in-sm { display: inline-block; width: 50px; min-height: 40px; margin: 0 2px; }
+.rb-lbl { white-space: nowrap; min-width: 0; }
+.rb-tie { min-height: 48px; padding: 0 12px; border-radius: 12px; border: 1.5px solid var(--line-2); background: var(--surface); color: var(--text); font: inherit; }
+.rb-val { width: 64px; flex: none; }
+.rb-x-lbl { color: var(--muted); font-weight: 700; }
+.rb-x { width: 32px; height: 44px; border: 0; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }
+.rb-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+.rb-row:first-child { border-top: 0; }
+.rb-add-row { display: flex; align-items: center; gap: 8px; color: var(--accent-ink); font-weight: 800; }
+.rb-add-row select { flex: 1; min-height: 44px; border-radius: 12px; border: 1px dashed var(--line-2); background: transparent; color: var(--accent-ink); font: inherit; font-weight: 800; padding: 0 10px; }
+.rb-pre { background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px dashed var(--accent); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.rb-card { display: flex; align-items: center; gap: 12px; }
+.rb-sel { border: 2px solid var(--accent); }
+.rb-pick { flex: none; min-height: 44px; padding: 0 14px; }
+.rb-tag { font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--muted); }
+.rb-desc li { padding: 2px 0; }
+.rb-desc li::before { content: "• "; color: var(--accent-ink); }
+dd .rb-desc { font-weight: 600; }

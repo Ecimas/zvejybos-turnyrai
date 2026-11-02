@@ -8,6 +8,7 @@ import { phase, registrationOpen } from '../lib/format.js';
 import { banActive } from '../lib/bans.js';
 import { rolesOf, ASSIGNABLE, permsOf, STAFF_ROLES } from '../lib/roles.js';
 import { seedClubsPlus, clubsPlusDemo } from './clubs_demo.js';
+import { validateRules } from '../lib/custom_scoring.js';
 
 const KEY = 'zt-demo-v1';
 const ME = '00000000-0000-4000-8000-000000000001';
@@ -249,7 +250,34 @@ export function createDemoBackend({ photos } = {}) {
   // Kaip serverio trigeris: dvikovose – registracija tik iki starto, be slėpimo ir komandų.
   const formatRules = (t) => {
     if (t.format === 'duels') Object.assign(t, { late_join_minutes: 0, leaderboard_hidden: false, team_mode: false });
+    // Savos taisyklės (kaip serverio tournaments_custom_guard, 0033)
+    if (t.format === 'custom') {
+      if (!t.scoring) throw new Error('Pasirink taškų taisykles');
+      if (validateRules(t.scoring)) throw new Error('Netinkamos taškų taisyklės');
+      t.min_length_mm = 0;
+      if (t.scoring_rule_id && !(db.scoring_rules || []).some((x) => x.id === t.scoring_rule_id && x.owner_id === t.organizer_id)) t.scoring_rule_id = null;
+    } else {
+      t.scoring = null;
+      t.scoring_rule_id = null;
+    }
     return t;
+  };
+  const mustCustom = (format) => {
+    if (format === 'custom' && !permsOf(db.profiles[ME]).has('publish')) throw new Error('Savas taškų taisykles turnyrui gali pasirinkti tik organizatoriai');
+  };
+  const scoringRules = () => {
+    if (!db.scoring_rules) {
+      db.scoring_rules = [];
+      if (permsOf(db.profiles[ME]).has('publish')) {
+        db.scoring_rules.push({ id: 'rule-demo', owner_id: ME, name: 'Kauno marių plėšrūnai', updated_at: new Date().toISOString(), rules: {
+          v: 1, base: 'cm',
+          species: [{ id: speciesId('lydeka'), min_cm: 50, m: 150, max: 2 }, { id: speciesId('starkis'), min_cm: 45, m: 130, max: 3 }, { id: speciesId('eserys'), min_cm: 20, m: 200, max: null }],
+          bonuses: [{ type: 'len_min', cm: 70, add: 200 }, { type: 'species', add: 100 }],
+          aggregate: { mode: 'best_n', n: 5 }, tiebreak: ['biggest_fish', 'earliest']
+        } });
+      }
+    }
+    return db.scoring_rules;
   };
   const checkLeague = (leagueId) => {
     if (leagueId && !db.leagues.some((l) => l.id === leagueId && l.owner_id === ME)) throw new Error('Į lygą gali įtraukti tik lygos savininkas');
@@ -311,6 +339,8 @@ export function createDemoBackend({ photos } = {}) {
       if (!permsOf(db.profiles[ME]).has('roles')) mustFeature('tournament_create');
       if (rest.format === 'duels') mustFeature('duels');
       if (rest.league_id) mustFeature('leagues');
+      mustCustom(rest.format);
+      scoringRules();
       checkLeague(rest.league_id);
       if ((rest.visibility || 'public') === 'public' && !permsOf(db.profiles[ME]).has('publish')) throw new Error('Viešus turnyrus kuria patvirtinti organizatoriai – sukurk turnyrą su kvietimu');
       db.tournaments.push(formatRules({ id, organizer_id: ME, visibility: 'public', fee_cents: 0, leaderboard_hidden: false,
@@ -328,8 +358,11 @@ export function createDemoBackend({ photos } = {}) {
       if (!t || (!asOrganizer && !isTournamentAdmin())) throw new Error('Turnyras jau prasidėjo – keisti nebegalima');
       const { species_ids, species_pct = {}, sponsors, divisions, ...rest } = data;
       if (rest.format === 'duels' && t.format !== 'duels') mustFeature('duels');
+      if (rest.format === 'custom' && (t.format !== 'custom' || JSON.stringify(rest.scoring) !== JSON.stringify(t.scoring))) mustCustom('custom');
       if (rest.league_id && rest.league_id !== t.league_id) mustFeature('leagues');
       const started = Date.now() >= new Date(t.starts_at).getTime();
+      if (started && (t.format === 'custom' || rest.format === 'custom') && (('scoring' in rest && JSON.stringify(rest.scoring ?? null) !== JSON.stringify(t.scoring ?? null))
+        || ('format' in rest && rest.format !== t.format))) throw new Error('Prasidėjusio turnyro taisyklių keisti negalima');
       if (!asOrganizer && started) {
         if (RULE_KEYS.some((k) => k in rest && !same(rest[k], t[k])) || species_ids || divisions) throw new Error('Prasidėjusio turnyro taisyklių keisti negalima');
         if ('ends_at' in rest && new Date(rest.ends_at) < Date.now() - 60e3) throw new Error('Pabaiga negali būti praeityje');
@@ -1030,6 +1063,39 @@ export function createDemoBackend({ photos } = {}) {
     },
     async myReport(catchId) {
       return db.reports.find((r) => r.catch_id === catchId && r.reporter_id === ME) || null;
+    },
+    async myScoringRules() {
+      return scoringRules().filter((x) => x.owner_id === ME)
+        .map((x) => ({ ...structuredClone(x), used: db.tournaments.filter((t) => t.scoring_rule_id === x.id).length }))
+        .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
+    },
+    async saveScoringRule({ id, name, rules }) {
+      if (!permsOf(db.profiles[ME]).has('publish')) throw new Error('Savas taisykles kuria tik organizatoriai');
+      if (banActive(db.bans.find((b) => b.user_id === ME))) throw new Error('Užblokuotas');
+      const n = String(name || '').trim();
+      if (n.length < 3 || n.length > 60) throw new Error('Pavadinimas – nuo 3 iki 60 simbolių');
+      const err = validateRules(rules);
+      if (err) throw new Error(err);
+      const list = scoringRules();
+      if (list.some((x) => x.owner_id === ME && x.id !== id && x.name.toLowerCase() === n.toLowerCase())) throw new Error('Taisyklės tokiu pavadinimu jau yra');
+      let row = id ? list.find((x) => x.id === id && x.owner_id === ME) : null;
+      if (id && !row) throw new Error('Taisyklės nerastos');
+      if (!row) {
+        if (list.filter((x) => x.owner_id === ME).length >= 30) throw new Error('Galima išsaugoti iki 30 taisyklių rinkinių');
+        row = { id: `rule-${Date.now().toString(36)}`, owner_id: ME };
+        list.push(row);
+      }
+      Object.assign(row, { name: n, rules: structuredClone(rules), updated_at: new Date().toISOString() });
+      save();
+      return { id: row.id, name: row.name, rules: structuredClone(row.rules), used: 0 };
+    },
+    async deleteScoringRule(id) {
+      const list = scoringRules();
+      const i = list.findIndex((x) => x.id === id && x.owner_id === ME);
+      if (i < 0) throw new Error('Taisyklės nerastos');
+      list.splice(i, 1);
+      db.tournaments.forEach((t) => { if (t.scoring_rule_id === id) t.scoring_rule_id = null; });
+      save();
     },
     async modCounts() {
       const comments = await (api.reportedComments ? api.reportedComments().catch(() => []) : []);
