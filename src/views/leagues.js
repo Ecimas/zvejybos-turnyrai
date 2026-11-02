@@ -4,6 +4,7 @@ import { icon } from '../icons.js';
 import { count, dateTime } from '../lib/format.js';
 import { backButton, empty, avatar, notFound, phaseBadge, featureOffScreen } from '../ui.js';
 import { feat } from '../lib/clubs.js';
+import { canCreateTournament } from '../lib/features.js';
 
 const POINTS_TEXT = 'Taškai už vietą etape: 25, 18, 15, 12, 10, 8, 6, 4, 2, 1.';
 
@@ -90,7 +91,7 @@ export async function leagueView(ctx, [id]) {
         ${l.tournaments.length ? html`<div class="list">${l.tournaments.map((t) => html`<a class="list-row" href="#/t/${t.id}">
           <span class="grow stack-1"><span class="strong">${t.title}</span><span class="small muted">${dateTime(t.starts_at)} – ${dateTime(t.ends_at)}</span></span>
           ${phaseBadge(t)}</a>`)}</div>` : html`<p class="small muted">Etapų dar nėra.${owner ? ' Kurdamas turnyrą pasirink šią lygą.' : ''}</p>`}
-        ${owner ? html`<a class="btn" href="#/naujas">${icon('plus', 18, 2.6)}Naujas etapas</a>` : ''}
+        ${owner && canCreateTournament(state) ? html`<a class="btn" href="#/naujas">${icon('plus', 18, 2.6)}Naujas etapas</a>` : ''}
       </section>
       ${owner ? html`<details class="card stack-2">
         <summary class="strong">Lygos nustatymai</summary>

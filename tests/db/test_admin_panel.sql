@@ -150,4 +150,34 @@ do $$ begin
 end $$;
 reset role;
 
+\echo 'A4. Turnyrų kūrimo jungiklis (0032)'
+set role authenticated;
+set request.jwt.claim.sub = '95000000-0000-4000-8000-000000000095';
+select public.set_feature('tournament_create', false);
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '96000000-0000-4000-8000-000000000096';
+do $$ declare v uuid; begin
+  begin
+    insert into public.tournaments (organizer_id, title, format, starts_at, ends_at, visibility)
+    values (auth.uid(), 'Kai išjungta', 'biggest', now() + interval '1 day', now() + interval '2 days', 'private');
+    raise exception 'FAIL: sukurtas turnyras, kai kūrimas išjungtas';
+  exception when raise_exception then
+    if sqlerrm not like '%feature_off%' then raise; end if;
+  end;
+end $$;
+reset role;
+-- Savininkas gali ir išjungus
+set role authenticated;
+set request.jwt.claim.sub = '95000000-0000-4000-8000-000000000095';
+insert into public.tournaments (organizer_id, title, format, starts_at, ends_at, visibility)
+values (auth.uid(), 'Savininko turnyras', 'biggest', now() + interval '1 day', now() + interval '2 days', 'private');
+select public.set_feature('tournament_create', true);
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '96000000-0000-4000-8000-000000000096';
+insert into public.tournaments (organizer_id, title, format, starts_at, ends_at, visibility)
+values (auth.uid(), 'Kai įjungta', 'biggest', now() + interval '1 day', now() + interval '2 days', 'private');
+reset role;
+
 \echo 'ADMINISTRAVIMO PANELĖS TESTAI PRAĖJO'

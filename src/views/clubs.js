@@ -6,6 +6,7 @@ import { backButton, empty, thumb, hydratePhotos, avatar, loginPrompt, notFound 
 import { can } from '../lib/roles.js';
 import { feat, REACTIONS, MONTHS_NOM, roleLt, clubLogo } from '../lib/clubs.js';
 import { shrinkLogo } from '../lib/sponsors.js';
+import { canCreateTournament } from '../lib/features.js';
 
 const spName = (state, id) => state.species.find((s) => s.id === id)?.name_lt ?? '';
 const TABS = [['veikla', 'Veikla'], ['laimikiai', 'Laimikiai'], ['rekordai', 'Rekordai'], ['nariai', 'Nariai']];
@@ -197,7 +198,7 @@ export async function clubView(ctx, [id], query) {
         </form></details>
     </section>` : ''}
     ${f('club_challenge') ? challengeCard() : ''}
-    ${admin && f('club_tournament') ? html`<a class="btn btn-ghost" href="#/naujas?klubas=${id}" data-club-tournament>${icon('trophy', 18)}Klubo turnyras</a>` : ''}`;
+    ${admin && f('club_tournament') && canCreateTournament(state) ? html`<a class="btn btn-ghost" href="#/naujas?klubas=${id}" data-club-tournament>${icon('trophy', 18)}Klubo turnyras</a>` : ''}`;
 
   // --- Laimikiai
   const reactBar = (c) => {

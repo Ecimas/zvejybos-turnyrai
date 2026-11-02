@@ -1,5 +1,7 @@
 // Programėlės funkcijų jungikliai: pavadinimai ir aprašymai administravimo panelei.
 // Išjungta funkcija tik nebeleidžia kurti naujo ir paslepia mygtukus – duomenys neištrinami.
+import { feat } from './clubs.js';
+import { can } from './roles.js';
 
 export const FEATURE_GROUPS = [
   ['Žemėlapiai', [
@@ -7,6 +9,7 @@ export const FEATURE_GROUPS = [
     ['club_map', 'Klubo žemėlapis', 'Narių laimikiai klubo žemėlapyje (~1 km tikslumu).']
   ]],
   ['Turnyrai', [
+    ['tournament_create', 'Turnyrų kūrimas', 'Naujų turnyrų (ir klubų turnyrų) kūrimas. Išjungus kurti gali tik savininkas; esami turnyrai vyksta toliau.'],
     ['leagues', 'Sezono lygos', 'Lygų kūrimas ir turnyrų įtraukimas į lygas. Išjungus lygų puslapiai paslepiami.'],
     ['duels', 'Dvikovos', 'Naujų dvikovų turnyrų kūrimas. Jau vykstančios dvikovos tęsiasi.']
   ]],
@@ -35,4 +38,6 @@ export const FEATURE_GROUPS = [
 
 export const FEATURES = FEATURE_GROUPS.flatMap(([, list]) => list);
 export const FEATURE_KEYS = FEATURES.map(([key]) => key);
+// Ar šis žmogus dabar gali kurti naują turnyrą (savininkas – visada).
+export const canCreateTournament = (state) => feat(state, 'tournament_create') || can(state, 'roles');
 export const featureLabel = (key) => (key === 'banner' ? 'Skelbimas visiems' : FEATURES.find(([k]) => k === key)?.[1] ?? key);

@@ -4,6 +4,7 @@ import { icon } from '../icons.js';
 import { dateTime } from '../lib/format.js';
 import { backButton, loginPrompt } from '../ui.js';
 import { can } from '../lib/roles.js';
+import { canCreateTournament } from '../lib/features.js';
 
 const COOLDOWN = 7 * 24 * 3600e3;
 
@@ -22,7 +23,7 @@ export async function organizerView(ctx) {
     return { nav: 'profilis', title: 'Organizatorius', html: html`<div class="screen">${head}
       <div class="card stack-2" data-org-ok><p class="strong row gap-8">${icon('check', 18, 2.6)}Tu – organizatorius</p>
         <p class="small muted">Gali kurti viešus turnyrus, matomus visų sąraše.</p>
-        <a class="btn btn-primary" href="#/naujas">${icon('plus', 18, 2.6)}Sukurti turnyrą</a></div>${explain}</div>` };
+        ${canCreateTournament(state) ? html`<a class="btn btn-primary" href="#/naujas">${icon('plus', 18, 2.6)}Sukurti turnyrą</a>` : ''}</div>${explain}</div>` };
   }
   const req = await backend.myOrganizerRequest().catch(() => null);
   const pending = req?.status === 'pending';
@@ -49,7 +50,7 @@ export async function organizerView(ctx) {
         <p class="form-error bad small" data-error hidden role="alert"></p>
         <button class="btn btn-primary" type="submit">${icon('check', 18, 2.6)}Siųsti prašymą</button>
       </form>`}
-      <a class="btn btn-ghost" href="#/naujas">${icon('plus', 18, 2.6)}Sukurti turnyrą su kvietimu</a>
+      ${canCreateTournament(state) ? html`<a class="btn btn-ghost" href="#/naujas">${icon('plus', 18, 2.6)}Sukurti turnyrą su kvietimu</a>` : ''}
     </div>`,
     mount(root) {
       root.querySelector('[data-org-form]')?.addEventListener('submit', async (e) => {

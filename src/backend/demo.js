@@ -308,6 +308,7 @@ export function createDemoBackend({ photos } = {}) {
       const { species_ids, species_pct = {}, sponsors = [], divisions = [], ...rest } = data;
       const recent = db.tournaments.filter((t) => t.organizer_id === ME && Date.now() - new Date(t.created_at) < D).length;
       if (recent >= 10) throw new Error('Per parą galima sukurti ne daugiau kaip 10 turnyrų');
+      if (!permsOf(db.profiles[ME]).has('roles')) mustFeature('tournament_create');
       if (rest.format === 'duels') mustFeature('duels');
       if (rest.league_id) mustFeature('leagues');
       checkLeague(rest.league_id);

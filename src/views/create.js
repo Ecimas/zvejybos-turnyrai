@@ -1,8 +1,9 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { phase, LATE_JOIN, COEFS, coefText, count } from '../lib/format.js';
-import { backButton, loginPrompt, empty, banNotice } from '../ui.js';
+import { backButton, loginPrompt, empty, banNotice, featureOffScreen } from '../ui.js';
 import { feat } from '../lib/clubs.js';
+import { canCreateTournament } from '../lib/features.js';
 import { PRESETS, eur, parseEur, validateSplit, placeAmounts, sponsorTotal } from '../lib/prizes.js';
 import { can } from '../lib/roles.js';
 
@@ -34,6 +35,9 @@ export async function createView(ctx, [editId] = [], query) {
   }
   if (state.ban) {
     return { nav: 'turnyrai', html: html`<div class="screen">${backButton('#/')}<h1 class="display-lg" tabindex="-1">${heading}</h1>${banNotice(state.ban)}</div>` };
+  }
+  if (!editId && !canCreateTournament(state)) {
+    return featureOffScreen('Naujas turnyras', 'Turnyrų kūrimas šiuo metu išjungtas', '#/', 'turnyrai');
   }
   let t = null;
   const admin = can(state, 'tournaments');

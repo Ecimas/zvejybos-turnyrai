@@ -3,6 +3,7 @@ import { icon } from '../icons.js';
 import { cm, shortDate, count, plural } from '../lib/format.js';
 import { thumb, hydratePhotos, backButton, empty, avatar, loginPrompt, notFound, defaultNickname, banNotice } from '../ui.js';
 import { feat } from '../lib/clubs.js';
+import { canCreateTournament } from '../lib/features.js';
 import { computeBadges } from '../lib/badges.js';
 import { weatherEnabled } from './capture.js';
 import { BAN_DAYS, BAN_REASONS, banUntilText } from '../lib/bans.js';
@@ -223,7 +224,7 @@ export async function profileView(ctx, _params, query) {
           </div></div>
         <div class="stack-2"><h2 class="p-sec">Turnyrai</h2>
           <div class="list">
-            <a class="list-row" href="#/naujas">${icon('plus', 20)}<span class="grow strong">Sukurti turnyrą</span>${icon('chevron', 18)}</a>
+            ${canCreateTournament(state) ? html`<a class="list-row" href="#/naujas" data-create-link>${icon('plus', 20)}<span class="grow strong">Sukurti turnyrą</span>${icon('chevron', 18)}</a>` : ''}
             ${perms.has('publish') ? '' : html`<a class="list-row" href="#/organizatorius" data-become-organizer>${icon('trophy', 20)}<span class="grow stack-1"><span class="strong">Tapti organizatoriumi</span><span class="small muted">Vieši turnyrai, matomi visų sąraše</span></span>${icon('chevron', 18)}</a>`}
             <a class="list-row" href="#/taisykles">${icon('book', 20)}<span class="grow strong">Turnyrų taisyklės</span>${icon('chevron', 18)}</a>
           </div></div>

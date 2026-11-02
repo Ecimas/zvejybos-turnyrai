@@ -7,6 +7,7 @@ import { hasUnseen } from '../lib/seen.js';
 import { checkBanners } from './check.js';
 import { sortSponsors, logoTile, trackViews } from '../lib/sponsors.js';
 import { feat } from '../lib/clubs.js';
+import { canCreateTournament } from '../lib/features.js';
 
 const SEGMENTS = [
   ['visi', 'Visi'],
@@ -174,7 +175,7 @@ export async function tournamentsView(ctx) {
     html: html`<div class="screen">
       <header class="page-head l-head">
         <h1 class="display-lg" tabindex="-1">Turnyrai</h1>
-        <a class="l-new" href="${ctx.state.user ? '#/naujas' : '#/prisijungti'}" aria-label="Sukurti naują turnyrą">${icon('plus', 18, 2.6)}Naujas</a>
+        ${!ctx.state.user || canCreateTournament(ctx.state) ? html`<a class="l-new" href="${ctx.state.user ? '#/naujas' : '#/prisijungti'}" aria-label="Sukurti naują turnyrą">${icon('plus', 18, 2.6)}Naujas</a>` : ''}
       </header>
       ${ctx.backend.mode === 'demo' ? html`<p class="demo-note">${icon('alert', 16)}Demonstracinis režimas: pavyzdiniai duomenys, saugomi tik šiame telefone.</p>` : ''}
       ${banNotice(ctx.state.ban)}

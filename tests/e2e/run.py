@@ -731,8 +731,8 @@ def features_panel_demo_test(page, base):
     page.goto(base + "#/moderavimas/funkcijos")
     expect(page.get_by_role("heading", name="Programėlės funkcijos")).to_be_visible()
     expect(page.locator("nav.mod-tabs a[aria-current='page'] .t-tab-l")).to_have_text("Funkcijos")
-    expect(page.locator("[data-feature]")).to_have_count(17)
-    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("17/17")
+    expect(page.locator("[data-feature]")).to_have_count(18)
+    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("18/18")
 
     def toggle(key, on):
         box = page.locator(f"[data-feature='{key}']")
@@ -743,7 +743,7 @@ def features_panel_demo_test(page, base):
     # Sekimas išjungtas: nuorodos dingsta, puslapis praneša; įjungus – grįžta
     toggle("social_follow", False)
     expect(page.locator("[data-feature-row='social_follow'] .af-off")).to_contain_text("Išjungta")
-    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("16/17")
+    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("17/18")
     page.goto(base + "#/lenteles")
     expect(page.locator("a[href='#/klubai']").first).to_be_visible()
     expect(page.locator("[data-follow-link]")).to_have_count(0)
@@ -786,12 +786,38 @@ def features_panel_demo_test(page, base):
     expect(log).to_contain_text("išjungė „Sekimas ir naujienos“")
     for key in ["social_follow", "leagues", "duels", "blank_trips", "weather"]:
         toggle(key, True)
-    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("17/17")
+    expect(page.locator("[data-feature-sum] .af-big")).to_have_text("18/18")
     page.goto(base + "#/dienorastis")
     expect(page.locator("[data-blank-open]")).to_be_visible()
     page.goto(base + "#/naujas")
     expect(page.locator("[data-format='duels']")).to_be_visible()
     step("administravimo panelė: jungikliai paslepia ir grąžina funkcijas, demo „serveris“ neleidžia, žurnalas")
+
+    # Turnyrų kūrimas: išjungus savininkas vis tiek gali, kiti – ne
+    page.goto(base + "#/moderavimas/funkcijos")
+    toggle("tournament_create", False)
+    page.goto(base + "#/")
+    expect(page.locator(".l-new")).to_be_visible()
+    roles = page.evaluate("""() => { const d = JSON.parse(localStorage.getItem('zt-demo-v1')); const me = window.__zt.state.user.id;
+      const r = d.profiles[me].roles; d.profiles[me].roles = []; localStorage.setItem('zt-demo-v1', JSON.stringify(d)); return r; }""")
+    page.reload()
+    expect(page.get_by_role("heading", name="Turnyrai", level=1)).to_be_visible()
+    expect(page.locator(".l-new")).to_have_count(0)
+    page.goto(base + "#/naujas")
+    expect(page.locator("[data-feature-off]")).to_contain_text("Turnyrų kūrimas šiuo metu išjungtas")
+    page.goto(base + "#/profilis")
+    expect(page.locator("[data-create-link]")).to_have_count(0)
+    err = page.evaluate("""async () => { try { await window.__zt.backend.createTournament({ title: 'Bandymas', format: 'biggest', species_ids: [],
+      starts_at: new Date(Date.now() + 864e5).toISOString(), ends_at: new Date(Date.now() + 2 * 864e5).toISOString(), visibility: 'private' }); return ''; }
+      catch (e) { return e.message; } }""")
+    assert "išjungta" in err, err
+    page.evaluate("(r) => { const d = JSON.parse(localStorage.getItem('zt-demo-v1')); d.profiles[window.__zt.state.user.id].roles = r; localStorage.setItem('zt-demo-v1', JSON.stringify(d)); }", roles)
+    page.reload()
+    page.goto(base + "#/moderavimas/funkcijos")
+    toggle("tournament_create", True)
+    page.goto(base + "#/profilis")
+    expect(page.locator("[data-create-link]")).to_be_visible()
+    step("turnyrų kūrimo jungiklis: kitiems paslepia ir neleidžia, savininkui – leidžia")
 
     # Skelbimas visiems
     page.goto(base + "#/moderavimas/funkcijos")
