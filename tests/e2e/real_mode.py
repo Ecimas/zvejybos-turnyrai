@@ -1094,7 +1094,23 @@ def main():
                 and errors.append(f"console: {m.text} @ {(m.location or {}).get('url', '')}"))
         expect.set_options(timeout=8000)
 
+        # 0. Neprisijungęs svečias: pradinis puslapis su tikrais turnyrais; „Žiūrėti turnyrus“ – sąrašas, daugiau nerodomas
+        page.goto(base)
+        expect(page.get_by_role("heading", level=1)).to_contain_text("Pagauk didžiausią")
+        expect(page.locator("#nav")).to_be_hidden()
+        expect(page.locator("[data-lp-tournaments]")).to_contain_text("Testo lydekų taurė")
+        assert page.evaluate("() => document.documentElement.scrollWidth") <= 390
+        expect(page.locator("[data-lp-start]").first).to_have_attribute("href", "#/prisijungti")
+        page.locator(".lp-hero [data-lp-browse]").click()
+        expect(page.get_by_role("heading", name="Turnyrai", level=1)).to_be_visible()
+        page.reload()
+        expect(page.get_by_role("heading", name="Turnyrai", level=1)).to_be_visible()
+        # Nuoroda į konkretų turnyrą veikia ir be pradinio puslapio
+        page.evaluate("() => localStorage.removeItem('zt-landing-seen')")
+        step("svečias: pradinis puslapis, „Žiūrėti turnyrus“ – sąrašas")
+
         # 1. Neprisijungęs: mato turnyrus, demo pranešimo nėra
+        page.evaluate("() => localStorage.setItem('zt-landing-seen', '1')")
         page.goto(base)
         expect(page.get_by_role("heading", name="Turnyrai", level=1)).to_be_visible()
         expect(page.locator(".demo-note")).to_have_count(0)
