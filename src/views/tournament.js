@@ -597,7 +597,7 @@ export async function boardView(ctx, [id], query) {
         <div class="podium">${podium.map(([r, pos]) => html`
           <a class="podium-col p${pos}" href="#/zvejys/${r.user_id}" aria-label="${r.rank} vieta: ${r.user_id === me ? 'tu' : r.nickname}, ${scoreText(t, r.score_mm)}">
             <span class="who">
-              ${pos === 1 ? html`<span class="lead-ic" aria-hidden="true">${icon('trophy', 22)}</span>` : ''}
+              ${pos === 1 ? html`<span class="lead-ic" aria-hidden="true">${icon('trophy', 18)}</span>` : ''}
               ${avatar(r.nickname, `ring-${pos}`)}
               <span class="small strong ellipsis">${r.user_id === me ? 'Tu' : r.nickname}</span>
               <span class="num-md">${scoreText(t, r.score_mm)}</span>
