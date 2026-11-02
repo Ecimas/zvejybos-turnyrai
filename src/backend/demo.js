@@ -744,7 +744,7 @@ export function createDemoBackend({ photos } = {}) {
       if (db.catches.some((c) => c.photo_sha256 === item.sha256)) {
         throw new PermanentError('Ši nuotrauka jau buvo įkelta', 'duplicate_photo');
       }
-      const path = `${ME}/${item.clientId}.jpg`;
+      const path = `${ME}/${item.clientId}.${item.photo?.type === 'image/webp' ? 'webp' : 'jpg'}`;
       await photoStore.put({ clientId: path, blob: item.photo });
       const row = {
         id: item.clientId, client_id: item.clientId, user_id: ME, species_id: item.speciesId,

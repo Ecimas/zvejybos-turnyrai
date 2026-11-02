@@ -4,7 +4,7 @@ import { icon } from '../icons.js';
 import { cm, dateTime } from '../lib/format.js';
 import { SKEW_MS } from '../lib/scoring.js';
 import { clockWarnings } from '../lib/clock.js';
-import { backButton, empty, thumb, hydratePhotos, openPhoto } from '../ui.js';
+import { backButton, empty, thumb, hydratePhotos, zoomPhoto } from '../ui.js';
 import { banUntilText } from '../lib/bans.js';
 import { checksModerationView } from './check.js';
 import { can, ASSIGNABLE, rolesOf, roleLabel, ROLES } from '../lib/roles.js';
@@ -163,7 +163,7 @@ export async function moderationView(ctx) {
       mountStrip(root);
       root.querySelector('[data-zoom]').addEventListener('click', () => {
         const img = root.querySelector('.mod-photo img.loaded');
-        if (img) openPhoto(img.src, 'Laimikio nuotrauka');
+        if (img) zoomPhoto(img, backend, 'Laimikio nuotrauka');
       });
       const act = async (approve, reason) => {
         root.querySelectorAll('button').forEach((b) => { b.disabled = true; });
@@ -385,7 +385,7 @@ export async function reportsView(ctx) {
         const g = groups.find((x) => x.catchId === card.dataset.group);
         card.querySelector('[data-zoom]').addEventListener('click', () => {
           const img = card.querySelector('img.loaded');
-          if (img) openPhoto(img.src, 'Laimikio nuotrauka');
+          if (img) zoomPhoto(img, backend, 'Laimikio nuotrauka');
         });
         const act = async (uphold) => {
           const reason = card.querySelector('[data-reject-reason]').value.trim();

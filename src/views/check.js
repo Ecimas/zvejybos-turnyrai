@@ -4,7 +4,7 @@ import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
 import { cm, dateTime, duration } from '../lib/format.js';
 import { startCamera, stopCamera, captureFrame, sha256Hex, vibrate } from '../lib/device.js';
-import { backButton, empty, thumb, hydratePhotos, openPhoto, notFound, loginPrompt } from '../ui.js';
+import { backButton, empty, thumb, hydratePhotos, zoomPhoto, notFound, loginPrompt } from '../ui.js';
 import { can } from '../lib/roles.js';
 
 export const CHECK_PRESETS = [
@@ -182,7 +182,7 @@ export async function checksModerationView(ctx, tabs) {
         const id = card.dataset.check;
         card.querySelectorAll('[data-zoom]').forEach((b) => b.addEventListener('click', () => {
           const img = b.querySelector('img.loaded');
-          if (img) openPhoto(img.src, b.dataset.zoom === 'orig' ? 'Originali nuotrauka' : 'Patikros nuotrauka');
+          if (img) zoomPhoto(img, backend, b.dataset.zoom === 'orig' ? 'Originali nuotrauka' : 'Patikros nuotrauka');
         }));
         const decide = async (pass) => {
           card.querySelectorAll('button').forEach((b) => { b.disabled = true; });

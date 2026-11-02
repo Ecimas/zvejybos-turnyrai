@@ -4,6 +4,7 @@ import { SPECIES } from './species.js';
 import { PermanentError, RetryLaterError } from '../lib/outbox.js';
 import { banActive } from '../lib/bans.js';
 import { clubsPlusSupabase } from './clubs_supabase.js';
+import { makeThumb, thumbPathOf } from '../lib/device.js';
 import { messagesSupabase } from './messages_supabase.js';
 
 const BUCKET = 'catch-photos';
@@ -42,7 +43,49 @@ export async function createSupabaseBackend(url, anonKey) {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' }
   });
   let user = null;
+  // Laikinos nuotraukų nuorodos galioja 6 val. ir išsaugomos naršyklėje: vėl atidarius programėlę
+  // naudojamas tas pats adresas, todėl naršyklė nuotraukos iš naujo nesiunčia (taupo srautą).
+  const SIGNED_KEY = 'zt-signed-v1';
+  const SIGNED_TTL_S = 6 * 3600;
   const signed = new Map();
+  const noThumb = new Set();
+  try {
+    const saved = JSON.parse(localStorage.getItem(SIGNED_KEY) || '[]');
+    const now = Date.now();
+    for (const [k, v] of saved) if (v && v.exp > now && typeof v.url === 'string') signed.set(k, v);
+  } catch { /* nėra saugyklos – ne bėda */ }
+  let saveTimer = 0;
+  const saveSigned = () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try {
+        const now = Date.now();
+        const rows = [...signed].filter(([, v]) => v.exp > now).slice(-400);
+        localStorage.setItem(SIGNED_KEY, JSON.stringify(rows));
+      } catch { /* pilna ar uždrausta saugykla */ }
+    }, 400);
+  };
+  const forgetSigned = () => {
+    signed.clear();
+    noThumb.clear();
+    try { localStorage.removeItem(SIGNED_KEY); } catch { /* */ }
+  };
+  async function signedUrl(path) {
+    const hit = signed.get(path);
+    if (hit && hit.exp > Date.now()) return hit.url;
+    const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(path, SIGNED_TTL_S);
+    if (error || !data?.signedUrl) return null;
+    signed.set(path, { url: data.signedUrl, exp: Date.now() + (SIGNED_TTL_S - 30 * 60) * 1000 });
+    saveSigned();
+    return data.signedUrl;
+  }
+  async function uploadOnce(path, blob, contentType) {
+    const up = await sb.storage.from(BUCKET).upload(path, blob, { contentType, upsert: false, cacheControl: '31536000' });
+    if (!up.error) return null;
+    const status = String(up.error.statusCode || up.error.status || '');
+    if (status === '409' || /exist/i.test(up.error.message || '')) return null;
+    return { status, message: up.error.message || 'upload_failed' };
+  }
 
   const uid = () => {
     if (!user) throw new Error('Reikia prisijungti');
@@ -160,6 +203,7 @@ export async function createSupabaseBackend(url, anonKey) {
     async signOut() {
       await sb.auth.signOut();
       user = null;
+      forgetSigned();
     },
 
     async myProfile() {
@@ -451,30 +495,32 @@ export async function createSupabaseBackend(url, anonKey) {
     async userEntries(userId) {
       return check(await sb.from('entries').select('tournament_id, joined_at').eq('user_id', userId));
     },
-    async photoUrl(path) {
+    // { thumb: true } – maža kopija sąrašams; senoms nuotraukoms jos nėra, tada grąžinamas originalas.
+    async photoUrl(path, opts = {}) {
       if (!path) return null;
-      const hit = signed.get(path);
-      if (hit && hit.exp > Date.now()) return hit.url;
-      const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(path, 3600);
-      if (error) return null;
-      signed.set(path, { url: data.signedUrl, exp: Date.now() + 50 * 60e3 });
-      return data.signedUrl;
+      const t = opts.thumb ? thumbPathOf(path) : null;
+      if (t && !noThumb.has(t)) {
+        const u = await signedUrl(t);
+        if (u) return u;
+        noThumb.add(t);
+      }
+      return signedUrl(path);
     },
 
     // Saugus kartoti: kiekvienas žingsnis atpažįsta, kad jau buvo atliktas.
     async submitCatch(item) {
       const me = uid();
-      const path = `${me}/${item.clientId}.jpg`;
+      const type = item.photo?.type === 'image/webp' ? 'image/webp' : 'image/jpeg';
+      const path = `${me}/${item.clientId}.${type === 'image/webp' ? 'webp' : 'jpg'}`;
 
-      const up = await sb.storage.from(BUCKET).upload(path, item.photo, { contentType: 'image/jpeg', upsert: false });
-      if (up.error) {
-        const status = String(up.error.statusCode || up.error.status || '');
-        const exists = status === '409' || /exist/i.test(up.error.message || '');
-        if (!exists) {
-          if (status === '403' || status === '400') throw new PermanentError('Nepavyko įkelti nuotraukos', 'upload_denied');
-          throw new Error(up.error.message || 'upload_failed');
-        }
+      const bad = await uploadOnce(path, item.photo, type);
+      if (bad) {
+        if (bad.status === '403' || bad.status === '400') throw new PermanentError('Nepavyko įkelti nuotraukos', 'upload_denied');
+        throw new Error(bad.message);
       }
+      // Maža kopija sąrašams – jei nepavyks, sąrašuose bus rodomas originalas.
+      const small = await makeThumb(item.photo);
+      if (small) await uploadOnce(thumbPathOf(path), small, type).catch(() => null);
 
       let row;
       const ins = await sb.from('catches').insert({

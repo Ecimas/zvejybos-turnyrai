@@ -295,7 +295,7 @@ export async function captureView(ctx) {
           const now = new Date();
           capturedAt = now.toISOString();
           clockOffset = clockOffsetS(now.getTime());
-          photo = await captureFrame(video, { left: `${nickname} · ${clientId.slice(0, 6).toUpperCase()}`, right: stamp(now) });
+          photo = await captureFrame(video, { left: `${nickname} · ${clientId.slice(0, 6).toUpperCase()}`, right: stamp(now) }, 1600, { webp: true });
           vibrate(15);
           stopCamera(stream);
           stream = null;

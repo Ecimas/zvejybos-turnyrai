@@ -27,14 +27,15 @@ export function backButton(href, label = 'Atgal') {
   return html`<a class="icon-btn" href="${href}" aria-label="${label}">${icon('back', 22, 2.2)}</a>`;
 }
 
+// Iki 200 px – rodoma maža kopija (~15 KB vietoj ~200 KB); didesnėms vietoms ir per visą ekraną – originalas.
 export function thumb(path, size = 56) {
   return html`<span class="thumb" style="width:${size}px;height:${size}px">${icon('fish', Math.round(size * 0.6), 1.8)}${
-    path ? html`<img alt="" data-photo="${path}" loading="lazy">` : ''}</span>`;
+    path ? html`<img alt="" data-photo="${path}" ${size <= 200 ? 'data-small' : ''} loading="lazy">` : ''}</span>`;
 }
 
 export function hydratePhotos(root, backend) {
   root.querySelectorAll('img[data-photo]').forEach(async (img) => {
-    const url = await backend.photoUrl(img.dataset.photo).catch(() => null);
+    const url = await backend.photoUrl(img.dataset.photo, { thumb: 'small' in img.dataset }).catch(() => null);
     if (url && img.isConnected) {
       img.src = url;
       img.onload = () => img.classList.add('loaded');
@@ -120,6 +121,14 @@ export function celebrate({ title, text, big }) {
 
 // Nuotrauka per visą ekraną. Uždaroma mygtuku, paspaudus fone, „Atgal“ ar Esc.
 // Didinti galima dviem pirštais (puslapio mastelis neužblokuotas).
+// Per visą ekraną visada rodomas originalas, net jei sąraše buvo maža kopija.
+export async function zoomPhoto(img, backend, alt = '') {
+  if (!img) return;
+  const full = 'small' in img.dataset && img.dataset.photo
+    ? await backend.photoUrl(img.dataset.photo).catch(() => null) : null;
+  openPhoto(full || img.src, alt);
+}
+
 export function openPhoto(src, alt = '') {
   document.querySelector('.lightbox')?.remove();
   const box = document.createElement('div');

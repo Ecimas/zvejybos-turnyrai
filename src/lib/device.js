@@ -19,7 +19,9 @@ export function stopCamera(stream) {
 }
 
 // Kadras iš vaizdo įrašo su įdegintu vandens ženklu (laikas, kodas, slapyvardis).
-export async function captureFrame(video, watermark, maxSide = 1600) {
+// webp: true – laimikio nuotrauka WebP formatu (~2,5 karto lengvesnė, ta pati 1600 px raiška, liniuotės
+// milimetrai matosi). iPhone naršyklė WebP nesukuria – tada JPEG. Patikros nuotraukos lieka JPEG.
+export async function captureFrame(video, watermark, maxSide = 1600, { webp = false } = {}) {
   const w0 = video.videoWidth || 1280;
   const h0 = video.videoHeight || 960;
   const k = Math.min(1, maxSide / Math.max(w0, h0));
@@ -40,9 +42,46 @@ export async function captureFrame(video, watermark, maxSide = 1600) {
   ctx.fillText(watermark.left, Math.round(bar * 0.4), h - bar / 2);
   ctx.textAlign = 'right';
   ctx.fillText(watermark.right, w - Math.round(bar * 0.4), h - bar / 2);
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.86));
+  const blob = await encodeCanvas(canvas, webp, webp ? 0.8 : 0.86, 0.82);
   if (!blob) throw new Error('capture_failed');
   return blob;
+}
+
+const toBlob = (canvas, type, quality) => new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+
+// WebP, jei naršyklė jį tikrai sukuria (Safari vietoj jo grąžina PNG), kitaip – JPEG.
+async function encodeCanvas(canvas, webp, webpQuality, jpegQuality) {
+  if (webp) {
+    const b = await toBlob(canvas, 'image/webp', webpQuality);
+    if (b && b.type === 'image/webp') return b;
+  }
+  return toBlob(canvas, 'image/jpeg', jpegQuality);
+}
+
+// Miniatiūros kelias: „uid/vardas.webp“ → „uid/vardas.t.webp“.
+export function thumbPathOf(path) {
+  return typeof path === 'string' && /\.(jpg|webp)$/.test(path) && !/\.t\.(jpg|webp)$/.test(path)
+    ? path.replace(/\.(jpg|webp)$/, '.t.$1') : null;
+}
+
+// Maža peržiūros kopija (ilgoji kraštinė ≤ 400 px) tokio pat formato kaip originalas.
+// Grąžina null, jei naršyklė jos sukurti negali – tada sąrašuose rodomas originalas.
+export async function makeThumb(blob, maxSide = 400) {
+  try {
+    if (!blob || typeof createImageBitmap !== 'function') return null;
+    const bmp = await createImageBitmap(blob);
+    const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bmp.width * k));
+    canvas.height = Math.max(1, Math.round(bmp.height * k));
+    canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close?.();
+    const webp = blob.type === 'image/webp';
+    const out = await encodeCanvas(canvas, webp, 0.72, 0.72);
+    return out && out.type === blob.type ? out : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function sha256Hex(blob) {

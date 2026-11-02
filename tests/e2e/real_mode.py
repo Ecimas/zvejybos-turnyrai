@@ -1159,8 +1159,15 @@ def main():
         expect(page.locator("#toast")).to_have_text("Laimikis išsiųstas")
         expect(page.locator("[data-catch]", has_text="78 cm")).to_contain_text("Tikrinama")
         ups = calls(page, "upload")
-        assert len(ups) == 2 and ups[0]["path"] == ups[1]["path"], ups
-        assert ups[0]["type"] == "image/jpeg" and ups[0]["upsert"] is False
+        # Kiekvienas bandymas: originalas (WebP) + maža kopija sąrašams; pakartojus – tie patys keliai (be dublių)
+        assert len(ups) == 4 and ups[0]["path"] == ups[2]["path"] and ups[1]["path"] == ups[3]["path"], ups
+        assert ups[0]["path"].endswith(".webp") and ups[0]["type"] == "image/webp" and ups[0]["upsert"] is False, ups
+        assert ups[1]["path"] == ups[0]["path"][:-5] + ".t.webp" and ups[1]["type"] == "image/webp", ups
+        assert ups[1]["size"] < ups[0]["size"] / 3, ups
+        # Dienoraštyje rodoma maža kopija; senam laimikiui be jos – originalas
+        expect(page.locator("[data-catch]", has_text="78 cm").locator("img[data-small].loaded")).to_have_count(1)
+        w = page.locator("[data-catch]", has_text="78 cm").locator("img[data-small]").evaluate("(i) => Math.max(i.naturalWidth, i.naturalHeight)")
+        assert 0 < w <= 400, w
         mine = page.evaluate("() => window.__fakeDb.get().catches.filter(c => c.length_mm === 780)")
         assert len(mine) == 1, mine
         locs = page.evaluate("() => window.__fakeDb.get().catch_locations")
