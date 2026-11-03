@@ -59,7 +59,7 @@ function seed() {
 
   const T = (id, o) => ({
     id, organizer_id: ids[0], description: null, visibility: 'public', fee_cents: 0,
-    created_at: iso(-30 * D), top_n: 3, min_length_mm: 0, prizes: null, sponsor_name: null, sponsor_url: null,
+    created_at: iso(-30 * D), top_n: 3, min_length_mm: 0, measure: 'length', min_weight_g: 0, prizes: null, sponsor_name: null, sponsor_url: null,
     leaderboard_hidden: false, invite_code: code10(), ...o
   });
   const tournaments = [
@@ -79,7 +79,10 @@ function seed() {
     T('t-taskai', { title: 'Marių taškų taurė', format: 'species_points', top_n: 3, starts_at: iso(-3 * D), ends_at: iso(3 * D),
       league_id: 'lyga-marios', description: 'Retesnė žuvis – daugiau taškų: starkis ×1,5, karšis ×2.' }),
     T('t-dvikovos', { title: 'Ešerių dvikovos', format: 'duels', top_n: 1, late_join_minutes: 0,
-      starts_at: iso(-2.5 * D), ends_at: iso(0.5 * D), description: 'Atkrintamosios poros: rate laimi didesnį ešerį pagavęs.' })
+      starts_at: iso(-2.5 * D), ends_at: iso(0.5 * D), description: 'Atkrintamosios poros: rate laimi didesnį ešerį pagavęs.' }),
+    // Turnyras pagal svorį (0040): karpiai sveriami ir paleidžiami, liniuotės nereikia.
+    T('t-karpis', { title: 'Metų karpis', format: 'biggest', measure: 'weight', min_weight_g: 3000, starts_at: iso(-10 * D), ends_at: iso(20 * D),
+      description: 'Sunkiausias karpis laimi. Žuvis sveriama ir paleidžiama – nuotraukoje turi matytis svarstyklių rodmuo ir visa žuvis.' })
   ];
   tournaments.find((t) => t.id === 't-taure').league_id = 'lyga-marios';
   tournaments.find((t) => t.id === 't-plesrunai').league_id = 'lyga-marios';
@@ -87,7 +90,7 @@ function seed() {
     ['t-taure', speciesId('lydeka')], ['t-eseriai', speciesId('eserys')],
     ['t-plesrunai', speciesId('lydeka')], ['t-plesrunai', speciesId('starkis')],
     ['t-taskai', speciesId('lydeka'), 100], ['t-taskai', speciesId('starkis'), 150], ['t-taskai', speciesId('karsis'), 200],
-    ['t-dvikovos', speciesId('eserys')]
+    ['t-dvikovos', speciesId('eserys')], ['t-karpis', speciesId('karpis')]
   ].map(([tournament_id, species_id, points_pct = 100]) => ({ tournament_id, species_id, points_pct }));
 
   const entries = [];
@@ -103,13 +106,14 @@ function seed() {
   enter('t-slaptas', [ME, ids[2], ids[5]]);
   enter('t-taskai', [ids[1], ids[3], ids[5], ids[7], ids[8]]);
   enter('t-dvikovos', [ME, ...ids.slice(0, 7)]);
+  enter('t-karpis', ids.slice(0, 6));
 
   const catches = [];
   let n = 0;
-  const add = (user, code, len, off) => {
+  const add = (user, code, len, off, weight = null) => {
     n++;
     catches.push({
-      id: `demo-c${n}`, client_id: `demo-c${n}`, user_id: user, species_id: speciesId(code), length_mm: len,
+      id: `demo-c${n}`, client_id: `demo-c${n}`, user_id: user, species_id: speciesId(code), length_mm: len, weight_g: weight,
       captured_at_device: iso(off), received_at: iso(off + 60e3), photo_path: null,
       photo_sha256: `demo${n}`, status: 'approved', reject_reason: null, created_at: iso(off)
     });
@@ -138,6 +142,9 @@ function seed() {
     add(u, 'eserys', 300 + ((i * 89 + 50) % 230), -1.2 * D + i * H);
     if (i % 2) add(u, 'eserys', 310 + ((i * 53) % 200), -0.4 * D + i * H);
   });
+  // Metų karpis: pasverti karpiai (dažniausiai be ilgio)
+  [[0, 12450, null], [1, 9800, 720], [2, 15200, null], [3, 7350, null], [4, 2600, null], [5, 9800, null], [2, 8100, null]]
+    .forEach(([i, g, len], j) => add(ids[i], 'karpis', len, -(8 * D) + j * 19 * H, g));
 
   const tournament_sponsors = DEMO_SPONSORS.map((x) => ({ ...x }));
   const announcements = [
@@ -236,7 +243,7 @@ export function createDemoBackend({ photos } = {}) {
     db.admin_log.unshift({ id: Date.now() + Math.random(), tournament_id: t.id, title: t.title, organizer_id: t.organizer_id, action: 'update',
       changes, reason, created_at: new Date().toISOString(), actor_nick: db.profiles[ME].nickname });
   };
-  const RULE_KEYS = ['format', 'top_n', 'min_length_mm', 'starts_at', 'team_mode', 'league_id', 'prize_fund_cents', 'prize_split'];
+  const RULE_KEYS = ['format', 'top_n', 'min_length_mm', 'measure', 'min_weight_g', 'starts_at', 'team_mode', 'league_id', 'prize_fund_cents', 'prize_split'];
   const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
   const decorate = (t) => ({
     ...t,
@@ -258,6 +265,10 @@ export function createDemoBackend({ photos } = {}) {
 
   // Kaip serverio trigeris: dvikovose – registracija tik iki starto, be slėpimo ir komandų.
   const formatRules = (t) => {
+    // Kaip serverio tournaments_measure_ok (0040): pagal svorį – tik „Sunkiausia“ ir „Kelių svorių suma“.
+    t.measure = t.measure === 'weight' ? 'weight' : 'length';
+    t.min_weight_g = t.measure === 'weight' ? Math.max(0, Math.round(Number(t.min_weight_g) || 0)) : 0;
+    if (t.measure === 'weight' && t.format !== 'biggest' && t.format !== 'top_n_sum') throw new Error('Turnyrui pagal svorį tinka tik „Sunkiausia žuvis“ arba „Kelių svorių suma“');
     if (t.format === 'duels') Object.assign(t, { late_join_minutes: 0, leaderboard_hidden: false, team_mode: false });
     // Savos taisyklės (kaip serverio tournaments_custom_guard, 0033)
     if (t.format === 'custom') {
@@ -547,8 +558,8 @@ export function createDemoBackend({ photos } = {}) {
     async getInvite(code) {
       const t = db.tournaments.find((x) => x.invite_code === String(code).trim().toLowerCase() && registrationOpen(x));
       if (!t) return null;
-      const { id, title, format, top_n, min_length_mm, starts_at, ends_at } = t;
-      return { id, title, format, top_n, min_length_mm, starts_at, ends_at, participants: db.entries.filter((e) => e.tournament_id === id).length };
+      const { id, title, format, top_n, min_length_mm, measure, min_weight_g, starts_at, ends_at } = t;
+      return { id, title, format, top_n, min_length_mm, measure, min_weight_g, starts_at, ends_at, participants: db.entries.filter((e) => e.tournament_id === id).length };
     },
     async joinWithInvite(code) {
       const t = await this.getInvite(code);
@@ -759,7 +770,7 @@ export function createDemoBackend({ photos } = {}) {
       await photoStore.put({ clientId: path, blob: item.photo });
       const row = {
         id: item.clientId, client_id: item.clientId, user_id: ME, species_id: item.speciesId,
-        length_mm: item.lengthMm, captured_at_device: item.capturedAt, received_at: new Date().toISOString(),
+        length_mm: item.lengthMm ?? null, captured_at_device: item.capturedAt, received_at: new Date().toISOString(),
         photo_path: path, photo_sha256: item.sha256, status: 'pending', reject_reason: null,
         weight_g: item.weightG ?? null, bait: item.bait || null, notes: item.notes || null, weather: item.weather ?? null,
         clock_offset_s: Number.isInteger(item.clockOffsetS) ? item.clockOffsetS : null,
@@ -911,7 +922,7 @@ export function createDemoBackend({ photos } = {}) {
         for (const r of board.filter((x) => x.rank !== null && x.rank <= 3 && x.user_id !== ME)) {
           const best = db.catches.filter((c) => c.user_id === r.user_id && c.status === 'approved'
               && c.captured_at_device >= t.starts_at && c.captured_at_device < t.ends_at)
-            .sort((a, b) => b.length_mm - a.length_mm)[0];
+            .sort((a, b) => (t.measure === 'weight' ? (b.weight_g || 0) - (a.weight_g || 0) : (b.length_mm || 0) - (a.length_mm || 0)))[0];
           if (best && !db.checks.some((k) => k.catch_id === best.id)) picks.push(best.id);
         }
       }

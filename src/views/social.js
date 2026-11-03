@@ -1,7 +1,7 @@
 // Sekimas (#/sekami), klubai (#/klubai, #/klubas/:id) ir „Sekti“ mygtukas žvejo profilyje.
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { cm, shortDate, count } from '../lib/format.js';
+import { cm, shortDate, count, size } from '../lib/format.js';
 import { backButton, empty, thumb, hydratePhotos, avatar, loginPrompt, notFound, featureOffScreen } from '../ui.js';
 import { feat } from '../lib/clubs.js';
 
@@ -10,7 +10,7 @@ const sp = (state, id) => state.species.find((s) => s.id === id)?.name_lt ?? '';
 function catchList(state, list) {
   return html`<div class="stack-2">${list.map((c) => html`<a class="card card-link row tight" href="#/l/${c.id}">
     ${thumb(c.photo_path, 64)}
-    <span class="grow stack-1"><span class="strong">${c.nickname} · ${sp(state, c.species_id)} ${cm(c.length_mm)}</span>
+    <span class="grow stack-1"><span class="strong">${c.nickname} · ${sp(state, c.species_id)} ${size(c)}</span>
     <span class="small muted">${shortDate(c.captured_at_device)}</span></span>${icon('chevron', 18)}</a>`)}</div>`;
 }
 

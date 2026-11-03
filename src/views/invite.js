@@ -1,7 +1,7 @@
 // Kvietimas į (dažniausiai privatų) turnyrą: #/kvietimas/<kodas>
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { describeFormat, dateTime, cm, count, phase } from '../lib/format.js';
+import { describeFormat, dateTime, cm, count, phase, minText } from '../lib/format.js';
 import { backButton, empty, phaseBadge } from '../ui.js';
 
 const KEY = 'zt-invite';
@@ -44,7 +44,7 @@ export async function inviteView(ctx, [code]) {
       <section class="card hero stack">
         <div class="row gap-8">${phaseBadge(t)}<span class="badge">${icon('lock', 12, 2.6)}Su kvietimu</span></div>
         <h1 class="display-lg" tabindex="-1">${t.title}</h1>
-        <p class="muted">${describeFormat(t)}${t.min_length_mm ? ` · nuo ${cm(t.min_length_mm)}` : ''}</p>
+        <p class="muted">${describeFormat(t)}${minText(t) ? ` · ${minText(t)}` : ''}</p>
         <dl class="list">
           <div class="list-row"><dt class="muted">Pradžia</dt><dd class="strong right">${dateTime(t.starts_at)}</dd></div>
           <div class="list-row"><dt class="muted">Pabaiga</dt><dd class="strong right">${dateTime(t.ends_at)}</dd></div>

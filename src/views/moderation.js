@@ -1,7 +1,7 @@
 // Moderavimo eilė: viena nuotrauka per ekraną, visi patikros signalai šalia.
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { cm, dateTime } from '../lib/format.js';
+import { cm, dateTime, size, sizeFull } from '../lib/format.js';
 import { SKEW_MS } from '../lib/scoring.js';
 import { clockWarnings } from '../lib/clock.js';
 import { backButton, empty, thumb, hydratePhotos, zoomPhoto } from '../ui.js';
@@ -121,7 +121,7 @@ export async function moderationView(ctx) {
   const delayMin = Math.round(-skew / 60000);
   const signals = [
     ['Dalyvis', html`<a class="link" href="#/zvejys/${c.user_id}">${c.nickname}</a> · patikimumas ${c.trust_score}`],
-    ['Rūšis ir ilgis', `${sp} · ${cm(c.length_mm)}`],
+    [c.weight_g ? 'Rūšis ir dydis' : 'Rūšis ir ilgis', `${sp} · ${sizeFull(c)}`],
     ['Nufotografuota', dateTime(c.captured_at_device)],
     ['Gauta serveryje', delayMin > 1 ? `${dateTime(c.received_at)} (po ${delayMin} min.)` : dateTime(c.received_at)]
   ];
@@ -210,7 +210,7 @@ export async function disputesView(ctx) {
           ${thumb(d.catch?.photo_path, 72)}
           <div class="grow stack-1">
             <span class="strong"><a class="link" href="#/zvejys/${d.user_id}">${d.nickname}</a> · patikimumas ${d.trust_score}</span>
-            <span class="small muted">${d.catch ? `${sp(d.catch.species_id)} · ${cm(d.catch.length_mm)} · ${dateTime(d.catch.captured_at_device)}` : 'Laimikis ištrintas'}</span>
+            <span class="small muted">${d.catch ? `${sp(d.catch.species_id)} · ${size(d.catch)} · ${dateTime(d.catch.captured_at_device)}` : 'Laimikis ištrintas'}</span>
             ${d.catch?.reject_reason ? html`<span class="small bad">Atmesta: ${d.catch.reject_reason}</span>` : ''}
           </div>
         </div>
@@ -363,7 +363,7 @@ export async function reportsView(ctx) {
         <div class="row tight">
           <button class="thumb-btn" data-zoom aria-label="Rodyti nuotrauką per visą ekraną">${thumb(g.catch?.photo_path, 72)}</button>
           <div class="grow stack-1">
-            <a class="strong link" href="#/l/${g.catchId}">${g.catch ? `${sp(g.catch.species_id)} · ${cm(g.catch.length_mm)}` : 'Laimikis'}</a>
+            <a class="strong link" href="#/l/${g.catchId}">${g.catch ? `${sp(g.catch.species_id)} · ${size(g.catch)}` : 'Laimikis'}</a>
             <span class="small muted">${g.catch ? html`<a class="link" href="#/zvejys/${g.catch.user_id}">${owners.get(g.catch.user_id)?.nickname ?? 'Žvejys'}</a>` : ''}${g.catch ? ` · ${dateTime(g.catch.captured_at_device)}` : ''}</span>
             <span class="chip chip-wait">${icon('alert', 13, 2.6)}${g.reports.length} ${g.reports.length === 1 ? 'pranešimas' : g.reports.length < 10 ? 'pranešimai' : 'pranešimų'}</span>
           </div>

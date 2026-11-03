@@ -2,7 +2,7 @@
 // Kiti mato tik patvirtintus laimikius; masalą, pastabas ir vietą – tik savininkas (ir vietą – moderatorius).
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { cm, dateTime, phase } from '../lib/format.js';
+import { cm, dateTime, phase, size } from '../lib/format.js';
 import { fitReason, REASON_LT } from '../lib/scoring.js';
 import { weatherLine } from '../lib/weather.js';
 import { statusChip, avatar, notFound, hydratePhotos, openPhoto } from '../ui.js';
@@ -62,7 +62,8 @@ export async function catchView(ctx, [id]) {
     own ? backend.myCatches().catch(() => []) : []
   ]);
   const rankIn = new Map(okRows.map(({ t }, i) => [t.id, boards[i]?.find((r) => r.user_id === c.user_id)?.rank ?? null]));
-  const same = mine.filter((x) => x.species_id === c.species_id && x.status !== 'rejected');
+  // Palyginimas su savo tos rūšies laimikiais – tik pagal ilgį (tik pasverti neįeina).
+  const same = c.length_mm ? mine.filter((x) => x.species_id === c.species_id && x.status !== 'rejected' && x.length_mm) : [];
   const sorted = same.slice().sort((a, b) => b.length_mm - a.length_mm);
   const pos = sorted.findIndex((x) => x.id === c.id) + 1;
   const prevBest = same.filter((x) => x.id !== c.id && new Date(x.captured_at_device) < new Date(c.captured_at_device)).reduce((m, x) => Math.max(m, x.length_mm), 0);
@@ -73,12 +74,12 @@ export async function catchView(ctx, [id]) {
   const rows = [
     ['Pagauta', html`${shortDate(c.captured_at_device)}<small>${dateTime(c.captured_at_device).split(', ').pop()} · ${daypartLabel(daypartOf(c.captured_at_device)).toLowerCase()}</small>`],
     w ? ['Oras', html`${[w.temp_c !== null && w.temp_c !== undefined ? `${String(w.temp_c).replace('.', ',')} °C` : '', w.pressure_hpa ? `${w.pressure_hpa} hPa` : ''].filter(Boolean).join(' · ')}<small>${(WEATHER_LT[w.code] || '').toLowerCase()}${w.wind_ms !== null && w.wind_ms !== undefined ? ` · vėjas ${String(w.wind_ms).replace('.', ',')} m/s` : ''}</small>`] : null,
-    c.weight_g || (own && c.bait) ? [own && c.bait ? 'Masalas' : 'Svoris', html`${own && c.bait ? c.bait : kg(c.weight_g)}<small>${own && c.bait && c.weight_g ? kg(c.weight_g) : ''}</small>`] : null
+    (c.weight_g && c.length_mm) || (own && c.bait) ? [own && c.bait ? 'Masalas' : 'Svoris', html`${own && c.bait ? c.bait : kg(c.weight_g)}<small>${own && c.bait && c.weight_g && c.length_mm ? kg(c.weight_g) : ''}</small>`] : null
   ].filter(Boolean);
 
   return {
     nav: own ? 'dienorastis' : 'lenteles',
-    title: `${sp} ${cm(c.length_mm)}`,
+    title: `${sp} ${size(c)}`,
     html: html`<div class="screen">
       <header class="top-bar">
         <button class="icon-btn" data-back aria-label="Atgal">${icon('back', 22, 2.2)}</button>
@@ -89,11 +90,11 @@ export async function catchView(ctx, [id]) {
       <div class="c-hero">
         <button class="photo-big" data-zoom aria-label="Rodyti nuotrauką per visą ekraną">
           ${icon('fish', 72, 1.4)}
-          ${c.photo_path ? html`<img alt="${sp} ${cm(c.length_mm)}" data-photo="${c.photo_path}">` : ''}
+          ${c.photo_path ? html`<img alt="${sp} ${size(c)}" data-photo="${c.photo_path}">` : ''}
           <span class="photo-hint">${icon('plus', 16, 2.4)}Padidinti</span>
         </button>
         ${isRecord ? html`<span class="c-tag" data-pb>🏆 Asmeninis rekordas</span>` : ''}
-        <div class="c-ov"><h1 class="c-len" tabindex="-1">${cm(c.length_mm)}</h1><span class="c-sp">${sp}</span></div>
+        <div class="c-ov"><h1 class="c-len" tabindex="-1">${size(c)}</h1><span class="c-sp">${sp}</span></div>
       </div>
       ${c.status !== 'approved' || own ? html`<div class="row gap-8">${statusChip(c.status)}</div>` : ''}
       ${own && c.status === 'rejected' && c.reject_reason ? html`<p class="warn-box">${icon('alert', 18)}${c.reject_reason}</p>` : ''}
@@ -243,13 +244,13 @@ export async function catchView(ctx, [id]) {
         btn.disabled = true;
         try {
           const img = root.querySelector('.photo-big img.loaded');
-          const card = await makeShareCard({ photo: img?.src || null, length: cm(c.length_mm), species: sp,
+          const card = await makeShareCard({ photo: img?.src || null, length: size(c), species: sp,
             line: `${new Date(c.captured_at_device).toLocaleDateString('lt-LT')} · ${c.nickname}`, badge: isRecord ? '🏆 Asmeninis rekordas' : '' });
-          const how = await shareImage(card, { title: `${sp} ${cm(c.length_mm)}` });
+          const how = await shareImage(card, { title: `${sp} ${size(c)}` });
           if (how === 'downloaded') ctx.toast('Paveikslėlis išsaugotas');
         } catch {
           try {
-            if (navigator.share) await navigator.share({ title: `${sp} ${cm(c.length_mm)}`, url: location.href });
+            if (navigator.share) await navigator.share({ title: `${sp} ${size(c)}`, url: location.href });
             else { await navigator.clipboard.writeText(location.href); ctx.toast('Nuoroda nukopijuota'); }
           } catch { /* atšaukta */ }
         }

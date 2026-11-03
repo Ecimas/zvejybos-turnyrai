@@ -9,7 +9,7 @@ import { moderationTabs } from './moderation.js';
 export const FIELD_LT = {
   title: 'Pavadinimas', description: 'Aprašymas', ends_at: 'Pabaiga', starts_at: 'Pradžia', visibility: 'Matomumas',
   leaderboard_hidden: 'Lentelės slėpimas', late_join_minutes: 'Registracija po starto', prizes: 'Prizai',
-  format: 'Formatas', top_n: 'Įskaitomų žuvų', min_length_mm: 'Minimalus ilgis', team_mode: 'Komandos',
+  format: 'Formatas', top_n: 'Įskaitomų žuvų', min_length_mm: 'Minimalus ilgis', measure: 'Matavimas', min_weight_g: 'Minimalus svoris', team_mode: 'Komandos',
   league_id: 'Lyga', prize_fund_cents: 'Prizinis fondas', prize_split: 'Fondo padalijimas', sponsor_name: 'Rėmėjas', sponsor_url: 'Rėmėjo svetainė',
   cover_path: 'Viršelis', invite_code: 'Kvietimo nuoroda', rules_notice: 'Pranešta dalyviams', participant_removed: 'Pašalintas dalyvis',
   scoring: 'Taškų taisyklės', scoring_rule_id: 'Taisyklių rinkinys'
@@ -23,6 +23,8 @@ export function valueText(key, v) {
   if (typeof v === 'boolean') return v ? 'taip' : 'ne';
   if (key === 'cover_path') return 'nuotrauka';
   if (key === 'min_length_mm') return `${Number(v) / 10} cm`;
+  if (key === 'min_weight_g') return `${String(Number(v) / 1000).replace('.', ',')} kg`;
+  if (key === 'measure') return v === 'weight' ? 'svoris' : 'ilgis';
   if (key === 'prize_fund_cents') return `${(Number(v) / 100).toLocaleString('lt-LT')} €`;
   const s = typeof v === 'string' ? v : JSON.stringify(v);
   return s.length > 80 ? `${s.slice(0, 77)}…` : s;

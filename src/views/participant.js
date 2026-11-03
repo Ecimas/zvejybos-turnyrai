@@ -2,7 +2,7 @@
 // Atidaroma paspaudus žvejį turnyro lentelėje; iš čia – į bendrą žvejo profilį.
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { cm, dateTime, count, gapText, scoreText, isPoints, describeFormat, phase } from '../lib/format.js';
+import { cm, dateTime, count, gapText, scoreText, isPoints, describeFormat, phase, size, bigger, bySize, byWeight, isWeight, kg } from '../lib/format.js';
 import { fitReason, catchPoints, catchTime } from '../lib/scoring.js';
 import { backButton, thumb, hydratePhotos, avatar, notFound, statusChip, phaseBadge } from '../ui.js';
 import { eur, payouts } from '../lib/prizes.js';
@@ -80,7 +80,7 @@ export async function participantView(ctx, [tid, uid]) {
   const above = idx > 0 ? board[idx - 1] : null;
   const pay = payouts(board, t.prize_fund_cents || 0, t.prize_split);
   const prize = pay.get(uid) || 0;
-  const biggest = approved.reduce((b, c) => (!b || c.length_mm > b.length_mm ? c : b), null);
+  const biggest = approved.reduce((b, c) => bigger(b, c, isWeight(t) ? byWeight : bySize), null);
   const species = new Set(approved.map((c) => c.species_id));
   const spName = (id) => state.species.find((s) => s.id === id)?.name_lt ?? '';
   const pts = isPoints(t);
@@ -119,7 +119,7 @@ export async function participantView(ctx, [tid, uid]) {
       <div class="grid-2" data-pt-stats>
         ${stat(limit ? `${row ? row.counted : 0}/${limit}` : String(row ? row.counted : 0), limit ? 'Įskaityta į rezultatą' : 'Įskaitytos žuvys', 'counted')}
         ${stat(String(approved.length), 'Patvirtinti laimikiai', 'total')}
-        ${stat(biggest ? cm(biggest.length_mm) : '–', biggest ? `Didžiausia · ${spName(biggest.species_id)}` : 'Didžiausia', 'biggest')}
+        ${stat(biggest ? (isWeight(t) && biggest.weight_g ? kg(biggest.weight_g) : size(biggest)) : '–', `${isWeight(t) ? 'Sunkiausia' : 'Didžiausia'}${biggest ? ` · ${spName(biggest.species_id)}` : ''}`, 'biggest')}
         ${stat(String(species.size), count(species.size, 'rūšis', 'rūšys', 'rūšių').replace(/^\d+\s/, ''), 'species')}
       </div>
 
@@ -130,7 +130,7 @@ export async function participantView(ctx, [tid, uid]) {
           return html`<li><a class="card card-link row tight ${inScore && counted ? 'pt-in' : ''}" href="#/l/${c.id}" data-pt-catch="${c.id}">
             ${thumb(c.photo_path)}
             <span class="grow stack-1 min0">
-              <span class="num-md">${cm(c.length_mm)}${pts && c.status === 'approved' ? html` <span class="small muted">· ${scoreText(t, catchPoints(t, c, t.species_pct || {}))}</span>` : ''}</span>
+              <span class="num-md">${isWeight(t) && c.weight_g ? kg(c.weight_g) : size(c)}${pts && c.status === 'approved' ? html` <span class="small muted">· ${scoreText(t, catchPoints(t, c, t.species_pct || {}))}</span>` : ''}</span>
               <span class="small muted ellipsis">${spName(c.species_id)} · ${dateTime(c.captured_at_device)}</span>
             </span>
             ${c.status !== 'approved' ? statusChip(c.status)

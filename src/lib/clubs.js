@@ -9,11 +9,13 @@ export const MONTHS_GEN = ['sausio', 'vasario', 'kovo', 'balandžio', 'gegužės
 export const MONTHS_NOM = ['Sausio', 'Vasario', 'Kovo', 'Balandžio', 'Gegužės', 'Birželio', 'Liepos', 'Rugpjūčio', 'Rugsėjo', 'Spalio', 'Lapkričio', 'Gruodžio'];
 
 const approved = (catches) => catches.filter((c) => c.status === 'approved');
+// Klubų rekordai, iššūkiai ir sezono taškai skaičiuojami pagal ilgį – tik pasverti laimikiai neįeina.
+const measured = (catches) => approved(catches).filter((c) => c.length_mm);
 const yearOf = (iso) => new Date(iso).getFullYear();
 
 // Sezono taškai: 10 didžiausių patvirtintų laimikių ilgių suma centimetrais.
 export function seasonPoints(catches, userId, year) {
-  const lens = approved(catches).filter((c) => c.user_id === userId && yearOf(c.captured_at_device) === year)
+  const lens = measured(catches).filter((c) => c.user_id === userId && yearOf(c.captured_at_device) === year)
     .map((c) => c.length_mm).sort((a, b) => b - a).slice(0, 10);
   return Math.round(lens.reduce((s, x) => s + x, 0) / 10);
 }
@@ -24,7 +26,7 @@ export function challengeTop(catches, memberIds, month = new Date()) {
   const to = new Date(m.getFullYear(), m.getMonth() + 1, 1).getTime();
   const sp = challengeSpecies(m);
   const best = new Map();
-  for (const c of approved(catches)) {
+  for (const c of measured(catches)) {
     const t = new Date(c.captured_at_device).getTime();
     if (!memberIds.includes(c.user_id) || t < from || t >= to || (sp && c.species_id !== sp)) continue;
     const cur = best.get(c.user_id);
@@ -39,7 +41,7 @@ export function challengeTop(catches, memberIds, month = new Date()) {
 
 export function clubRecords(catches, memberIds, year = new Date().getFullYear()) {
   const best = new Map();
-  for (const c of approved(catches)) {
+  for (const c of measured(catches)) {
     if (!memberIds.includes(c.user_id)) continue;
     const cur = best.get(c.species_id);
     if (!cur || c.length_mm > cur.length_mm || (c.length_mm === cur.length_mm && c.captured_at_device < cur.captured_at_device)) best.set(c.species_id, c);

@@ -2,7 +2,7 @@
 // Tikslas: ~8 sekundės nuo mygtuko iki išsaugojimo, viena ranka.
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { phase, cm } from '../lib/format.js';
+import { phase, cm, kg, size, bigger, scoreText } from '../lib/format.js';
 import { fitReason, REASON_LT } from '../lib/scoring.js';
 import { startCamera, stopCamera, captureFrame, sha256Hex, watchLocation, uuid, vibrate } from '../lib/device.js';
 import { mountRuler } from '../lib/ruler.js';
@@ -78,7 +78,11 @@ export async function captureView(ctx) {
         <div class="cam-wrap">
           <video data-video playsinline muted></video>
           <div class="cam-guide" aria-hidden="true"></div>
-          <p class="cam-hint">Padėk žuvį ant liniuotės. Visa žuvis turi matytis kadre.</p>
+          <div class="cam-mode" role="group" aria-label="Kaip matuoji">
+            <button type="button" data-mode="length" aria-pressed="true">${icon('ruler', 16, 2.4)}Liniuotė</button>
+            <button type="button" data-mode="weight" aria-pressed="false">${icon('scale', 16, 2.4)}Svarstyklės</button>
+          </div>
+          <p class="cam-hint" data-cam-hint>Padėk žuvį ant liniuotės. Visa žuvis turi matytis kadre.</p>
         </div>
         <div class="cam-error" data-cam-error hidden></div>
         <div class="cam-bar">
@@ -90,13 +94,24 @@ export async function captureView(ctx) {
         <div class="photo-wrap">
           <img data-photo-preview alt="Laimikio nuotrauka">
           <button class="pill-btn" data-retake>Perfotografuoti</button>
-          <p class="photo-check">${icon('check', 14, 2.6)}Patikrink: matosi liniuotė ir visa žuvis</p>
+          <p class="photo-check" data-photo-check>${icon('check', 14, 2.6)}Patikrink: matosi liniuotė ir visa žuvis</p>
         </div>
         <div class="sheet stack-lg">
           <section class="imp" data-impact aria-live="polite" hidden></section>
 
-          <div class="stack">
-            <span class="small muted strong">Ilgis</span>
+          <div class="stack" data-w-box hidden>
+            <span class="small muted strong">Svoris</span>
+            <div class="lenbox wbox">
+              <button class="sq-btn sq-big" data-wdec aria-label="Sumažinti 50 g">${icon('minus', 26, 2.6)}</button>
+              <label class="len-readout wreadout"><span class="sr-only">Svoris kilogramais</span><input data-wkg inputmode="decimal" maxlength="6" autocomplete="off" placeholder="0,00"> <span class="unit">kg</span></label>
+              <button class="sq-btn sq-big" data-winc aria-label="Padidinti 50 g">${icon('plus', 26, 2.6)}</button>
+            </div>
+            <p class="small muted">Įrašyk tai, ką rodo svarstyklės. Rodmuo turi matytis nuotraukoje.</p>
+            <button type="button" class="btn-text small" data-add-len>${icon('plus', 14, 2.6)}Pridėti ir ilgį (nebūtina)</button>
+          </div>
+
+          <div class="stack" data-len-box>
+            <span class="small muted strong" data-len-label>Ilgis</span>
             <div class="lenbox">
               <button class="sq-btn sq-big" data-dec aria-label="Sumažinti 1 cm">${icon('minus', 26, 2.6)}</button>
               <span class="len-readout" aria-live="polite"><span data-len>50</span> <span class="unit">cm</span></span>
@@ -134,9 +149,9 @@ export async function captureView(ctx) {
           <p class="small muted" data-weather hidden></p>
 
           <details class="more" data-more>
-            <summary class="strong">Daugiau: svoris, masalas, pastabos</summary>
+            <summary class="strong" data-more-title>Daugiau: svoris, masalas, pastabos</summary>
             <div class="stack">
-              <label class="field"><span class="small muted strong">Svoris, kg (nebūtina)</span>
+              <label class="field" data-w-extra><span class="small muted strong">Svoris, kg (nebūtina)</span>
                 <input name="weight" inputmode="decimal" maxlength="7" autocomplete="off" placeholder="pvz. 2,4" data-weight></label>
               <label class="field"><span class="small muted strong">Masalas (matysi tik tu)</span>
                 <input name="bait" maxlength="80" placeholder="pvz. vobleris 9 cm" data-bait></label>
@@ -169,6 +184,39 @@ export async function captureView(ctx) {
       const onVisible = () => { if (document.visibilityState === 'visible') syncClock(backend); };
       document.addEventListener('visibilitychange', onVisible);
       let len = Math.min(MAX_CM, Math.max(MIN_CM, last.lengthCm || 50));
+      // Matavimas: liniuote (ilgis) ar svarstyklėmis (svoris). Jei dalyvauji turnyre pagal svorį – svarstyklės.
+      const weighTour = tournaments.some((t) => t.measure === 'weight');
+      let mode = weighTour ? 'weight' : (last.mode === 'weight' ? 'weight' : 'length');
+      let withLen = false;
+      const HINT = { length: 'Padėk žuvį ant liniuotės. Visa žuvis turi matytis kadre.', weight: 'Svarstyklių rodmuo ir visa žuvis turi matytis kadre.' };
+      const CHECK = { length: 'Patikrink: matosi liniuotė ir visa žuvis', weight: 'Patikrink: matosi svarstyklių rodmuo ir žuvis' };
+      const wkg = q('[data-wkg]');
+      if (last.weightKg) wkg.value = String(last.weightKg).replace('.', ',');
+      function showMode() {
+        root.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+        q('[data-cam-hint]').textContent = HINT[mode];
+        q('[data-photo-check]').lastChild.textContent = CHECK[mode];
+        const w = mode === 'weight';
+        q('[data-w-box]').hidden = !w;
+        q('[data-len-box]').hidden = w && !withLen;
+        q('[data-add-len]').hidden = !w || withLen;
+        q('[data-len-label]').textContent = w ? 'Ilgis (nebūtina)' : 'Ilgis';
+        q('[data-w-extra]').hidden = w;
+        q('[data-more-title]').textContent = w ? 'Daugiau: masalas, pastabos' : 'Daugiau: svoris, masalas, pastabos';
+      }
+      root.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => { mode = b.dataset.mode; showMode(); updateFit(); }));
+      q('[data-add-len]').addEventListener('click', () => { withLen = true; showMode(); updateFit(); });
+      const wget = () => { const v = Number(wkg.value.replace(',', '.').trim()); return wkg.value.trim() && v > 0 ? v : null; };
+      const wstep = (d) => { const v = Math.max(0, Math.round(((wget() || 0) + d) * 100) / 100); wkg.value = v.toFixed(2).replace('.', ','); vibrate(6); };
+      q('[data-wdec]').addEventListener('click', () => { wstep(-0.05); updateFit(); });
+      q('[data-winc]').addEventListener('click', () => { wstep(0.05); updateFit(); });
+      wkg.addEventListener('input', () => updateFit());
+      // Ką siunčiame: svarstyklėmis – svoris privalomas, ilgis tik pridėjus; liniuote – ilgis, svoris neprivalomas („Daugiau“).
+      const lenMm = () => (mode === 'length' || withLen ? len * 10 : null);
+      const extraKg = () => { const r = q('[data-weight]').value.replace(',', '.').trim(); return r ? Number(r) : null; };
+      const weightKgNow = () => (mode === 'weight' ? wget() : extraKg());
+      const sizeOf = (lm, wg) => (mode === 'weight' && wg ? kg(wg) : lm ? cm(lm) : wg ? kg(wg) : '–');
+      showMode();
       let speciesId = last.speciesId || commonIds[0] || null;
       let saving = false;
       let weather = null;
@@ -214,14 +262,18 @@ export async function captureView(ctx) {
 
       // Ką šis laimikis reikštų: vieta turnyruose ir asmeninis rekordas.
       function impactOf() {
-        const draft = { species_id: speciesId, length_mm: len * 10, captured_at_device: capturedAt || new Date().toISOString(), received_at: null, clock_offset_s: clockOffset };
+        const wk = weightKgNow();
+        const draft = { species_id: speciesId, length_mm: lenMm(), weight_g: wk > 0 ? Math.round(wk * 1000) : null, captured_at_device: capturedAt || new Date().toISOString(), received_at: null, clock_offset_s: clockOffset };
         const rows = tournaments.map((t) => {
           const r = fitReason(t, t.species_ids, true, draft);
           const board = boards.get(t.id);
           const pr = r === 'ok' && board ? projectRank(t, board, me, mineSent, draft) : null;
           return { t, r, pr };
         });
-        const rec = speciesId ? recordFor(known, speciesId, len * 10) : { kind: 'none' };
+        // Asmeniniai rekordai – pagal ilgį; tik pasverta žuvis gali būti nebent pirma tos rūšies.
+        const seen = known.some((k) => k.species_id === speciesId && k.status !== 'rejected');
+        let rec = !speciesId ? { kind: 'none' } : draft.length_mm ? recordFor(known, speciesId, draft.length_mm) : { kind: seen ? null : 'first', previous: null };
+        if (rec.kind === 'first' && seen) rec = { kind: null, previous: null };
         return { rows, rec };
       }
       function updateFit() {
@@ -324,44 +376,47 @@ export async function captureView(ctx) {
       async function save(more) {
         if (saving) return;
         if (!speciesId) { ctx.toast('Pasirink rūšį'); return; }
-        const wRaw = q('[data-weight]').value.replace(',', '.').trim();
-        const weightKg = wRaw ? Number(wRaw) : null;
+        const weightKg = weightKgNow();
+        if (mode === 'weight' && weightKg === null) { ctx.toast('Įrašyk svorį'); wkg.focus(); return; }
         if (weightKg !== null && !(weightKg > 0 && weightKg <= 200)) { ctx.toast('Svoris turi būti 0–200 kg'); return; }
+        const lengthMm = lenMm();
+        const weightG = weightKg ? Math.round(weightKg * 1000) : null;
+        const sizeTxt = sizeOf(lengthMm, weightG);
         saving = true;
         try {
           const sha256 = await sha256Hex(photo);
           await ctx.outbox.add({
-            clientId, speciesId, lengthMm: len * 10, capturedAt, clockOffsetS: clockOffset, sha256, photo,
+            clientId, speciesId, lengthMm, capturedAt, clockOffsetS: clockOffset, sha256, photo,
             location: fix ? { ...fix } : null,
-            weightG: weightKg ? Math.round(weightKg * 1000) : null,
+            weightG,
             bait: bait.value.trim() || null,
             notes: q('[data-notes]').value.trim() || null,
             weather
           });
-          try { localStorage.setItem('zt-last', JSON.stringify({ speciesId, lengthCm: len, bait: bait.value.trim() })); } catch { /* nėra vietos */ }
+          try { localStorage.setItem('zt-last', JSON.stringify({ speciesId, lengthCm: len, bait: bait.value.trim(), mode, weightKg: mode === 'weight' ? weightKg : last.weightKg || null })); } catch { /* nėra vietos */ }
           const impact = impactOf();
           const rec = impact.rec;
           const savedId = clientId;
           const savedPhoto = photo;
           const savedAt = capturedAt;
-          known.push({ id: clientId, species_id: speciesId, length_mm: len * 10, status: 'pending', captured_at_device: capturedAt });
+          known.push({ id: clientId, species_id: speciesId, length_mm: lengthMm, weight_g: weightG, status: 'pending', captured_at_device: capturedAt });
           vibrate([20, 40, 20]);
           const flushing = ctx.flush();
           const spName = species.find((s) => s.id === speciesId)?.name_lt ?? '';
           if (!more) {
             if (rec.kind === 'record') vibrate([30, 60, 30, 60, 80]);
-            showDone({ rec, impact, spName, lengthMm: len * 10, at: savedAt, id: savedId, photo: savedPhoto, flushing });
+            showDone({ rec, impact, spName, sizeTxt, at: savedAt, id: savedId, photo: savedPhoto, flushing });
             saving = false;
             return;
           }
           if (rec.kind === 'record') {
             vibrate([30, 60, 30, 60, 80]);
-            await celebrate({ title: 'Naujas asmeninis rekordas!', big: `${spName} ${cm(len * 10)}`,
+            await celebrate({ title: 'Naujas asmeninis rekordas!', big: `${spName} ${sizeTxt}`,
               text: `Ankstesnis rekordas – ${cm(rec.previous)}. Rekordas bus įskaitytas, kai moderatorius patvirtins.` });
           } else if (rec.kind === 'first') {
-            await celebrate({ title: 'Pirma tavo šios rūšies žuvis!', big: `${spName} ${cm(len * 10)}`, text: 'Kol kas tai ir tavo rekordas – pabandyk jį pagerinti.' });
+            await celebrate({ title: 'Pirma tavo šios rūšies žuvis!', big: `${spName} ${sizeTxt}`, text: 'Kol kas tai ir tavo rekordas – pabandyk jį pagerinti.' });
           } else {
-            ctx.toast(`Išsaugota: ${cm(len * 10)}`);
+            ctx.toast(`Išsaugota: ${sizeTxt}`);
           }
           if (more) {
             clientId = uuid();
@@ -385,11 +440,11 @@ export async function captureView(ctx) {
         }
       }
       // --- Išsaugota: šventinis ekranas ---
-      function showDone({ rec, impact, spName, lengthMm, at, id, photo: blob, flushing }) {
+      function showDone({ rec, impact, spName, sizeTxt, at, id, photo: blob, flushing }) {
         const done = q('[data-step="done"]');
         const time = stamp(new Date(at)).slice(11, 16);
         const today = known.filter((c) => c.status !== 'rejected' && c.captured_at_device && dayKey(c.captured_at_device) === dayKey(at));
-        const todayBig = today.reduce((m, c) => Math.max(m, c.length_mm), 0);
+        const todayBig = today.reduce((m, c) => bigger(m, c), null);
         const goal = goals.map((g) => ({ g, p: goalProgress(g, known.map((c) => ({ ...c, status: c.status || 'pending' })), [], new Date(), (sid) => species.find((s) => s.id === sid)?.name_lt ?? '') }))
           .filter((x) => !x.p.done || (x.p.doneAt && Math.abs(x.p.doneAt - Date.parse(at)) < 60e3)).sort((a, b) => b.p.pct - a.p.pct)[0];
         const ok = impact.rows.filter((x) => x.r === 'ok');
@@ -397,13 +452,13 @@ export async function captureView(ctx) {
         done.innerHTML = String(html`<div class="succ" data-done>
             <div class="burst" aria-hidden="true">${rec.kind === 'record' ? '🏆' : rec.kind === 'first' ? '⭐' : '🎣'}</div>
             <h2 class="display-md" tabindex="-1">${title}</h2>
-            <p class="muted strong">${spName} ${cm(lengthMm)} · ${time}</p>
+            <p class="muted strong">${spName} ${sizeTxt} · ${time}</p>
             ${rec.kind === 'record' ? html`<p class="small muted">Ankstesnis rekordas – ${cm(rec.previous)}. Rekordas bus įskaitytas, kai moderatorius patvirtins.</p>` : ''}
           </div>
           ${ok.length ? html`<section class="imp">${ok.map(({ t, pr }) => html`<div class="imp-row"><span class="rk">${pr ? `#${pr.rank}` : '✓'}</span>
-            <span class="grow stack-1"><b>${t.title}</b><span class="small">Bus įskaityta po patvirtinimo${pr ? ` · ${projectionText(pr)}` : ''}${pr && pr.gap > 0 && pr.rank > 1 ? ` · iki #${pr.rank - 1} trūksta ${t.format === 'species_points' || t.format === 'custom' ? `${String(pr.gap / 10).replace('.', ',')} tšk.` : cm(pr.gap)}` : ''}</span></span></div>`)}</section>` : ''}
+            <span class="grow stack-1"><b>${t.title}</b><span class="small">Bus įskaityta po patvirtinimo${pr ? ` · ${projectionText(pr)}` : ''}${pr && pr.gap > 0 && pr.rank > 1 ? ` · iki #${pr.rank - 1} trūksta ${scoreText(t, pr.gap)}` : ''}</span></span></div>`)}</section>` : ''}
           <div class="grid-2">
-            <div class="tile"><span class="imp-k">Šiandien</span><b class="tile-big">${today.length} ${today.length === 1 ? 'žuvis' : today.length % 10 >= 2 && today.length % 10 <= 9 && (today.length % 100 < 10 || today.length % 100 > 20) ? 'žuvys' : 'žuvų'}</b><span class="small muted">didžiausia ${cm(todayBig)}</span></div>
+            <div class="tile"><span class="imp-k">Šiandien</span><b class="tile-big">${today.length} ${today.length === 1 ? 'žuvis' : today.length % 10 >= 2 && today.length % 10 <= 9 && (today.length % 100 < 10 || today.length % 100 > 20) ? 'žuvys' : 'žuvų'}</b><span class="small muted">didžiausia ${size(todayBig)}</span></div>
             ${goal ? html`<div class="tile" data-done-goal><span class="imp-k">Tikslas</span><b class="tile-big">${Math.round(goal.p.pct * 100)} %</b><span class="small muted">${goalTitle(goal.g, (sid) => species.find((s) => s.id === sid)?.name_lt ?? '')}</span></div>`
               : html`<a class="tile" href="#/dienorastis?skiltis=tikslai"><span class="imp-k">Tikslai</span><b class="tile-big">＋</b><span class="small muted">Išsikelk tikslą</span></a>`}
           </div>
@@ -439,9 +494,9 @@ export async function captureView(ctx) {
           const btn = e.currentTarget;
           btn.disabled = true;
           try {
-            const card = await makeShareCard({ photo: blob, length: cm(lengthMm), species: spName,
+            const card = await makeShareCard({ photo: blob, length: sizeTxt, species: spName,
               line: `${new Date(at).toLocaleDateString('lt-LT')} · ${state.profile?.nickname || ''}`, badge: rec.kind === 'record' ? '🏆 Asmeninis rekordas' : '' });
-            const how = await shareImage(card, { title: `${spName} ${cm(lengthMm)}` });
+            const how = await shareImage(card, { title: `${spName} ${sizeTxt}` });
             if (how === 'downloaded') ctx.toast('Paveikslėlis išsaugotas');
           } catch {
             ctx.toast('Nepavyko paruošti paveikslėlio');

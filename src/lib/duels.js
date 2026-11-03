@@ -24,7 +24,7 @@ export function roundsFor(n) {
 export function duelScore(t, speciesIds, catches, userId, from, to, banned = () => false) {
   if (banned(userId)) return 0;
   const list = catches.filter((c) => c.user_id === userId && c.status === 'approved'
-    && c.length_mm >= t.min_length_mm
+    && c.length_mm && c.length_mm >= t.min_length_mm
     && catchTime(c) >= from && catchTime(c) < to
     && catchTime(c) <= ts(c.received_at || c.captured_at_device) + SKEW
     && ts(c.received_at || c.captured_at_device) <= ts(t.ends_at) + GRACE

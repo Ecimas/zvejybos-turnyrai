@@ -1,7 +1,7 @@
 import { html } from '../lib/html.js';
 import { cachedAt } from '../lib/offline.js';
 import { icon } from '../icons.js';
-import { phase, timeLabel, describeFormat, cm, dateTime, duration, count, gapText, registrationOpen, registrationLabel, scoreText, coefText, isPoints } from '../lib/format.js';
+import { phase, timeLabel, describeFormat, cm, dateTime, duration, count, gapText, registrationOpen, registrationLabel, scoreText, coefText, isPoints, size, isWeight, minText } from '../lib/format.js';
 import { fitReason, REASON_LT, rerank, catchPoints } from '../lib/scoring.js';
 import { describeRules } from '../lib/custom_scoring.js';
 import { roundName } from '../lib/duels.js';
@@ -212,11 +212,12 @@ export async function tournamentView(ctx, [id], query) {
     ...(t.format === 'species_points' ? [['Koeficientai', t.species_ids.map((sid) => `${spName(sid)} ${coefText(t.species_pct?.[sid])}`).join(', ') || 'Visos ×1']] : []),
     ...(divisions.length ? [['Divizionai', divisions.map((d) => d.name).join(', ')]] : []),
     ...(t.league ? [['Lyga', html`<a class="link" href="#/lyga/${t.league.id}">${t.league.name} · ${t.league.season}</a>`]] : []),
-    ...(t.format === 'custom' ? [] : [['Įskaitoma', t.min_length_mm ? `nuo ${cm(t.min_length_mm)}` : 'bet koks ilgis']]),
+    ...(isWeight(t) ? [['Matuojama', 'Svoris – svarstyklėmis, liniuotės nereikia']] : []),
+    ...(t.format === 'custom' ? [] : [['Įskaitoma', minText(t) || (isWeight(t) ? 'bet koks svoris' : 'bet koks ilgis')]]),
     ['Pradžia', dateTime(t.starts_at)],
     ['Pabaiga', dateTime(t.ends_at)],
     ['Registracija', registrationLabel(t)],
-    ['Įrodymas', 'Nuotrauka programėlės kamera'],
+    ['Įrodymas', isWeight(t) ? 'Nuotrauka programėlės kamera, matosi svarstyklių rodmuo' : 'Nuotrauka programėlės kamera'],
     ['Lentelė', t.leaderboard_hidden ? 'Paslėpta iki pabaigos' : 'Gyva'],
     ['Dalyvauti', t.visibility === 'private' ? 'Tik su kvietimu' : 'Visi'],
     ...(t.team_mode ? [['Komandos', 'Klubai: 3 geriausių narių suma']] : [])
@@ -332,7 +333,7 @@ export async function tournamentView(ctx, [id], query) {
           return html`<a class="card card-link row tight" href="#/l/${c.id}">
             ${thumb(c.photo_path)}
             <div class="grow stack-1">
-              <span class="num-md">${cm(c.length_mm)}${isPoints(t) && reason === 'ok' ? html` <span class="small muted">· ${scoreText(t, catchPoints(t, c, t.species_pct))}</span>` : ''}</span>
+              <span class="num-md">${size(c)}${isPoints(t) && reason === 'ok' ? html` <span class="small muted">· ${scoreText(t, catchPoints(t, c, t.species_pct))}</span>` : ''}</span>
               <span class="small muted">${state.species.find((s) => s.id === c.species_id)?.name_lt ?? ''} · ${dateTime(c.captured_at_device)}</span>
               ${reason !== 'ok' ? html`<span class="small warn">${REASON_LT[reason]}</span>` : ''}
             </div>
@@ -377,7 +378,7 @@ export async function tournamentView(ctx, [id], query) {
       <section class="stack-2 t-head">
         <div class="row gap-8 wrap">${phaseBadge(t)}${t.joined ? html`<span class="badge badge-mine">Dalyvauji</span>` : ''}${t.visibility === 'private' ? html`<span class="badge">${icon('lock', 12, 2.6)}Privatus</span>` : ''}${organizer ? html`<span class="badge">Organizuoji</span>` : ''}</div>
         <h1 class="display-md t-title-lg" tabindex="-1">${t.title}</h1>
-        <p class="muted small">${describeFormat(t)} · ${speciesNames}${t.min_length_mm ? ` · nuo ${cm(t.min_length_mm)}` : ''}</p>
+        <p class="muted small">${describeFormat(t)} · ${speciesNames}${minText(t) ? ` · ${minText(t)}` : ''}</p>
       </section>
 
       <section class="t-stats" aria-label="Turnyro santrauka">${stats.map(([label, value, key]) => html`<div class="t-stat" data-stat="${key}">

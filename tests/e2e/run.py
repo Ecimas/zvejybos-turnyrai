@@ -1319,6 +1319,89 @@ def participant_demo_test(page, base):
     step("dalyvis turnyre: vieta, statistika, laimikiai, profilis, paslėpta lentelė")
 
 
+def weight_demo_test(page, base):
+    """Svėrimas: turnyras pagal svorį (lentelė kg), laimikis svarstyklėmis be ilgio, turnyro kūrimas pagal svorį."""
+    demo = lambda js: page.evaluate(f"() => {{ const db = JSON.parse(localStorage.getItem('zt-demo-v1')); {js} }}")
+    page.goto(base + "#/t/t-karpis")
+    rules = page.locator("dl.list")
+    expect(rules).to_contain_text("Sunkiausia žuvis")
+    expect(rules).to_contain_text("Svoris – svarstyklėmis")
+    expect(rules).to_contain_text("nuo 3 kg")
+    page.goto(base + "#/t/t-karpis/lentele")
+    expect(page.locator(".podium-col.p1")).to_contain_text("15,20 kg")
+    expect(page.locator("main")).not_to_contain_text("2,60 kg")  # lengvesnis nei 3 kg – neįskaitomas
+    expect(page.locator("main")).not_to_contain_text(" cm")
+    shot(page, "svoris-lentele")
+    page.locator(".podium-col.p1").click()
+    expect(page.locator("[data-pt-score]")).to_have_text("15,20 kg")
+    expect(page.locator("[data-pt-stat=biggest]")).to_contain_text("Sunkiausia")
+    expect(page.locator("[data-pt-catch]").first).to_contain_text("kg")
+    # Dalyvauju svorio turnyre -> kamera iškart „Svarstyklės“
+    demo("""const me = '00000000-0000-4000-8000-000000000001'; const t = db.tournaments.find(x => x.id === 't-karpis');
+      db.entries.push({ tournament_id: 't-karpis', user_id: me, joined_at: new Date(Date.parse(t.starts_at) - 864e5).toISOString() });
+      localStorage.setItem('zt-demo-v1', JSON.stringify(db));""")
+    page.reload()
+    page.goto(base + "#/laimikis")
+    expect(page.locator("[data-mode=weight]")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("[data-cam-hint]")).to_contain_text("Svarstyklių")
+    page.get_by_role("button", name="Fotografuoti").click()
+    expect(page.locator("[data-w-box]")).to_be_visible()
+    expect(page.locator("[data-len-box]")).to_be_hidden()
+    page.locator("[data-sp-select]").select_option(label="Karpis")
+    page.locator("[data-wkg]").fill("")
+    page.locator("[data-save]").click()
+    expect(page.locator("#toast")).to_have_text("Įrašyk svorį")
+    page.locator("[data-wkg]").fill("8,4")
+    page.locator("[data-winc]").click()
+    expect(page.locator("[data-wkg]")).to_have_value("8,45")
+    expect(page.locator("[data-fit]")).to_contain_text("Metų karpis")
+    expect(page.locator("[data-fit] .list-row", has_text="Metų karpis")).to_contain_text("Bus įskaityta")
+    shot(page, "svoris-laimikis")
+    page.locator("[data-save]").click()
+    expect(page.locator("[data-done]")).to_contain_text("Karpis 8,45 kg")
+    page.wait_for_timeout(400)
+    got = demo("""const c = db.catches.filter(x => x.user_id === '00000000-0000-4000-8000-000000000001').sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+      return [c.length_mm, c.weight_g];""")
+    assert got == [None, 8450], got
+    page.get_by_role("button", name="Į dienoraštį").click()
+    expect(page.locator("main")).to_contain_text("8,45 kg")
+    # Su liniuote: ilgis vėl rodomas, svoris – „Daugiau“
+    page.goto(base + "#/laimikis")
+    page.locator("[data-mode=length]").click()
+    expect(page.locator("[data-cam-hint]")).to_contain_text("liniuotės")
+    page.get_by_role("button", name="Fotografuoti").click()
+    expect(page.locator("[data-len-box]")).to_be_visible()
+    expect(page.locator("[data-w-box]")).to_be_hidden()
+    page.get_by_role("button", name="Uždaryti").click()
+    # Naujas turnyras pagal svorį
+    page.goto(base + "#/naujas")
+    page.get_by_label("Pavadinimas").fill("Karpių svoris")
+    page.locator("[data-measure=weight]").click()
+    expect(page.locator("[data-format=species_points]")).to_be_hidden()
+    expect(page.locator("[data-format=biggest]")).to_have_text("Sunkiausia žuvis")
+    expect(page.locator("[data-format=top_n_sum]")).to_have_text("Kelių svorių suma")
+    page.locator("[data-format=top_n_sum]").click()
+    expect(page.locator("[data-format-hint]")).to_contain_text("svoriai")
+    expect(page.locator("[data-minw-box]")).to_be_visible()
+    expect(page.locator("[data-min-box]")).to_be_hidden()
+    page.locator("[name=min_kg]").fill("2,5")
+    shot(page, "svoris-kurimas")
+    page.locator("[data-submit]").click()
+    expect(page.locator("#toast")).to_have_text("Turnyras sukurtas")
+    expect(page.locator("dl.list")).to_contain_text("svorių suma")
+    expect(page.locator("dl.list")).to_contain_text("nuo 2,50 kg")
+    tid = page.evaluate("() => location.hash.split('/')[2]")
+    got = demo(f"const t = db.tournaments.find(x => x.id === '{tid}'); return [t.measure, t.min_weight_g, t.format];")
+    assert got == ["weight", 2500, "top_n_sum"], got
+    # Atgal į ilgį – grįžta visi formatai
+    page.goto(base + "#/naujas")
+    page.locator("[data-measure=weight]").click()
+    page.locator("[data-measure=length]").click()
+    expect(page.locator("[data-format=species_points]")).to_be_visible()
+    expect(page.locator("[data-min-box]")).to_be_visible()
+    step("svėrimas: lentelė kg, laimikis svarstyklėmis be ilgio, turnyras pagal svorį")
+
+
 def angler_profile_demo_test(page, base):
     """Žvejo profilis: viršus, turnyrų istorija, statistika, galerija su filtrais, asmeninės žinutės."""
     uid = page.evaluate("() => Object.values(JSON.parse(localStorage.getItem('zt-demo-v1')).profiles).find(p => p.nickname === 'MariųVilkas').id")
@@ -2194,6 +2277,7 @@ def main():
         angler_profile_demo_test(page, base)
         help_demo_test(page, base)
         club_chat_demo_test(page, base)
+        weight_demo_test(page, base)
 
         ctx.close()
 
