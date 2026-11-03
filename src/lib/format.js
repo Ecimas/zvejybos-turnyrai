@@ -11,6 +11,34 @@ export function cm(mm) {
   return (Number.isInteger(v) ? String(v) : v.toFixed(1).replace('.', ',')) + ' cm';
 }
 
+// Svoris gramais -> „12,45 kg“
+export function kg(g) {
+  const v = (Number(g) || 0) / 1000;
+  return `${v.toFixed(2).replace('.', ',')} kg`;
+}
+
+// Laimikio dydis: ilgis, o jei žuvis tik pasverta – svoris.
+export function size(c) {
+  if (!c) return '–';
+  if (c.length_mm) return cm(c.length_mm);
+  if (c.weight_g) return kg(c.weight_g);
+  return '–';
+}
+// Ilgis ir svoris kartu („72 cm · 9,80 kg“) – laimikio puslapiui.
+// Laimikių palyginimas pagal dydį: pirma ilgis, tada svoris (svorio turnyre – atvirkščiai).
+export const bySize = (a, b) => (b.length_mm || 0) - (a.length_mm || 0) || (b.weight_g || 0) - (a.weight_g || 0);
+export const byWeight = (a, b) => (b.weight_g || 0) - (a.weight_g || 0) || (b.length_mm || 0) - (a.length_mm || 0);
+export const bigger = (m, c, cmp = bySize) => (!m || cmp(c, m) < 0 ? c : m);
+
+export function sizeFull(c) {
+  if (!c) return '–';
+  const parts = [c.length_mm ? cm(c.length_mm) : null, c.weight_g ? kg(c.weight_g) : null].filter(Boolean);
+  return parts.length ? parts.join(' · ') : '–';
+}
+export const isWeight = (t) => t?.measure === 'weight';
+// Turnyro minimumas tekstu: „nuo 5 kg“, „nuo 50 cm“ arba '' (be minimumo; savoms taisyklėms – taisyklėse).
+export const minText = (t) => (t?.format === 'custom' ? '' : isWeight(t) ? (t.min_weight_g ? `nuo ${kg(t.min_weight_g).replace(',00 kg', ' kg')}` : '') : t?.min_length_mm ? `nuo ${cm(t.min_length_mm)}` : '');
+
 export function time(d) {
   const x = new Date(d);
   return `${pad(x.getHours())}:${pad(x.getMinutes())}`;
@@ -107,6 +135,7 @@ export const FORMATS = {
 };
 
 export function describeFormat(t) {
+  if (isWeight(t)) return t.format === 'biggest' ? 'Sunkiausia žuvis' : `TOP-${t.top_n} svorių suma`;
   if (t.format === 'biggest') return 'Didžiausia žuvis';
   if (t.format === 'species_points') return t.top_n === 1 ? 'Taškai už rūšį · geriausia žuvis' : `Taškai už rūšį · TOP-${t.top_n}`;
   if (t.format === 'custom') return 'Savos taškų taisyklės';
@@ -121,7 +150,7 @@ export function points(v) {
 }
 
 export const isPoints = (t) => t?.format === 'species_points' || t?.format === 'custom';
-export const scoreText = (t, v) => (isPoints(t) ? points(v) : cm(v));
+export const scoreText = (t, v) => (isPoints(t) ? points(v) : isWeight(t) ? kg(v) : cm(v));
 
 // Rūšies koeficientas: 100 -> „×1“, 150 -> „×1,5“
 export const coefText = (pct) => `×${String((Number(pct) || 100) / 100).replace('.', ',')}`;
@@ -130,6 +159,6 @@ export const COEFS = [50, 100, 150, 200, 250, 300, 400, 500];
 // Kiek trūksta iki aukštesnės vietos. Lygus rezultatas: aukščiau tas, kas jį pasiekė anksčiau.
 export function gapText(above, mine, t = null) {
   const gap = above.score_mm - mine.score_mm;
-  if (gap <= 0) return `Tiek pat kaip #${above.rank} – jis pagavo anksčiau, reikia bent ${isPoints(t) ? '0,1 tšk.' : '1 mm'} daugiau`;
+  if (gap <= 0) return `Tiek pat kaip #${above.rank} – jis pagavo anksčiau, reikia bent ${isPoints(t) ? '0,1 tšk.' : isWeight(t) ? '10 g' : '1 mm'} daugiau`;
   return `Iki #${above.rank} trūksta ${scoreText(t, gap)}`;
 }

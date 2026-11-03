@@ -1,6 +1,6 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { cm, dateTime, count, longDate, plural } from '../lib/format.js';
+import { cm, dateTime, count, longDate, plural, size, bigger, bySize } from '../lib/format.js';
 import { statusChip, thumb, hydratePhotos, empty, loginPrompt } from '../ui.js';
 import { feat } from '../lib/clubs.js';
 import { weatherLine, fetchWeather } from '../lib/weather.js';
@@ -64,8 +64,8 @@ function foldSummary(g) {
   const trips = g.items.length - fish.length;
   const parts = [];
   if (fish.length) parts.push(count(fish.length, 'laimikis', 'laimikiai', 'laimikių'));
-  const big = fish.filter((c) => c.status !== 'rejected').reduce((m, c) => Math.max(m, c.length_mm), 0);
-  if (big) parts.push(`didžiausia ${cm(big)}`);
+  const big = fish.filter((c) => c.status !== 'rejected').reduce((m, c) => bigger(m, c), null);
+  if (big) parts.push(`didžiausia ${size(big)}`);
   if (trips) parts.push(count(trips, 'išvyka', 'išvykos', 'išvykų'));
   return parts.join(' · ');
 }
@@ -98,7 +98,7 @@ export async function diaryView(ctx, params, query) {
   const disputeOf = new Map(disputes.map((d) => [d.catch_id, d]));
   const sp = (id) => state.species.find((s) => s.id === id)?.name_lt ?? '';
   const needsAction = (c) => c.status === 'pending' || (c.status === 'rejected' && !disputeOf.has(c.id));
-  const biggest = catches.filter((c) => c.status !== 'rejected').reduce((m, c) => (!m || c.length_mm > m.length_mm ? c : m), null);
+  const biggest = catches.filter((c) => c.status !== 'rejected').reduce((m, c) => bigger(m, c), null);
   const speciesHere = [...new Set(catches.map((c) => c.species_id))].map((id) => ({ id, name: sp(id) })).filter((x) => x.name)
     .sort((x, y) => x.name.localeCompare(y.name, 'lt'));
 
@@ -110,7 +110,7 @@ export async function diaryView(ctx, params, query) {
 
   const timeline = () => {
     const fish = catches.filter((c) => !filterSp || String(c.species_id) === filterSp);
-    if (sortBy === 'big') return fish.slice().sort((x, y) => y.length_mm - x.length_mm || (y.captured_at_device > x.captured_at_device ? 1 : -1)).map((c) => ({ kind: 'catch', at: c.captured_at_device, c }));
+    if (sortBy === 'big') return fish.slice().sort((x, y) => bySize(x, y) || (y.captured_at_device > x.captured_at_device ? 1 : -1)).map((c) => ({ kind: 'catch', at: c.captured_at_device, c }));
     return [
       ...fish.map((c) => ({ kind: 'catch', at: c.captured_at_device, c })),
       ...(filterSp ? [] : trips.map((b) => ({ kind: 'trip', at: `${b.trip_date}T23:59:59`, b })))
@@ -138,7 +138,7 @@ export async function diaryView(ctx, params, query) {
       <a class="d-row catch-link" href="#/l/${c.id}">
         ${thumb(c.photo_path, 52)}
         <span class="grow stack-1 min0">
-          <span class="d-top"><span class="d-len">${cm(c.length_mm)}</span><span class="d-sp">${sp(c.species_id)}</span>
+          <span class="d-top"><span class="d-len">${size(c)}</span><span class="d-sp">${sp(c.species_id)}</span>
             ${records.has(c.id) ? html`<span class="d-rec">${icon('trophy', 16, 2.4)}<span class="sr-only">Asmeninis rekordas</span></span>` : ''}</span>
           <span class="d-meta ellipsis">${meta}</span>
         </span>
@@ -201,7 +201,7 @@ export async function diaryView(ctx, params, query) {
       </section>
       <div class="alb" data-album>${col.items.map(({ species: sp1, best }) => (best
         ? html`<a class="alb-t" href="#/l/${best.id}" data-album-sp="${sp1.id}"><span class="alb-ic" style="background:${colorFor(sp1.id)}33;color:${colorFor(sp1.id)}">${icon('fish', 24)}</span>
-            <b>${sp1.name_lt}</b><small>${cm(best.length_mm)} · ${shortDate(best.captured_at_device)}</small></a>`
+            <b>${sp1.name_lt}</b><small>${size(best)} · ${shortDate(best.captured_at_device)}</small></a>`
         : html`<div class="alb-t alb-lk" data-album-sp="${sp1.id}"><span class="alb-ic">${icon('lock', 20)}</span><b>${sp1.name_lt}</b><small>dar nepagauta</small></div>`))}</div>
       <section class="card stack-2"><h2 class="h2">Ženkleliai</h2>
         <div class="row gap-8 wrap" data-diary-badges>${badges.map((b) => html`<span class="chip ${b.earned ? 'chip-ok' : 'chip-off'}" title="${b.desc}">${b.earned ? icon('check', 14, 2.6) : ''}${b.name}</span>`)}</div>
@@ -223,7 +223,7 @@ export async function diaryView(ctx, params, query) {
         <p class="small muted">Kai užregistruosi bent 3 laimikius, čia matysi, kada tau geriausiai kimba, kokie masalai veikia ir kokiu oru sekasi.</p></section>`}
       <section class="card stack-2" data-insight="baits"><h2 class="h2">Geriausi masalai</h2>
         ${baits.length ? baits.map((b) => html`<div class="row-between gap-8"><span class="min0"><b>${b.bait}</b> <span class="small muted">· ${b.species.map((id) => sp(id).toLowerCase()).join(', ')}</span></span>
-          <span class="small nowrap"><b>${b.count}</b> ${plural(b.count, 'žuvis', 'žuvys', 'žuvų')} · vid. ${cm(b.avgMm)}</span></div>`)
+          <span class="small nowrap"><b>${b.count}</b> ${plural(b.count, 'žuvis', 'žuvys', 'žuvų')} ${b.avgMm ? ` · vid. ${cm(b.avgMm)}` : ''}</span></div>`)
           : html`<p class="small muted">Prie laimikio įrašyk masalą (atidaryk laimikį → „Masalas ir pastabos“) – čia matysi, kas veikia geriausiai.</p>`}
       </section>
       <section class="card stack-2" data-insight="weather"><h2 class="h2">Orai per laimikius</h2>
@@ -319,7 +319,7 @@ export async function diaryView(ctx, params, query) {
       ${catches.length || queued.length || trips.length ? html`<section class="d-stats" aria-label="${season.year} sezonas">
         <div class="d-stat" data-stat="count"><b>${season.count}</b><span>${plural(season.count, 'laimikis', 'laimikiai', 'laimikių')} ${season.year}</span></div>
         <div class="d-stat" data-stat="days"><b>${season.days}</b><span>${plural(season.days, 'žvejybos diena', 'žvejybos dienos', 'žvejybos dienų')}</span></div>
-        <div class="d-stat" data-stat="biggest"><b class="accent">${season.biggest ? cm(season.biggest.length_mm) : biggest ? cm(biggest.length_mm) : '–'}</b><span>didžiausia${season.biggest ? ` · ${sp(season.biggest.species_id).toLowerCase()}` : biggest ? ' (visų laikų)' : ''}</span></div>
+        <div class="d-stat" data-stat="biggest"><b class="accent">${season.biggest ? size(season.biggest) : biggest ? size(biggest) : '–'}</b><span>didžiausia${season.biggest ? ` · ${sp(season.biggest.species_id).toLowerCase()}` : biggest ? ' (visų laikų)' : ''}</span></div>
       </section>` : ''}
 
       ${queued.length ? html`<section class="stack">

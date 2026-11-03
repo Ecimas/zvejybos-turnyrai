@@ -22,6 +22,12 @@ const FORMAT_HINT = {
   duels: 'Atkrintamosios poros: rate laimi daugiau pagavęs. Registracija tik iki starto; 8 dalyviai – 3 ratai, laikas padalinamas po lygiai.',
   custom: 'Taškai skaičiuojami pagal tavo taisykles: rūšys ir jų minimumai, premijos, kas sumuojama. Rūšis ir min. ilgį nustato taisyklės.'
 };
+// Turnyras pagal svorį (0040): tik „Sunkiausia žuvis“ ir „Kelių svorių suma“.
+const W_HINT = {
+  biggest: 'Laimi sunkiausią žuvį pagavęs žvejys. Žuvis sveriama ir paleidžiama – svarstyklių rodmuo turi matytis nuotraukoje.',
+  top_n_sum: 'Sumuojami kelių sunkiausių žuvų svoriai. Svarstyklių rodmuo turi matytis nuotraukoje.'
+};
+const W_LABEL = { biggest: 'Sunkiausia žuvis', top_n_sum: 'Kelių svorių suma' };
 const TOPN_LABEL = {
   top_n_sum: 'Kiek ilgiausių žuvų sumuoti',
   species_points: 'Kiek geriausių žuvų įskaityti',
@@ -29,7 +35,9 @@ const TOPN_LABEL = {
 };
 
 const FORMAT_LT = { biggest: 'Didžiausia žuvis', top_n_sum: 'Kelių ilgių suma', species_points: 'Taškai už rūšį', duels: 'Dvikovos', custom: 'Savos taisyklės' };
-const fmtText = (f, n) => `${FORMAT_LT[f] || f}${['top_n_sum', 'species_points', 'duels'].includes(f) ? ` (${n})` : ''}`;
+const fmtText = (f, n, m) => `${(m === 'weight' && W_LABEL[f]) || FORMAT_LT[f] || f}${['top_n_sum', 'species_points', 'duels'].includes(f) ? ` (${n})` : ''}`;
+const MEASURE_LT = { length: 'Ilgis (liniuotė)', weight: 'Svoris (svarstyklės)' };
+const kgText = (g) => `${String(Math.round(g / 10) / 100).replace('.', ',')} kg`;
 const inviteLink = (code) => `${location.origin}${location.pathname}#/kvietimas/${code}`;
 
 // Naujas turnyras (#/naujas) ir turnyro nustatymai (#/t/:id/redaguoti, 0035):
@@ -94,6 +102,7 @@ export async function createView(ctx, [editId] = [], query) {
   const myLeagues = backend.myLeagues ? await backend.myLeagues().catch(() => []) : [];
   let divisions = (t?.divisions || []).map((d) => ({ id: d.id, name: d.name }));
   let format = t?.format || 'biggest';
+  let measure = t?.measure === 'weight' ? 'weight' : 'length';
   // Savos taškų taisyklės (0033): tik organizatoriams. Turnyras saugo taisyklių kopiją.
   const canCustom = canCustomRules(state) || t?.format === 'custom';
   let myRules = canCustom && backend.myScoringRules ? await backend.myScoringRules().catch(() => []) : [];
@@ -119,17 +128,26 @@ export async function createView(ctx, [editId] = [], query) {
 
   const titleF = html`<label class="field"><span class="small muted strong">Pavadinimas</span>
           <input name="title" required minlength="3" maxlength="80" placeholder="pvz. Rudens lydekų taurė" value="${t?.title || ''}"></label>`;
+  const W = measure === 'weight';
   const formatF = html`<fieldset class="field" ${dis}>
+          <legend class="small muted strong">Kaip matuojama</legend>
+          <div class="seg" data-measure-seg>
+            <button type="button" data-measure="length" aria-pressed="${!W}">${icon('ruler', 16, 2.4)}Ilgis</button>
+            <button type="button" data-measure="weight" aria-pressed="${W}">${icon('scale', 16, 2.4)}Svoris</button>
+          </div>
+          <p class="small muted" data-measure-hint>${W ? 'Žuvys sveriamos svarstyklėmis – liniuotės nereikia. Laimikiai be svorio neįskaitomi.' : 'Žuvys matuojamos prie liniuotės.'}</p>
+        </fieldset>
+        <fieldset class="field" ${dis}>
           <legend class="small muted strong">Formatas</legend>
           <div class="seg seg-grid">
-            <button type="button" data-format="biggest" aria-pressed="${format === 'biggest'}">Didžiausia žuvis</button>
-            <button type="button" data-format="top_n_sum" aria-pressed="${format === 'top_n_sum'}">Kelių ilgių suma</button>
-            <button type="button" data-format="species_points" aria-pressed="${format === 'species_points'}">Taškai už rūšį</button>
-            ${feat(state, 'duels') || t?.format === 'duels' ? html`<button type="button" data-format="duels" aria-pressed="${format === 'duels'}">Dvikovos</button>` : ''}
-            ${canCustom ? html`<button type="button" data-format="custom" aria-pressed="${format === 'custom'}">Savos taisyklės</button>` : ''}
+            <button type="button" data-format="biggest" aria-pressed="${format === 'biggest'}">${W ? W_LABEL.biggest : 'Didžiausia žuvis'}</button>
+            <button type="button" data-format="top_n_sum" aria-pressed="${format === 'top_n_sum'}">${W ? W_LABEL.top_n_sum : 'Kelių ilgių suma'}</button>
+            <button type="button" data-format="species_points" data-len-only aria-pressed="${format === 'species_points'}" ${W ? 'hidden' : ''}>Taškai už rūšį</button>
+            ${feat(state, 'duels') || t?.format === 'duels' ? html`<button type="button" data-format="duels" data-len-only aria-pressed="${format === 'duels'}" ${W ? 'hidden' : ''}>Dvikovos</button>` : ''}
+            ${canCustom ? html`<button type="button" data-format="custom" data-len-only aria-pressed="${format === 'custom'}" ${W ? 'hidden' : ''}>Savos taisyklės</button>` : ''}
           </div>
-          <p class="small muted" data-format-hint>${FORMAT_HINT[format]}</p>
-          <label class="field" data-topn ${format === 'biggest' || format === 'custom' ? 'hidden' : ''}><span class="small muted" data-topn-label>${TOPN_LABEL[format] || ''}</span>
+          <p class="small muted" data-format-hint>${(W && W_HINT[format]) || FORMAT_HINT[format]}</p>
+          <label class="field" data-topn ${format === 'biggest' || format === 'custom' ? 'hidden' : ''}><span class="small muted" data-topn-label>${W && format === 'top_n_sum' ? 'Kiek sunkiausių žuvų sumuoti' : TOPN_LABEL[format] || ''}</span>
             <select name="top_n">${[1, 2, 3, 4, 5].map((n) => html`<option value="${n}" ${n === (t?.top_n || 3) ? 'selected' : ''}>${n}</option>`)}</select></label>
         </fieldset>`;
   const customF = canCustom ? html`<fieldset class="field stack-2" data-custom ${format === 'custom' ? '' : 'hidden'} ${dis}>
@@ -149,8 +167,10 @@ export async function createView(ctx, [editId] = [], query) {
           <label class="field"><span class="small muted strong">Pabaiga</span>
             <input type="datetime-local" name="ends_at" required value="${local(end)}"></label>
         </div>`;
-  const minF = html`<label class="field" data-min-box ${format === 'custom' ? 'hidden' : ''}><span class="small muted strong">Minimalus ilgis, cm (nebūtina)</span>
-          <input type="number" name="min_cm" min="0" max="200" inputmode="numeric" placeholder="0" value="${t?.min_length_mm ? t.min_length_mm / 10 : ''}" ${dis}></label>`;
+  const minF = html`<label class="field" data-min-box ${format === 'custom' || W ? 'hidden' : ''}><span class="small muted strong">Minimalus ilgis, cm (nebūtina)</span>
+          <input type="number" name="min_cm" min="0" max="200" inputmode="numeric" placeholder="0" value="${t?.min_length_mm ? t.min_length_mm / 10 : ''}" ${dis}></label>
+        <label class="field" data-minw-box ${W ? '' : 'hidden'}><span class="small muted strong">Minimalus svoris, kg (nebūtina)</span>
+          <input type="text" name="min_kg" inputmode="decimal" maxlength="6" autocomplete="off" placeholder="pvz. 5" value="${t?.min_weight_g ? String(t.min_weight_g / 1000).replace('.', ',') : ''}" ${dis}></label>`;
   const visF = html`<fieldset class="field">
           <legend class="small muted strong">Kas gali dalyvauti</legend>
           <div class="seg">
@@ -293,7 +313,7 @@ export async function createView(ctx, [editId] = [], query) {
           <div class="set-list">
             ${row('format', 'Formatas', html`${formatF}${customF}`)}
             ${row('species', 'Rūšys', speciesF)}
-            ${row('min', 'Min. ilgis', minF)}
+            ${row('min', W ? 'Min. svoris' : 'Min. ilgis', minF)}
             ${row('div', 'Divizionai', divF)}
             ${leagueSelect ? row('league', 'Sezono lyga', leagueF) : ''}
             ${row('team', 'Komandinė įskaita', teamF)}
@@ -419,11 +439,34 @@ export async function createView(ctx, [editId] = [], query) {
         const custom = root.querySelector('[data-custom]');
         if (custom) custom.hidden = format !== 'custom';
         root.querySelector('[data-species-box]').hidden = format === 'custom';
-        root.querySelector('[data-min-box]').hidden = format === 'custom';
-        root.querySelector('[data-topn-label]').textContent = TOPN_LABEL[format] || '';
-        root.querySelector('[data-format-hint]').textContent = FORMAT_HINT[format];
+        showMeasure();
         root.querySelectorAll('[data-not-duels]').forEach((el) => { el.hidden = format === 'duels'; });
         if (format === 'top_n_sum' && form.top_n.value === '1') form.top_n.value = '3';
+        renderCoefs();
+      }));
+      // Matavimas: ilgis ar svoris. Svoriui – tik „Sunkiausia“ ir „Kelių svorių suma“, min. svoris vietoj min. ilgio.
+      function showMeasure() {
+        const w = measure === 'weight';
+        root.querySelectorAll('[data-measure]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.measure === measure)));
+        root.querySelector('[data-measure-hint]').textContent = w ? 'Žuvys sveriamos svarstyklėmis – liniuotės nereikia. Laimikiai be svorio neįskaitomi.' : 'Žuvys matuojamos prie liniuotės.';
+        root.querySelectorAll('[data-len-only]').forEach((x) => { x.hidden = w; });
+        root.querySelector('[data-format="biggest"]').textContent = w ? W_LABEL.biggest : FORMAT_LT.biggest;
+        root.querySelector('[data-format="top_n_sum"]').textContent = w ? W_LABEL.top_n_sum : FORMAT_LT.top_n_sum;
+        root.querySelector('[data-min-box]').hidden = format === 'custom' || w;
+        root.querySelector('[data-minw-box]').hidden = !w;
+        root.querySelector('[data-topn-label]').textContent = w && format === 'top_n_sum' ? 'Kiek sunkiausių žuvų sumuoti' : TOPN_LABEL[format] || '';
+        root.querySelector('[data-format-hint]').textContent = (w && W_HINT[format]) || FORMAT_HINT[format];
+        const minLabel = root.querySelector('[data-set-row="min"] summary .strong');
+        if (minLabel) minLabel.textContent = w ? 'Min. svoris' : 'Min. ilgis';
+      }
+      root.querySelectorAll('[data-measure]').forEach((b) => b.addEventListener('click', () => {
+        if (b.closest('fieldset')?.disabled) return;
+        measure = b.dataset.measure;
+        if (measure === 'weight' && format !== 'biggest' && format !== 'top_n_sum') {
+          root.querySelector('[data-format="biggest"]').click();
+          return;
+        }
+        showMeasure();
         renderCoefs();
       }));
       root.querySelectorAll('[data-vis]').forEach((b) => b.addEventListener('click', () => {
@@ -625,8 +668,10 @@ export async function createView(ctx, [editId] = [], query) {
         const sp = (ids) => (ids.length ? ids.map((id) => state.species.find((x) => x.id === id)?.name_lt ?? id).join(', ') : 'Visos');
         const eq = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
         if (data.format !== t.format || (data.format !== 'biggest' && data.format !== 'custom' && Number(data.top_n) !== Number(t.top_n))) {
-          out.push(['Formatas', fmtText(t.format, t.top_n), fmtText(data.format, data.top_n)]);
+          out.push(['Formatas', fmtText(t.format, t.top_n, t.measure), fmtText(data.format, data.top_n, data.measure)]);
         }
+        if ((data.measure || 'length') !== (t.measure || 'length')) out.push(['Matavimas', MEASURE_LT[t.measure || 'length'], MEASURE_LT[data.measure || 'length']]);
+        if (Number(data.min_weight_g || 0) !== Number(t.min_weight_g || 0)) out.push(['Min. svoris', t.min_weight_g ? kgText(t.min_weight_g) : 'nėra', data.min_weight_g ? kgText(data.min_weight_g) : 'nėra']);
         if (data.format === 'custom' && t.format === 'custom' && !eq(data.scoring, t.scoring)) out.push(['Taškų taisyklės', 'ankstesnės', chosenRule?.name || 'naujos']);
         const before = (t.species_ids || []).slice().sort((a, b) => a - b);
         const after = (data.species_ids || []).slice().sort((a, b) => a - b);
@@ -710,10 +755,11 @@ export async function createView(ctx, [editId] = [], query) {
         // Santraukos suskleistose eilutėse
         const setSum = (key, text) => { const el = root.querySelector(`[data-sum="${key}"]`); if (el) el.textContent = text; };
         const refresh = () => {
-          setSum('format', `${fmtText(format, form.top_n.value)}${format === 'custom' && chosenRule ? ` · ${chosenRule.name}` : ''}`);
+          setSum('format', `${measure === 'weight' ? 'Svoris · ' : ''}${fmtText(format, form.top_n.value, measure)}${format === 'custom' && chosenRule ? ` · ${chosenRule.name}` : ''}`);
           setSum('species', format === 'custom' ? 'Pagal taisykles' : picked.size ? popular.filter((x) => picked.has(x.id)).map((x) => x.name_lt).join(', ') : 'Visos');
           const m = Number(form.min_cm.value || 0);
-          setSum('min', m > 0 ? `${String(m).replace('.', ',')} cm` : 'Nėra');
+          const mw = Number(form.min_kg.value.replace(',', '.') || 0);
+          setSum('min', measure === 'weight' ? (mw > 0 ? `${String(mw).replace('.', ',')} kg` : 'Nėra') : m > 0 ? `${String(m).replace('.', ',')} cm` : 'Nėra');
           const dn = divisions.map((d) => d.name.trim()).filter(Boolean);
           setSum('div', dn.length ? dn.join(', ') : 'Nėra');
           if (form.league_id) setSum('league', form.league_id.selectedOptions[0]?.textContent.trim() || 'Be lygos');
@@ -885,7 +931,8 @@ export async function createView(ctx, [editId] = [], query) {
         const spClean = spApi ? spApi.collect() : [];
         if (!spClean) return;
         const endsAt = new Date(form.ends_at.value);
-        const minCm = Number(form.min_cm.value || 0);
+        const minCm = measure === 'weight' ? 0 : Number(form.min_cm.value || 0);
+        const minKg = measure === 'weight' ? Number(form.min_kg.value.replace(',', '.').trim() || 0) : 0;
         const fund = fundCents();
         if (title.length < 3) return fail('Pavadinimas per trumpas.');
         if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) return fail('Nurodyk pradžią ir pabaigą.');
@@ -901,6 +948,8 @@ export async function createView(ctx, [editId] = [], query) {
         }
         if (endsAt <= startsAt) return fail('Pabaiga turi būti vėliau nei pradžia.');
         if (!Number.isFinite(minCm) || minCm < 0 || minCm > 200) return fail('Minimalus ilgis turi būti 0–200 cm.');
+        if (!Number.isFinite(minKg) || minKg < 0 || minKg > 100) return fail('Minimalus svoris turi būti 0–100 kg.');
+        if (measure === 'weight' && format !== 'biggest' && format !== 'top_n_sum') return fail('Turnyrui pagal svorį pasirink „Sunkiausia žuvis“ arba „Kelių svorių suma“.');
         if (!Number.isFinite(fund)) return fail('Prizinis fondas: įrašyk sumą eurais, pvz. 500 arba 250,50.');
         if (fund > 10000000) return fail('Prizinis fondas negali viršyti 100 000 €.');
         if (fund > 0) {
@@ -930,6 +979,8 @@ export async function createView(ctx, [editId] = [], query) {
           format,
           top_n: format === 'biggest' ? 3 : format === 'custom' ? 1 : format === 'top_n_sum' ? Math.max(2, Number(form.top_n.value)) : Number(form.top_n.value),
           min_length_mm: format === 'custom' ? 0 : Math.round(minCm * 10),
+          // Matavimas (0040): siunčiama tik kai svoris arba turnyras jau turi šį stulpelį – kad veiktų ir senesnė DB.
+          ...(measure === 'weight' || (t && 'measure' in t) ? { measure, min_weight_g: Math.round(minKg * 1000) } : {}),
           // Tik savoms taisyklėms (kitaip serveris be 0033 nežinotų šių stulpelių).
           ...(format === 'custom' ? { scoring: chosenRule.rules, scoring_rule_id: chosenRule.id || null } : {}),
           // Nepakeistas laikas – tikslus senasis (forma rodo tik minutes, todėl kitaip „pasikeistų“ sekundės).

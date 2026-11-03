@@ -1,7 +1,7 @@
 // Klubo bendras pokalbis (#/klubas/:id/pokalbis, 0037): rašo visi nariai; valdytojai prisega, trina, nutildo.
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { time, shortDate, cm, count, dateTime } from '../lib/format.js';
+import { time, shortDate, cm, count, dateTime, size } from '../lib/format.js';
 import { backButton, loginPrompt, notFound, avatar } from '../ui.js';
 import { feat } from '../lib/clubs.js';
 
@@ -28,7 +28,7 @@ export async function clubChatView(ctx, [id]) {
   const on = feat(state, 'club_chat');
   const spName = (sid) => state.species.find((s) => s.id === sid)?.name_lt ?? 'Žuvis';
 
-  const catchCard = (c) => html`<span class="cc-card">${icon('fish', 22)}<span class="stack-1 min0"><b>${spName(c.species_id)} ${cm(c.length_mm)}</b>
+  const catchCard = (c) => html`<span class="cc-card">${icon('fish', 22)}<span class="stack-1 min0"><b>${spName(c.species_id)} ${size(c)}</b>
     <span class="small muted">${c.weight_g ? `${(c.weight_g / 1000).toLocaleString('lt-LT')} kg · ` : ''}${dateTime(c.captured_at)}${c.status === 'approved' ? ' · patvirtintas' : ''}</span></span></span>`;
   const msgHtml = () => {
     let lastDay = '';
@@ -70,7 +70,7 @@ export async function clubChatView(ctx, [id]) {
   const pinMsg = () => (chat.pin_id ? chat.messages.find((m) => m.id === chat.pin_id && !m.deleted) : null);
   const pinBar = () => {
     const p = pinMsg();
-    return p ? html`<button type="button" class="cm-pin" data-cm-goto="${p.id}">${icon('megaphone', 18)}<span class="grow ellipsis"><b>Prisegta:</b> ${p.body || `${spName(p.catch?.species_id)} ${cm(p.catch?.length_mm || 0)}`}</span></button>` : '';
+    return p ? html`<button type="button" class="cm-pin" data-cm-goto="${p.id}">${icon('megaphone', 18)}<span class="grow ellipsis"><b>Prisegta:</b> ${p.body || `${spName(p.catch?.species_id)} ${size(p.catch)}`}</span></button>` : '';
   };
   const muted = chat.muted_until && chat.muted_until > new Date().toISOString();
   const foot = !on ? html`<p class="small muted center" data-chat-off>Klubų pokalbiai šiuo metu išjungti – senas žinutes matai, rašyti negalima.</p>`
@@ -170,7 +170,7 @@ export async function clubChatView(ctx, [id]) {
             <span class="grab" aria-hidden="true"></span><h2 class="h2">Pasidalinti laimikiu</h2>
             <p class="small muted">Klubas matys rūšį, ilgį ir datą. Vieta nerodoma.</p>
             ${mine.length ? html`<ul class="plain ibx">${mine.map((c) => html`<li><button type="button" class="cc-pick" data-pick="${c.id}">${icon('fish', 20)}
-              <span class="grow stack-1"><b>${spName(c.species_id)} ${cm(c.length_mm)}</b><span class="small muted">${dateTime(c.captured_at_device)}</span></span>${icon('chevron', 16)}</button></li>`)}</ul>`
+              <span class="grow stack-1"><b>${spName(c.species_id)} ${size(c)}</b><span class="small muted">${dateTime(c.captured_at_device)}</span></span>${icon('chevron', 16)}</button></li>`)}</ul>`
               : html`<p class="muted">Laimikių dar nėra.</p>`}
             <button type="button" class="btn" data-close>Atšaukti</button></div>`);
           const close = () => { box.remove(); document.removeEventListener('keydown', onKey); };

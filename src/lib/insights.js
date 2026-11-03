@@ -1,5 +1,6 @@
 // Dienoraščio įžvalgos, kolekcija, tikslai ir kibimo prognozė. Viskas skaičiuojama telefone iš savų laimikių.
 import { DAYPARTS, daypartOf } from './map.js';
+import { bigger, bySize } from './format.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 export const dayKey = (d) => { const x = new Date(d); return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`; };
@@ -16,7 +17,7 @@ export function seasonStats(catches, trips = [], now = new Date()) {
   const fish = live(catches).filter((c) => new Date(c.captured_at_device).getFullYear() === year);
   const days = new Set([...fish.map((c) => dayKey(c.captured_at_device)),
     ...trips.filter((b) => new Date(tripTime(b)).getFullYear() === year).map((b) => b.trip_date)]);
-  const biggest = fish.reduce((m, c) => (!m || c.length_mm > m.length_mm ? c : m), null);
+  const biggest = fish.reduce((m, c) => bigger(m, c), null);
   return { year, count: fish.length, days: days.size, biggest };
 }
 
@@ -26,10 +27,10 @@ export function speciesCollection(catches, species) {
   const best = new Map();
   for (const c of live(catches)) {
     const b = best.get(c.species_id);
-    if (!b || c.length_mm > b.length_mm) best.set(c.species_id, c);
+    if (bigger(b, c) === c) best.set(c.species_id, c);
   }
   const caught = species.filter((s) => best.has(s.id)).map((s) => ({ species: s, best: best.get(s.id) }))
-    .sort((a, b) => b.best.length_mm - a.best.length_mm);
+    .sort((a, b) => bySize(a.best, b.best));
   const locked = species.filter((s) => !best.has(s.id)).map((s) => ({ species: s, best: null }));
   return { caught: caught.length, total: species.length, items: [...caught, ...locked] };
 }
@@ -51,13 +52,13 @@ export function baitStats(catches, limit = 5) {
     const raw = String(c.bait || '').trim();
     if (!raw) continue;
     const key = raw.toLocaleLowerCase('lt');
-    const x = by.get(key) || { bait: raw.charAt(0).toLocaleUpperCase('lt') + raw.slice(1), count: 0, sum: 0, species: new Set() };
+    const x = by.get(key) || { bait: raw.charAt(0).toLocaleUpperCase('lt') + raw.slice(1), count: 0, sum: 0, n: 0, species: new Set() };
     x.count += 1;
-    x.sum += c.length_mm;
+    if (c.length_mm) { x.sum += c.length_mm; x.n += 1; }
     x.species.add(c.species_id);
     by.set(key, x);
   }
-  return [...by.values()].map((x) => ({ bait: x.bait, count: x.count, avgMm: Math.round(x.sum / x.count), species: [...x.species] }))
+  return [...by.values()].map((x) => ({ bait: x.bait, count: x.count, avgMm: x.n ? Math.round(x.sum / x.n) : null, species: [...x.species] }))
     .sort((a, b) => b.count - a.count || b.avgMm - a.avgMm).slice(0, limit);
 }
 

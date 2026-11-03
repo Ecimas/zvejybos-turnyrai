@@ -1,7 +1,7 @@
 // Klubai (#/klubai, #/klubas/:id, #/klubu-lyga, #/klubas/:id/zemelapis): veikla, laimikiai, rekordai, nariai.
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { cm, shortDate, count, dateTime } from '../lib/format.js';
+import { cm, shortDate, count, dateTime, size, bySize } from '../lib/format.js';
 import { backButton, empty, thumb, hydratePhotos, avatar, loginPrompt, notFound } from '../ui.js';
 import { can } from '../lib/roles.js';
 import { feat, REACTIONS, MONTHS_NOM, roleLt, clubLogo } from '../lib/clubs.js';
@@ -217,8 +217,8 @@ export async function clubView(ctx, [id], query) {
       <span class="grow stack-1"><span class="strong">Klubo žemėlapis</span><span class="small muted">Laimikiai, kuriais nariai pasidalino (~1 km tikslumu)</span></span>${icon('chevron', 18)}</a>` : ''}
     ${catches.length ? html`<div class="stack" data-feed>${catches.map((c) => html`<article class="cl-card" data-feed-item="${c.id}">
       <div class="row gap-8">${avatar(c.nickname)}<a class="grow stack-1 link-plain" href="#/l/${c.id}"><span class="strong">${c.nickname}</span>
-        <span class="small muted">${ago(c.captured_at_device)} · ${spName(state, c.species_id)}</span></a><span class="cl-len">${cm(c.length_mm)}</span></div>
-      <a class="cl-photo" href="#/l/${c.id}" aria-label="${spName(state, c.species_id)} ${cm(c.length_mm)}">${thumb(c.photo_path, 160)}</a>
+        <span class="small muted">${ago(c.captured_at_device)} · ${spName(state, c.species_id)}</span></a><span class="cl-len">${size(c)}</span></div>
+      <a class="cl-photo" href="#/l/${c.id}" aria-label="${spName(state, c.species_id)} ${size(c)}">${thumb(c.photo_path, 160)}</a>
       ${reactBar(c)}
     </article>`)}</div>` : html`<p class="small muted">Patvirtintų narių laimikių dar nėra.</p>`}
     ${f('club_tips') ? html`<section class="stack-2" data-tips><h2 class="h2">Klubo patarimai</h2>
@@ -534,18 +534,18 @@ export async function clubMapView(ctx, [id]) {
       const box = root.querySelector('[data-map]');
       if (!box) return undefined;
       const { mapEngine } = await import('./map.js');
-      const pts = points.map((p) => ({ id: p.catch_id, lat: p.lat, lng: p.lng, species_id: p.species_id, length_mm: p.length_mm, captured_at_device: p.captured_at, nickname: p.nickname }));
+      const pts = points.map((p) => ({ id: p.catch_id, lat: p.lat, lng: p.lng, species_id: p.species_id, length_mm: p.length_mm, weight_g: p.weight_g ?? null, captured_at_device: p.captured_at, nickname: p.nickname }));
       const sheet = root.querySelector('[data-sheet]');
       let engine;
       const onPick = (cid) => {
         const c = pts.find((x) => x.id === cid);
         if (!c) return;
-        const near = pts.filter((x) => Math.abs(x.lat - c.lat) < 1e-6 && Math.abs(x.lng - c.lng) < 1e-6).sort((a, b) => b.length_mm - a.length_mm);
+        const near = pts.filter((x) => Math.abs(x.lat - c.lat) < 1e-6 && Math.abs(x.lng - c.lng) < 1e-6).sort(bySize);
         sheet.hidden = false;
         sheet.innerHTML = String(html`<div class="mp-handle" aria-hidden="true"></div>
           <div class="row-between"><span class="small muted strong">Šioje apylinkėje ${count(near.length, 'laimikis', 'laimikiai', 'laimikių')}</span>
           <button type="button" class="mp-mini" data-sheet-close aria-label="Uždaryti">${icon('x', 16, 2.4)}</button></div>
-          <ul class="plain mp-spots">${near.slice(0, 20).map((x) => html`<li><a class="mp-spot link-plain" href="#/l/${x.id}"><span class="grow stack-1"><span class="strong">${spName(state, x.species_id)} ${cm(x.length_mm)}</span>
+          <ul class="plain mp-spots">${near.slice(0, 20).map((x) => html`<li><a class="mp-spot link-plain" href="#/l/${x.id}"><span class="grow stack-1"><span class="strong">${spName(state, x.species_id)} ${size(x)}</span>
             <span class="small muted">${x.nickname} · ${shortDate(x.captured_at_device)}</span></span>${icon('chevron', 18)}</a></li>`)}</ul>`);
         sheet.querySelector('[data-sheet-close]').addEventListener('click', () => { sheet.hidden = true; engine?.highlight(null); });
         engine?.highlight(c.lat, c.lng);

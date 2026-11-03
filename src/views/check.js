@@ -2,7 +2,7 @@
 // moderatorius palygina ją su originalu (#/moderavimas/patikros).
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { cm, dateTime, duration } from '../lib/format.js';
+import { cm, dateTime, duration, size } from '../lib/format.js';
 import { startCamera, stopCamera, captureFrame, sha256Hex, vibrate } from '../lib/device.js';
 import { backButton, empty, thumb, hydratePhotos, zoomPhoto, notFound, loginPrompt } from '../ui.js';
 import { can } from '../lib/roles.js';
@@ -62,7 +62,7 @@ export async function checkView(ctx, [id]) {
         <h1 class="${open ? 'cap-title' : 'muted strong'}" tabindex="-1">Papildoma patikra</h1><span></span></header>
       <section class="check-task stack-2">
         <p class="strong">${k.instruction}</p>
-        <p class="small">${sp}${k.catch ? ` · ${cm(k.catch.length_mm)} · ${dateTime(k.catch.captured_at_device)}` : ''}</p>
+        <p class="small">${sp}${k.catch ? ` · ${size(k.catch)} · ${dateTime(k.catch.captured_at_device)}` : ''}</p>
         ${open ? html`<p class="small bad strong" data-left>${timeLeft(k.due_at)}</p>` : html`<p class="small" data-check-status>${STATUS_LT[k.status] || ''}${k.note ? ` (${k.note})` : ''}</p>`}
       </section>
       ${open ? html`
@@ -155,7 +155,7 @@ export async function checksModerationView(ctx, tabs) {
       <section class="stack">
         <h2 class="h2">Laukia sprendimo (${answered.length})</h2>
         ${answered.length ? answered.map((k) => html`<article class="card stack" data-check="${k.id}">
-          <p class="small"><a class="link strong" href="#/zvejys/${k.user_id}">${k.nickname}</a> · ${sp(k.catch?.species_id)} ${k.catch ? cm(k.catch.length_mm) : ''}</p>
+          <p class="small"><a class="link strong" href="#/zvejys/${k.user_id}">${k.nickname}</a> · ${sp(k.catch?.species_id)} ${k.catch ? size(k.catch) : ''}</p>
           <p class="strong">Užduotis: ${k.instruction}</p>
           <div class="grid-2 check-pair">
             <figure><button class="thumb-btn" data-zoom="orig" aria-label="Originali nuotrauka per visą ekraną">${thumb(k.catch?.photo_path, 160)}</button><figcaption class="small muted">Originali</figcaption></figure>
@@ -171,7 +171,7 @@ export async function checksModerationView(ctx, tabs) {
       <section class="stack-2">
         <h2 class="h2">Laukia žvejo (${waiting.length})</h2>
         ${waiting.length ? html`<div class="list">${waiting.map((k) => html`<a class="list-row" href="#/l/${k.catch_id}">
-          <span class="grow stack-1"><span class="strong">${k.nickname} · ${sp(k.catch?.species_id)} ${k.catch ? cm(k.catch.length_mm) : ''}</span>
+          <span class="grow stack-1"><span class="strong">${k.nickname} · ${sp(k.catch?.species_id)} ${k.catch ? size(k.catch) : ''}</span>
           <span class="small muted">${k.instruction} · ${timeLeft(k.due_at)}</span></span>${icon('chevron', 18)}</a>`)}</div>`
           : html`<p class="small muted">Nėra. Neatsakius laiku, laimikis atmetamas automatiškai.</p>`}
       </section>

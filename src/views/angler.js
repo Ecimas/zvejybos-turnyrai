@@ -2,7 +2,7 @@
 // Viršus su sekimu ir žinute, turnyrų istorija su vietomis, statistika, ženkliukai, rekordai ir galerija.
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { cm, count, phase, shortDate, scoreText } from '../lib/format.js';
+import { cm, count, phase, shortDate, scoreText, size } from '../lib/format.js';
 import { fitReason } from '../lib/scoring.js';
 import { payouts } from '../lib/prizes.js';
 import { thumb, hydratePhotos, empty, avatar, notFound } from '../ui.js';
@@ -95,7 +95,7 @@ function statGrid4(s, tournaments) {
     <div class="stat-box center"><span class="stat-value">${s.ok.length}</span><span class="stat-label">Laimikiai</span></div>
     <div class="stat-box center"><span class="stat-value">${tournaments}</span><span class="stat-label">Turnyrai</span></div>
     <div class="stat-box center"><span class="stat-value">${s.speciesCount}</span><span class="stat-label">Rūšys</span></div>
-    <div class="stat-box center"><span class="stat-value">${big ? cm(big.length_mm) : '–'}</span><span class="stat-label">${big ? `Didžiausia · ${big.name}` : 'Didžiausia'}</span></div>
+    <div class="stat-box center"><span class="stat-value">${big ? size(big) : '–'}</span><span class="stat-label">${big ? `Didžiausia · ${big.name}` : 'Didžiausia'}</span></div>
   </div>`;
 }
 
@@ -145,9 +145,9 @@ function gallerySection(s, state, history) {
     </div>` : ''}
     <div class="gallery" data-ap-grid>${items.map((c) => {
       const tour = tourOf(c);
-      return html`<a href="#/l/${c.id}" data-gi data-sp-id="${c.species_id}" data-len="${c.length_mm}" data-at="${c.captured_at_device}"><figure>
+      return html`<a href="#/l/${c.id}" data-gi data-sp-id="${c.species_id}" data-len="${c.length_mm || 0}" data-w="${c.weight_g || 0}" data-at="${c.captured_at_device}"><figure>
         <span class="ap-ph">${thumb(c.photo_path, 104)}${tour ? html`<span class="ap-tag" title="${tour.t.title}" data-ap-tag>${icon('trophy', 12, 2.6)}<span class="sr-only">Turnyre: ${tour.t.title}</span></span>` : ''}</span>
-        <figcaption><span class="strong">${cm(c.length_mm)}</span> <span class="muted small">${spName(c.species_id)}</span></figcaption>
+        <figcaption><span class="strong">${size(c)}</span> <span class="muted small">${spName(c.species_id)}</span></figcaption>
       </figure></a>`;
     })}</div>
     <button type="button" class="btn btn-ghost" data-gal-more hidden>Rodyti daugiau</button>
@@ -165,7 +165,7 @@ function mountGallery(root) {
   let limit = GALLERY_SHOW;
   const apply = () => {
     const items = [...grid.querySelectorAll('[data-gi]')];
-    items.sort((a, b) => (sort === 'big' ? Number(b.dataset.len) - Number(a.dataset.len) : b.dataset.at.localeCompare(a.dataset.at)));
+    items.sort((a, b) => (sort === 'big' ? Number(b.dataset.len) - Number(a.dataset.len) || Number(b.dataset.w) - Number(a.dataset.w) : b.dataset.at.localeCompare(a.dataset.at)));
     items.forEach((el) => grid.appendChild(el));
     const match = items.filter((el) => !sp || el.dataset.spId === sp);
     items.forEach((el) => { el.hidden = true; });

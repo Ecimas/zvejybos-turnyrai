@@ -67,6 +67,7 @@ export async function rulesView() {
       <li>Nuotrauka daroma tik programėlės kamera – iš galerijos įkelti negalima.</li>
       <li>Žuvis padedama ant matavimo liniuotės ar matuoklės, matosi visa žuvis ir skalė.</li>
       <li>Ilgis matuojamas nuo snukio galo iki uodegos peleko galo.</li>
+      <li>Turnyruose pagal svorį žuvis sveriama svarstyklėmis: nuotraukoje turi matytis visa žuvis ir svarstyklių rodmuo. Svoris įrašomas kilogramais (0,01 kg tikslumu).</li>
       <li>Laimikis įskaitomas, jei nufotografuotas turnyro metu ir išsiųstas ne vėliau kaip per 24 val. po pabaigos.</li>
       <li>Ta pati nuotrauka antrą kartą nepriimama.</li>
       <li>Per parą galima įkelti iki 50 laimikių.</li>

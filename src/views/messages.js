@@ -130,7 +130,7 @@ function resultCard(m, c) {
   if (forOrganizer) {
     return html`<div class="b them b-auto" data-msg="${m.id}">${icon('trophy', 14)} Automatinė žinutė išsiųsta: „${m.body.length > 90 ? `${m.body.slice(0, 88)}…` : m.body}“<small>${time(m.created_at)}</small></div>`;
   }
-  const t = { format: c.tournament_format };
+  const t = { format: c.tournament_format, measure: x.measure };
   return html`<div class="sysmsg ${x.prize ? 'prize' : ''}" data-msg="${m.id}" data-result>
     <span class="small muted strong row gap-4">${icon('trophy', 14)}Žvejybos turnyrai · automatinė žinutė</span>
     ${x.place ? html`<div class="row gap-12"><span class="sys-pl">#${x.place}</span><span class="stack-1">

@@ -243,7 +243,7 @@ export async function createSupabaseBackend(url, anonKey) {
       const ins = await sb.from('tournaments').insert({ ...rest, organizer_id: uid() }).select('id').single();
       if (ins.error) throw friendly(ins.error, [[/custom_not_allowed/, 'Savas taškų taisykles turnyrui gali pasirinkti tik organizatoriai'],
         [/scoring_required/, 'Pasirink taškų taisykles'], [/scoring_locked/, 'Prasidėjusio turnyro taisyklių keisti negalima'],
-        [/tournaments_scoring_check|valid_scoring/, 'Netinkamos taškų taisyklės'],
+        [/tournaments_scoring_check|valid_scoring/, 'Netinkamos taškų taisyklės'], [/tournaments_measure_ok/, 'Turnyrui pagal svorį tinka tik „Sunkiausia žuvis“ arba „Kelių svorių suma“'],
         [/tournament_limit/, 'Per parą galima sukurti ne daugiau kaip 10 turnyrų'], [/league_owner/, 'Į lygą gali įtraukti tik lygos savininkas'],
         [/public_not_allowed/, 'Viešus turnyrus kuria patvirtinti organizatoriai – sukurk turnyrą su kvietimu']]);
       const t = ins.data;
@@ -263,7 +263,7 @@ export async function createSupabaseBackend(url, anonKey) {
       const { data: rows, error } = await sb.from('tournaments').update(rest).eq('id', id).select('id');
       if (error) throw friendly(error, [[/custom_not_allowed/, 'Savas taškų taisykles turnyrui gali pasirinkti tik organizatoriai'],
         [/scoring_required/, 'Pasirink taškų taisykles'], [/scoring_locked/, 'Prasidėjusio turnyro taisyklių keisti negalima'],
-        [/tournaments_scoring_check|valid_scoring/, 'Netinkamos taškų taisyklės'],
+        [/tournaments_scoring_check|valid_scoring/, 'Netinkamos taškų taisyklės'], [/tournaments_measure_ok/, 'Turnyrui pagal svorį tinka tik „Sunkiausia žuvis“ arba „Kelių svorių suma“'],
         [/league_owner/, 'Į lygą gali įtraukti tik lygos savininkas'],
         [/started_rules_locked/, 'Prasidėjusio turnyro taisyklių keisti negalima'], [/ends_in_past/, 'Pabaiga negali būti praeityje'],
         [/public_not_allowed/, 'Viešus turnyrus kuria patvirtinti organizatoriai'],
@@ -526,7 +526,7 @@ export async function createSupabaseBackend(url, anonKey) {
       const ins = await sb.from('catches').insert({
         client_id: item.clientId,
         species_id: item.speciesId,
-        length_mm: item.lengthMm,
+        length_mm: item.lengthMm ?? null,
         captured_at_device: item.capturedAt,
         photo_path: path,
         photo_sha256: item.sha256,

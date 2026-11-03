@@ -86,7 +86,9 @@ const inWindow = (h, from, to) => (from < to ? h >= from && h < to : h >= from |
 export function fishEligible(r, c) {
   const s = speciesRule(r, c.species_id);
   if (!s) return false;
-  if (c.length_mm < s.min_cm * 10) return false;
+  // Be ilgio (tik pasverta) žuvis tinka tik taškams už svorį ar už žuvį ir kai rūšiai nėra min. ilgio – kaip SQL
+  if (!c.length_mm) { if (!(r.base === 'kg' || r.base === 'fish') || s.min_cm > 0) return false; }
+  else if (c.length_mm < s.min_cm * 10) return false;
   if (r.base === 'kg' && !(c.weight_g > 0)) return false;
   return true;
 }
@@ -102,7 +104,7 @@ export function fishPoints(r, c, ms) {
   else p = floorDiv((c.weight_g || 0) * s.m, 10000);
   const tw = r.bonuses.find((b) => b.type === 'time' && inWindow(localHour(ms), b.from, b.to));
   if (tw) p = floorDiv(p * tw.m, 100);
-  const len = r.bonuses.filter((b) => b.type === 'len_min' && c.length_mm >= b.cm * 10).sort((a, b) => b.cm - a.cm)[0];
+  const len = r.bonuses.filter((b) => b.type === 'len_min' && c.length_mm && c.length_mm >= b.cm * 10).sort((a, b) => b.cm - a.cm)[0];
   if (len) p += len.add;
   const wt = r.bonuses.filter((b) => b.type === 'weight_min' && (c.weight_g || 0) >= b.g).sort((a, b) => b.g - a.g)[0];
   if (wt) p += wt.add;
@@ -121,7 +123,7 @@ export function customScores(r, fish) {
   const biggestAdd = bonus('biggest');
   const firstAdd = bonus('first');
   const speciesAdd = bonus('species');
-  const biggest = ok.slice().sort((a, b) => b.c.length_mm - a.c.length_mm || byTime(a, b))[0];
+  const biggest = ok.slice().sort((a, b) => (b.c.length_mm || -1) - (a.c.length_mm || -1) || byTime(a, b))[0];
   const first = ok.slice().sort(byTime)[0];
 
   const users = new Map();
@@ -160,7 +162,7 @@ export function customScores(r, fish) {
       score_mm: score,
       counted: kept.length,
       last_counted: Math.max(...kept.map((f) => f.ms)),
-      best_len: Math.max(...kept.map((f) => f.c.length_mm))
+      best_len: Math.max(0, ...kept.map((f) => f.c.length_mm || 0))
     });
   }
   return rows;

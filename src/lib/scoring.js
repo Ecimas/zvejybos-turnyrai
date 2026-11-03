@@ -23,7 +23,13 @@ export function catchTime(c) {
 export function fitReason(t, speciesIds, entered, c, now = Date.now()) {
   if (!entered) return 'not_entered';
   if (speciesIds.length > 0 && !speciesIds.includes(c.species_id)) return 'species';
-  if (c.length_mm < t.min_length_mm) return 'too_short';
+  if (t.measure === 'weight') {
+    if (!(c.weight_g > 0)) return 'no_weight';
+    if (c.weight_g < (t.min_weight_g || 0)) return 'too_light';
+  } else if (t.format !== 'custom') {
+    if (!c.length_mm) return 'no_length';
+    if (c.length_mm < t.min_length_mm) return 'too_short';
+  }
   const cap = catchTime(c);
   if (cap < ts(t.starts_at)) return 'before';
   if (typeof entered === 'string' && cap < ts(entered)) return 'before_join';
@@ -39,6 +45,9 @@ export const REASON_LT = {
   not_entered: 'Neužsiregistravai',
   species: 'Neįskaitoma · kita rūšis',
   too_short: 'Neįskaitoma · per trumpa',
+  no_length: 'Neįskaitoma · turnyras pagal ilgį, o ilgis neįrašytas',
+  no_weight: 'Neįskaitoma · turnyras pagal svorį, o svoris neįrašytas',
+  too_light: 'Neįskaitoma · per lengva',
   before: 'Neįskaitoma · prieš startą',
   before_join: 'Neįskaitoma · pagauta prieš prisiregistruojant',
   after: 'Neįskaitoma · po pabaigos',
@@ -54,6 +63,7 @@ export function isCounted(t, speciesIds, entered, c) {
 // Taškai už rūšį: ilgis mm × rūšies koeficientas / 100 (sveikoji dalis, kaip SQL). Kitiems formatams – ilgis.
 export function catchPoints(t, c, speciesPct = {}) {
   if (t.format === 'custom') return t.scoring && fishEligible(t.scoring, c) ? fishPoints(t.scoring, c, catchTime(c)) : 0;
+  if (t.measure === 'weight') return c.weight_g || 0;
   if (t.format !== 'species_points') return c.length_mm;
   return Math.floor((c.length_mm * (speciesPct[c.species_id] ?? 100)) / 100);
 }

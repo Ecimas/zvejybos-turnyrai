@@ -1,6 +1,6 @@
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { cm, shortDate, count, plural } from '../lib/format.js';
+import { cm, shortDate, count, plural, size, bigger, bySize } from '../lib/format.js';
 import { thumb, hydratePhotos, backButton, empty, avatar, loginPrompt, defaultNickname, banNotice } from '../ui.js';
 import { feat } from '../lib/clubs.js';
 import { canCreateTournament } from '../lib/features.js';
@@ -51,10 +51,10 @@ export function stats(catches, species) {
   const best = new Map();
   for (const c of ok) {
     const cur = best.get(c.species_id);
-    if (!cur || c.length_mm > cur.length_mm) best.set(c.species_id, c);
+    if (bigger(cur, c) === c) best.set(c.species_id, c);
   }
   const records = [...best.values()]
-    .sort((a, b) => b.length_mm - a.length_mm)
+    .sort(bySize)
     .map((c) => ({ ...c, name: species.find((s) => s.id === c.species_id)?.name_lt ?? '' }));
   const year = new Date().getFullYear();
   const byMonth = Array(12).fill(0);
@@ -91,7 +91,7 @@ export function records(s, top = 0) {
     <div class="list">${s.records.map((r, i) => html`<a class="list-row" href="#/l/${r.id}" ${more && i >= top ? html`hidden data-rec-extra` : ''}>
       ${thumb(r.photo_path, 40)}
       <span class="grow stack-1"><span class="strong">${r.name}</span><span class="small muted">${shortDate(r.captured_at_device)}</span></span>
-      <span class="num-md">${cm(r.length_mm)}</span>
+      <span class="num-md">${size(r)}</span>
       ${icon('chevron', 18)}
     </a>`)}</div>
   </section>`;

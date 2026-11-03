@@ -5,7 +5,8 @@ import { icon } from '../icons.js';
 const FAQ = [
   ['photo', 'Kaip teisingai nufotografuoti žuvį?', [
     'Padėk žuvį ant liniuotės ar matuoklės taip, kad matytųsi visa žuvis – nuo snukio iki uodegos galo – ir skaičiai prie jos.',
-    'Fotografuok programėle („+“ apačioje): laikas ir vieta užfiksuojami automatiškai, todėl nuotraukos iš galerijos netinka.']],
+    'Fotografuok programėle („+“ apačioje): laikas ir vieta užfiksuojami automatiškai, todėl nuotraukos iš galerijos netinka.',
+    'Turnyre pagal svorį kameroje pasirink „Svarstyklės“: nufotografuok žuvį su svarstyklių rodmeniu ir įrašyk svorį. Ilgio tada nereikia.']],
   ['review', 'Kodėl laimikis rodomas „Tikrinama“?', [
     'Kiekvieną laimikį peržiūri moderatorius – lentelėje jis atsiras, kai bus patvirtintas. Dažniausiai tai užtrunka iki kelių valandų.']],
   ['rejected', 'Laimikis atmestas – ką daryti?', [

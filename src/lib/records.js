@@ -3,11 +3,11 @@
 
 const counts = (c) => c.status !== 'rejected';
 
-// Ankstesnis geriausias ilgis (mm) tai rūšiai arba null, jei šios rūšies dar nebuvo.
+// Ankstesnis geriausias ilgis (mm) tai rūšiai arba null, jei šios rūšies dar nebuvo išmatuota (tik pasverti – neskaičiuojami).
 export function previousBest(catches, speciesId, excludeId = null) {
   let best = null;
   for (const c of catches) {
-    if (c.species_id !== speciesId || !counts(c) || (excludeId && (c.id === excludeId || c.client_id === excludeId))) continue;
+    if (c.species_id !== speciesId || !counts(c) || !c.length_mm || (excludeId && (c.id === excludeId || c.client_id === excludeId))) continue;
     if (best === null || c.length_mm > best) best = c.length_mm;
   }
   return best;
@@ -25,7 +25,7 @@ export function recordFor(catches, speciesId, lengthMm, excludeId = null) {
 export function recordIds(catches) {
   const best = new Map();
   for (const c of catches) {
-    if (!counts(c)) continue;
+    if (!counts(c) || !c.length_mm) continue;
     const cur = best.get(c.species_id);
     if (!cur || c.length_mm > cur.length_mm
         || (c.length_mm === cur.length_mm && c.captured_at_device < cur.captured_at_device)) best.set(c.species_id, c);
@@ -35,6 +35,6 @@ export function recordIds(catches) {
 
 // Laimikiai iš siuntimo eilės paverčiami tokiu pačiu pavidalu kaip serverio.
 export const fromQueue = (q) => ({
-  id: q.clientId, client_id: q.clientId, species_id: q.speciesId, length_mm: q.lengthMm,
+  id: q.clientId, client_id: q.clientId, species_id: q.speciesId, length_mm: q.lengthMm ?? null, weight_g: q.weightG ?? null,
   captured_at_device: q.capturedAt, status: q.state === 'failed' ? 'rejected' : 'pending'
 });

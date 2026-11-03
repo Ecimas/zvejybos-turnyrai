@@ -3,7 +3,7 @@
 // Jei telefonas jo nepalaiko ar neįkelia – tas pats ekranas su Leaflet (be „šilumos“).
 import { html } from '../lib/html.js';
 import { icon } from '../icons.js';
-import { cm, shortDate, count, dateTime, longDate } from '../lib/format.js';
+import { cm, shortDate, count, dateTime, longDate, size, bySize } from '../lib/format.js';
 import { backButton, loginPrompt, empty, thumb, hydratePhotos } from '../ui.js';
 import { weatherLine } from '../lib/weather.js';
 import { feat } from '../lib/clubs.js';
@@ -192,7 +192,7 @@ async function leafletEngine(box, { onPick }) {
     setPoints(points) {
       layer.clearLayers();
       for (const g of groupSpots(points)) {
-        const best = g.items.slice().sort((a, b) => b.length_mm - a.length_mm)[0];
+        const best = g.items.slice().sort(bySize)[0];
         // Kelios žuvys vienoje vietoje – burbulas su skaičiumi.
         const m = g.items.length > 1 && L.divIcon && L.marker
           ? L.marker([g.lat, g.lng], { icon: L.divIcon({ className: 'mp-lf-bubble', iconSize: [32, 32],
@@ -337,7 +337,7 @@ export async function mapView(ctx) {
         sheet.innerHTML = String(html`<div class="mp-handle" aria-hidden="true"></div>
           <div class="row-between"><h2 class="mp-h">Mano geriausios vietos</h2><span class="small muted">${count(current.length, 'laimikis', 'laimikiai', 'laimikių')} · ${count(groupSpots(current, 300).length, 'vieta', 'vietos', 'vietų')}</span></div>
           ${spots.length ? html`<ol class="mp-spots plain">${spots.map((s, i) => html`<li><button type="button" class="mp-spot" data-spot="${i}">
-            <b>${i + 1}</b><span class="grow stack-1 left"><span class="strong">${count(s.items.length, 'laimikis', 'laimikiai', 'laimikių')} · ${sp(s.best.species_id)} ${cm(s.best.length_mm)}</span>
+            <b>${i + 1}</b><span class="grow stack-1 left"><span class="strong">${count(s.items.length, 'laimikis', 'laimikiai', 'laimikių')} · ${sp(s.best.species_id)} ${size(s.best)}</span>
             <span class="small muted">${s.often || `paskutinis ${shortDate(s.items.map((c) => c.captured_at_device).sort().pop())}`}</span></span>${icon('chevron', 18)}</button></li>`)}</ol>`
             : html`<p class="small muted">Pagal pasirinktus filtrus laimikių nėra.</p>`}`);
         sheet.querySelectorAll('[data-spot]').forEach((b) => b.addEventListener('click', () => {
@@ -347,7 +347,7 @@ export async function mapView(ctx) {
         }));
       };
       const showGroup = (items, lat, lng) => {
-        const list = items.slice().sort((a, b) => b.length_mm - a.length_mm);
+        const list = items.slice().sort(bySize);
         engine?.highlight(lat, lng);
         sheet.innerHTML = String(html`<div class="mp-handle" aria-hidden="true"></div>
           <div class="row-between"><span class="small muted strong">${list.length > 1 ? `Šioje vietoje ${count(list.length, 'laimikis', 'laimikiai', 'laimikių')}` : 'Laimikis'}</span>
@@ -355,7 +355,7 @@ export async function mapView(ctx) {
           <div class="mp-cards" data-cards>${list.map((c) => html`<article class="mp-card">
             ${thumb(c.photo_path, 120)}
             <div class="stack-1 grow min0">
-              <span class="row gap-8 mp-card-top"><span class="mp-len">${cm(c.length_mm)}</span><span class="strong">${sp(c.species_id)}</span></span>
+              <span class="row gap-8 mp-card-top"><span class="mp-len">${size(c)}</span><span class="strong">${sp(c.species_id)}</span></span>
               <span class="small muted">${dateTime(c.captured_at_device)} · ${daypartLabel(daypartOf(c.captured_at_device)).toLowerCase()}</span>
               ${c.weight_g || c.bait ? html`<span class="small">${[c.weight_g ? kg(c.weight_g) : '', c.bait || ''].filter(Boolean).join(' · ')}</span>` : ''}
               ${c.weather ? html`<span class="small muted">${weatherLine(c.weather)}</span>` : ''}
