@@ -78,7 +78,11 @@ export async function captureView(ctx) {
         <div class="cam-wrap">
           <video data-video playsinline muted></video>
           <div class="cam-guide" aria-hidden="true"></div>
-          <p class="cam-hint">Padėk žuvį ant liniuotės. Visa žuvis turi matytis kadre.</p>
+          <div class="cam-mode" role="group" aria-label="Kaip matuoji">
+            <button type="button" data-mode="length" aria-pressed="true">${icon('ruler', 16, 2.4)}Liniuotė</button>
+            <button type="button" data-mode="weight" aria-pressed="false">${icon('scale', 16, 2.4)}Svarstyklės</button>
+          </div>
+          <p class="cam-hint" data-cam-hint>Padėk žuvį ant liniuotės. Visa žuvis turi matytis kadre.</p>
         </div>
         <div class="cam-error" data-cam-error hidden></div>
         <div class="cam-bar">
@@ -90,13 +94,24 @@ export async function captureView(ctx) {
         <div class="photo-wrap">
           <img data-photo-preview alt="Laimikio nuotrauka">
           <button class="pill-btn" data-retake>Perfotografuoti</button>
-          <p class="photo-check">${icon('check', 14, 2.6)}Patikrink: matosi liniuotė ir visa žuvis</p>
+          <p class="photo-check" data-photo-check>${icon('check', 14, 2.6)}Patikrink: matosi liniuotė ir visa žuvis</p>
         </div>
         <div class="sheet stack-lg">
           <section class="imp" data-impact aria-live="polite" hidden></section>
 
-          <div class="stack">
-            <span class="small muted strong">Ilgis</span>
+          <div class="stack" data-w-box hidden>
+            <span class="small muted strong">Svoris</span>
+            <div class="lenbox wbox">
+              <button class="sq-btn sq-big" data-wdec aria-label="Sumažinti 50 g">${icon('minus', 26, 2.6)}</button>
+              <label class="len-readout wreadout"><span class="sr-only">Svoris kilogramais</span><input data-wkg inputmode="decimal" maxlength="6" autocomplete="off" placeholder="0,00"> <span class="unit">kg</span></label>
+              <button class="sq-btn sq-big" data-winc aria-label="Padidinti 50 g">${icon('plus', 26, 2.6)}</button>
+            </div>
+            <p class="small muted">Įrašyk tai, ką rodo svarstyklės. Rodmuo turi matytis nuotraukoje.</p>
+            <button type="button" class="btn-text small" data-add-len>${icon('plus', 14, 2.6)}Pridėti ir ilgį (nebūtina)</button>
+          </div>
+
+          <div class="stack" data-len-box>
+            <span class="small muted strong" data-len-label>Ilgis</span>
             <div class="lenbox">
               <button class="sq-btn sq-big" data-dec aria-label="Sumažinti 1 cm">${icon('minus', 26, 2.6)}</button>
               <span class="len-readout" aria-live="polite"><span data-len>50</span> <span class="unit">cm</span></span>
@@ -134,9 +149,9 @@ export async function captureView(ctx) {
           <p class="small muted" data-weather hidden></p>
 
           <details class="more" data-more>
-            <summary class="strong">Daugiau: svoris, masalas, pastabos</summary>
+            <summary class="strong" data-more-title>Daugiau: svoris, masalas, pastabos</summary>
             <div class="stack">
-              <label class="field"><span class="small muted strong">Svoris, kg (nebūtina)</span>
+              <label class="field" data-w-extra><span class="small muted strong">Svoris, kg (nebūtina)</span>
                 <input name="weight" inputmode="decimal" maxlength="7" autocomplete="off" placeholder="pvz. 2,4" data-weight></label>
               <label class="field"><span class="small muted strong">Masalas (matysi tik tu)</span>
                 <input name="bait" maxlength="80" placeholder="pvz. vobleris 9 cm" data-bait></label>
@@ -169,6 +184,33 @@ export async function captureView(ctx) {
       const onVisible = () => { if (document.visibilityState === 'visible') syncClock(backend); };
       document.addEventListener('visibilitychange', onVisible);
       let len = Math.min(MAX_CM, Math.max(MIN_CM, last.lengthCm || 50));
+      // Matavimas: liniuote (ilgis) ar svarstyklėmis (svoris). Jei dalyvauji turnyre pagal svorį – svarstyklės.
+      const weighTour = tournaments.some((t) => t.measure === 'weight');
+      let mode = weighTour ? 'weight' : (last.mode === 'weight' ? 'weight' : 'length');
+      let withLen = false;
+      const HINT = { length: 'Padėk žuvį ant liniuotės. Visa žuvis turi matytis kadre.', weight: 'Svarstyklių rodmuo ir visa žuvis turi matytis kadre.' };
+      const CHECK = { length: 'Patikrink: matosi liniuotė ir visa žuvis', weight: 'Patikrink: matosi svarstyklių rodmuo ir žuvis' };
+      const wkg = q('[data-wkg]');
+      if (last.weightKg) wkg.value = String(last.weightKg).replace('.', ',');
+      function showMode() {
+        root.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+        q('[data-cam-hint]').textContent = HINT[mode];
+        q('[data-photo-check]').lastChild.textContent = CHECK[mode];
+        const w = mode === 'weight';
+        q('[data-w-box]').hidden = !w;
+        q('[data-len-box]').hidden = w && !withLen;
+        q('[data-add-len]').hidden = !w || withLen;
+        q('[data-len-label]').textContent = w ? 'Ilgis (nebūtina)' : 'Ilgis';
+        q('[data-w-extra]').hidden = w;
+        q('[data-more-title]').textContent = w ? 'Daugiau: masalas, pastabos' : 'Daugiau: svoris, masalas, pastabos';
+      }
+      root.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => { mode = b.dataset.mode; showMode(); }));
+      q('[data-add-len]').addEventListener('click', () => { withLen = true; showMode(); });
+      const wget = () => { const v = Number(wkg.value.replace(',', '.').trim()); return wkg.value.trim() && v > 0 ? v : null; };
+      const wstep = (d) => { const v = Math.max(0, Math.round(((wget() || 0) + d) * 100) / 100); wkg.value = v.toFixed(2).replace('.', ','); vibrate(6); };
+      q('[data-wdec]').addEventListener('click', () => wstep(-0.05));
+      q('[data-winc]').addEventListener('click', () => wstep(0.05));
+      showMode();
       let speciesId = last.speciesId || commonIds[0] || null;
       let saving = false;
       let weather = null;

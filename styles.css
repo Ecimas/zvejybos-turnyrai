@@ -1524,3 +1524,11 @@ body.has-appbar { --top-offset: calc(60px + env(safe-area-inset-top)); }
 .lp-final .btn { align-self: stretch; }
 .lp-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; padding: 22px 0 6px; font-size: 14px; }
 .lp-foot a { color: var(--muted); display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; }
+
+/* Matavimas: liniuotė ar svarstyklės */
+.cam-mode { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(6,18,27,.82); }
+.cam-mode button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: transparent; color: #C9D7E0; font-weight: 800; font-size: 15px; }
+.cam-mode button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.wreadout { display: flex; align-items: baseline; justify-content: center; gap: 6px; }
+.wreadout input { width: 4.2ch; min-width: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: right; padding: 0; outline: none; }
+.wreadout input::placeholder { color: var(--muted); opacity: .6; }
