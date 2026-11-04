@@ -937,7 +937,7 @@ export async function createView(ctx, [editId] = [], query) {
         if (title.length < 3) return fail('Pavadinimas per trumpas.');
         if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) return fail('Nurodyk pradžią ir pabaigą.');
         if (endsAt <= startsAt) return fail('Pabaiga turi būti vėliau nei pradžia.');
-        if (endsAt - startsAt > 120 * 24 * 3600e3) return fail('Turnyras gali trukti ne ilgiau kaip 120 dienų.');
+        if (endsAt - startsAt > 366 * 24 * 3600e3) return fail('Turnyras gali trukti ne ilgiau kaip metus.');
         if (started) {
           if (endsAt < Date.now() - 60e3) return fail('Pabaiga negali būti praeityje.');
         } else {
