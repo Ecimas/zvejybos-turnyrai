@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="lt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>„Metų karpis“ – turnyro pavyzdys</title>
+  <meta name="robots" content="noindex">
+  <meta name="description" content="Sezono turnyro „Metų karpis“ pavyzdys: karpiai sveriami, fotografuojami ir paleidžiami, sunkiausias laimi.">
+  <meta property="og:title" content="„Metų karpis“ – turnyro pavyzdys">
+  <meta property="og:description" content="Visą karpių sezoną: sveriama, fotografuojama, paleidžiama. Gyva lentelė kilogramais.">
+  <meta property="og:image" content="store/pavyzdys/lentele.webp">
+  <meta name="theme-color" content="#06121B">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Manrope:wght@400;600;700;800&display=swap">
+  <style>
+    :root { --bg: #06121B; --surface: #0F2230; --surface2: #132A3A; --line: #1E3A50; --text: #EEF4F7; --soft: #C9D7E0; --muted: #A3B8C6;
+      --accent: #FFA62B; --on-accent: #1A1206; --ok: #5BE3A6; --display: 'Barlow Condensed', 'Arial Narrow', sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 'Manrope', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: var(--accent); }
+    img { max-width: 100%; height: auto; display: block; }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+    section { padding: 48px 0; }
+    h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: .3px; margin: 0; }
+    h2 { font-size: clamp(34px, 7vw, 52px); line-height: 1; }
+    h2 b, h1 b { color: var(--accent); font-weight: 800; }
+    .kicker { display: inline-flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+    .kicker::before { content: ''; width: 34px; height: 3px; border-radius: 2px; background: var(--accent); }
+    .lead { font-size: 19px; color: var(--soft); max-width: 660px; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0; }
+    .brand { white-space: nowrap; display: inline-flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-family: var(--display); font-weight: 700; font-size: 24px; }
+    .brand img { width: 36px; height: 36px; border-radius: 10px; }
+    .brand b { color: var(--accent); }
+    .tag { padding: 7px 12px; border-radius: 999px; border: 1px solid rgba(255,166,43,.5); color: var(--accent); font-size: 13px; font-weight: 800; white-space: nowrap; }
+    .hero { padding: 16px 0 48px; background: radial-gradient(900px 600px at 70% 20%, rgba(255,166,43,.10), transparent 60%); }
+    .hero-grid { display: grid; gap: 32px; align-items: center; }
+    @media (min-width: 860px) { .hero-grid { grid-template-columns: 1.1fr .9fr; } }
+    .hero h1 { font-size: clamp(50px, 12vw, 88px); line-height: .95; font-weight: 800; }
+    .for { margin-top: 14px; font-weight: 700; color: var(--soft); }
+    .hero .lead { margin: 16px 0 24px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 54px; padding: 0 24px; border-radius: 16px; font-weight: 800; font-size: 17px; text-decoration: none; border: 2px solid transparent; }
+    .btn-primary { background: var(--accent); color: var(--on-accent); }
+    .btn-ghost { border-color: var(--line); color: var(--text); background: rgba(15,34,48,.6); }
+    .btns { display: flex; flex-wrap: wrap; gap: 12px; }
+    .phone { width: min(300px, 78vw); margin: 0 auto; border-radius: 40px; padding: 10px; background: #02060A; box-shadow: 0 0 0 2px var(--line), 0 40px 100px rgba(0,0,0,.6), 0 0 120px rgba(255,166,43,.10); }
+    .phone img { width: 100%; border-radius: 32px; }
+    .facts { display: grid; gap: 12px; margin-top: 26px; grid-template-columns: 1fr 1fr; }
+    @media (min-width: 760px) { .facts { grid-template-columns: repeat(4, 1fr); } }
+    .fact { padding: 18px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); }
+    .fact span { display: block; color: var(--muted); font-size: 14px; }
+    .fact b { font-family: var(--display); font-size: 28px; line-height: 1.1; }
+    .shots { display: grid; gap: 18px; margin-top: 28px; }
+    @media (min-width: 760px) { .shots { grid-template-columns: repeat(3, 1fr); } }
+    .shot { background: var(--surface); border: 1px solid var(--line); border-radius: 24px; overflow: hidden; display: flex; flex-direction: column; }
+    .shot .pic { background: linear-gradient(180deg, #0B1D29, #08151E); padding: 18px 18px 0; display: flex; justify-content: center; }
+    .shot .pic img { width: min(250px, 100%); border-radius: 16px 16px 0 0; border: 1px solid var(--line); border-bottom: 0; aspect-ratio: 390 / 600; object-fit: cover; object-position: top; }
+    .shot .txt { padding: 18px 20px 22px; }
+    .shot h3 { font-size: 26px; display: flex; gap: 10px; align-items: center; }
+    .num { flex: none; width: 32px; height: 32px; border-radius: 16px; background: var(--accent); color: var(--on-accent); font-family: 'Manrope', sans-serif; font-size: 16px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+    .shot p { margin: 6px 0 0; color: var(--soft); font-size: 16px; }
+    .wide { margin-top: 18px; border-radius: 20px; border: 1px solid var(--line); overflow: hidden; }
+    .list { margin: 22px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+    @media (min-width: 760px) { .list { grid-template-columns: 1fr 1fr; } }
+    .list li { display: flex; gap: 12px; align-items: flex-start; padding: 16px 18px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); color: var(--soft); }
+    .list li b { color: var(--text); }
+    .tick { flex: none; width: 26px; height: 26px; border-radius: 13px; background: #123A2E; color: var(--ok); display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; margin-top: 1px; }
+    .try { padding: 30px 22px; border-radius: 26px; background: radial-gradient(600px 300px at 50% 0%, rgba(255,166,43,.18), transparent 70%), var(--surface); border: 1px solid rgba(255,166,43,.45); }
+    .try ol { margin: 16px 0 22px; padding-left: 22px; color: var(--soft); }
+    .try li { margin: 6px 0; }
+    .note { margin-top: 16px; padding: 14px 16px; border-radius: 14px; background: var(--surface2); color: var(--muted); font-size: 14px; }
+    footer { padding: 30px 0 46px; color: var(--muted); font-size: 14px; text-align: center; }
+  </style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="top">
+      <a class="brand" href="./"><img src="icons/icon.svg" alt="" width="36" height="36"><span>Žvejybos <b>turnyrai</b></span></a>
+      <span class="tag">Pavyzdys</span>
+    </div>
+    <div class="hero-grid">
+      <div>
+        <span class="kicker">Sezono turnyras</span>
+        <h1>Metų <b>karpis</b></h1>
+        <p class="for">Pasiūlymas BOILIS (Karpininkams.lt)</p>
+        <p class="lead">Visą karpių sezoną žvejai varžosi dėl sunkiausio karpio. Žuvis pasveriama, nufotografuojama programėlės kamera ir paleidžiama. Lentelė atsinaujina gyvai, o BOILIS matomas visur, kur žvejai žiūri.</p>
+        <div class="btns">
+          <a class="btn btn-primary" href="#isbandyti">Išbandyti patiems</a>
+          <a class="btn btn-ghost" href="#kaip">Kaip tai veikia</a>
+        </div>
+      </div>
+      <div class="phone"><img src="store/pavyzdys/lentele.webp" alt="„Metų karpis“ lentelė: vietos ir svoriai kilogramais, viršuje „Lentelę remia BOILIS (Karpininkams.lt)“" width="540" height="1169"></div>
+    </div>
+    <div class="facts">
+      <div class="fact"><span>Trukmė</span><b>Kovas – rugsėjis</b></div>
+      <div class="fact"><span>Rūšis</span><b>Tik karpiai</b></div>
+      <div class="fact"><span>Nugalėtojas</span><b>Sunkiausias</b></div>
+      <div class="fact"><span>Dalyviams</span><b>Nemokamai</b></div>
+    </div>
+  </div>
+</header>
+
+<section id="kaip">
+  <div class="wrap">
+    <span class="kicker">Žvejo akimis</span>
+    <h2>Trys žingsniai <b>prie vandens</b></h2>
+    <div class="shots">
+      <div class="shot">
+        <div class="pic"><img src="store/pavyzdys/turnyras.webp" alt="Turnyro puslapis su generaliniu rėmėju BOILIS (Karpininkams.lt)" width="540" height="1169" loading="lazy"></div>
+        <div class="txt"><h3><span class="num">1</span>Užsiregistruoja</h3><p>Žvejys atsidaro turnyrą ir spaudžia „Dalyvauti“. Rėmėjas matomas turnyro viršuje.</p></div>
+      </div>
+      <div class="shot">
+        <div class="pic"><img src="store/pavyzdys/svoris.webp" alt="Laimikio registravimas: pasirinktos svarstyklės, įrašytas svoris 13,6 kg" width="540" height="1169" loading="lazy"></div>
+        <div class="txt"><h3><span class="num">2</span>Pasveria ir paleidžia</h3><p>Kameroje pasirenka „Svarstyklės“, nufotografuoja karpį su svarstyklių rodmeniu ir įrašo svorį. Laikas ir vieta įrašomi automatiškai.</p></div>
+      </div>
+      <div class="shot">
+        <div class="pic"><img src="store/pavyzdys/dalyvis.webp" alt="Žvejo rezultatas turnyre: 1 vieta, 15,20 kg" width="540" height="1169" loading="lazy"></div>
+        <div class="txt"><h3><span class="num">3</span>Mato savo vietą</h3><p>Moderatoriui patvirtinus, karpis atsiranda lentelėje. Žvejys mato savo vietą ir kiek trūksta iki aukštesnės.</p></div>
+      </div>
+    </div>
+    <img class="wide" src="store/pavyzdys/ekranas.webp" alt="Didžiojo ekrano vaizdas: „Metų karpis“ lentelė kilogramais" width="1280" height="720" loading="lazy">
+    <p class="note">Ekrano nuotraukose – pavyzdiniai duomenys (žvejų vardai ir svoriai sugalvoti), kad matytųsi, kaip atrodys turnyras sezono metu. Lentelę galima rodyti ir dideliame ekrane, pvz. parduotuvėje.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <span class="kicker">Sąlygos</span>
+    <h2>Kaip <b>skaičiuojama</b></h2>
+    <ul class="list">
+      <li><span class="tick">✓</span><span><b>Tik karpiai, pagal svorį.</b> Laimi sunkiausias. Kai svoris lygus, aukščiau tas, kuris pagavo anksčiau.</span></li>
+      <li><span class="tick">✓</span><span><b>Minimalus svoris</b> – galima nustatyti, pvz. nuo 5 kg, kad lentelėje būtų tik trofėjiniai karpiai.</span></li>
+      <li><span class="tick">✓</span><span><b>Tik programėlės kamera.</b> Senos ar svetimos nuotraukos įkelti negalima, ta pati nuotrauka antrą kartą atmetama.</span></li>
+      <li><span class="tick">✓</span><span><b>Moderatorius tikrina kiekvieną karpį</b> ir gali paprašyti papildomos nuotraukos.</span></li>
+      <li><span class="tick">✓</span><span><b>Žvejo vieta niekam nerodoma</b> – karpininkams tai svarbu.</span></li>
+      <li><span class="tick">✓</span><span><b>Veikia ir be ryšio.</b> Laimikis išsiunčiamas, kai atsiranda internetas, laikas lieka tikras.</span></li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <span class="kicker">BOILIS turnyre</span>
+    <h2>Kur matomas <b>rėmėjas</b></h2>
+    <ul class="list">
+      <li><span class="tick">✓</span><span><b>Turnyro pavadinimas ir puslapis</b> – pvz. „BOILIS Metų karpis“, logotipas ir nuoroda į Karpininkams.lt.</span></li>
+      <li><span class="tick">✓</span><span><b>Rezultatų lentelė</b> – „Lentelę remia BOILIS“ kiekvieną kartą, kai žvejys tikrina savo vietą.</span></li>
+      <li><span class="tick">✓</span><span><b>Prizai</b> – prizų skiltyje nurodoma, kad prizus skiria BOILIS.</span></li>
+      <li><span class="tick">✓</span><span><b>Pasiūlymas dalyviams</b> – pvz. nuolaidos kodas turnyro dalyviams.</span></li>
+      <li><span class="tick">✓</span><span><b>Statistika</b> – kiek kartų logotipas parodytas ir kiek kartų paspausta nuoroda.</span></li>
+      <li><span class="tick">✓</span><span><b>Ataskaita po sezono</b> – kiek žvejų dalyvavo ir kiek karpių užregistruota.</span></li>
+    </ul>
+  </div>
+</section>
+
+<section id="isbandyti">
+  <div class="wrap">
+    <div class="try">
+      <span class="kicker">Išbandykite patys</span>
+      <h2>Bandomasis <b>turnyras</b></h2>
+      <p class="lead">Paruošėme bandomąjį „Metų karpio“ turnyrą – jame galite patys pabūti žvejo vietoje. Jis vyks iki gruodžio 15 d.</p>
+      <ol>
+        <li>Atidarykite nuorodą telefone ir prisijunkite el. paštu.</li>
+        <li>Spauskite „Dalyvauti“.</li>
+        <li>Spauskite „+“, kameroje pasirinkite „Svarstyklės“, nufotografuokite bet kokią žuvį (ar daiktą) su svarstyklių rodmeniu ir įrašykite svorį.</li>
+        <li>Pažiūrėkite, kaip laimikis atsiranda lentelėje.</li>
+      </ol>
+      <a class="btn btn-primary" href="https://zvejybos-turnyrai.vercel.app/#/kvietimas/b9f352742b">Atidaryti bandomąjį turnyrą</a>
+      <p class="note">Bandomasis turnyras privatus – jį mato tik gavę nuorodą. Rezultatai nebus naudojami.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">Žvejybos turnyrai · Darius · <a href="mailto:zvejybosturnyrai@gmail.com">zvejybosturnyrai@gmail.com</a></div>
+</footer>
+
+</body>
+</html>
