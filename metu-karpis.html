@@ -38,7 +38,10 @@
     .hero-grid { display: grid; gap: 32px; align-items: center; }
     @media (min-width: 860px) { .hero-grid { grid-template-columns: 1.1fr .9fr; } }
     .hero h1 { font-size: clamp(50px, 12vw, 88px); line-height: .95; font-weight: 800; }
-    .for { margin-top: 14px; font-weight: 700; color: var(--soft); }
+    .for { margin-top: 18px; display: inline-flex; flex-wrap: wrap; max-width: 100%; align-items: center; gap: 14px; padding: 10px 16px 10px 10px; border-radius: 18px; background: var(--surface); border: 1px solid rgba(255,166,43,.5); }
+    .for img { width: 140px; flex: none; border-radius: 10px; background: #fff; }
+    .for span { display: flex; flex-direction: column; line-height: 1.3; color: var(--soft); font-size: 14px; }
+    .for b { color: var(--accent); font-size: 17px; }
     .hero .lead { margin: 16px 0 24px; }
     .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 54px; padding: 0 24px; border-radius: 16px; font-weight: 800; font-size: 17px; text-decoration: none; border: 2px solid transparent; }
     .btn-primary { background: var(--accent); color: var(--on-accent); }
@@ -85,14 +88,14 @@
       <div>
         <span class="kicker">Sezono turnyras</span>
         <h1>Metų <b>karpis</b></h1>
-        <p class="for">Pasiūlymas BOILIS (Karpininkams.lt)</p>
+        <div class="for"><img src="store/pavyzdys/karpininkams.webp" alt="Karpininkams.lt" width="640" height="264"><span>Generalinis rėmėjas<b>BOILIS (Karpininkams.lt)</b></span></div>
         <p class="lead">Visą karpių sezoną žvejai varžosi dėl sunkiausio karpio. Žuvis pasveriama, nufotografuojama programėlės kamera ir paleidžiama. Lentelė atsinaujina gyvai, o BOILIS matomas visur, kur žvejai žiūri.</p>
         <div class="btns">
           <a class="btn btn-primary" href="#isbandyti">Išbandyti patiems</a>
           <a class="btn btn-ghost" href="#kaip">Kaip tai veikia</a>
         </div>
       </div>
-      <div class="phone"><img src="store/pavyzdys/lentele.webp" alt="„Metų karpis“ lentelė: vietos ir svoriai kilogramais, viršuje „Lentelę remia BOILIS (Karpininkams.lt)“" width="540" height="1169"></div>
+      <div class="phone"><img src="store/pavyzdys/lentele.webp" alt="„Metų karpis“ lentelė: vietos ir svoriai kilogramais, viršuje „Lentelę remia“ su Karpininkams logotipu" width="540" height="1169"></div>
     </div>
     <div class="facts">
       <div class="fact"><span>Trukmė</span><b>Kovas – rugsėjis</b></div>
@@ -121,8 +124,8 @@
         <div class="txt"><h3><span class="num">3</span>Mato savo vietą</h3><p>Moderatoriui patvirtinus, karpis atsiranda lentelėje. Žvejys mato savo vietą ir kiek trūksta iki aukštesnės.</p></div>
       </div>
     </div>
-    <img class="wide" src="store/pavyzdys/ekranas.webp" alt="Didžiojo ekrano vaizdas: „Metų karpis“ lentelė kilogramais" width="1280" height="720" loading="lazy">
-    <p class="note">Ekrano nuotraukose – pavyzdiniai duomenys (žvejų vardai ir svoriai sugalvoti), kad matytųsi, kaip atrodys turnyras sezono metu. Lentelę galima rodyti ir dideliame ekrane, pvz. parduotuvėje.</p>
+    <img class="wide" src="store/pavyzdys/ekranas.webp" alt="Didžiojo ekrano vaizdas: „Metų karpis“ lentelė kilogramais ir rėmėjo logotipas" width="1280" height="720" loading="lazy">
+    <p class="note">Ekrano nuotraukose – pavyzdiniai duomenys (žvejų vardai ir svoriai sugalvoti), kad matytųsi, kaip atrodys turnyras sezono metu. Lentelę su jūsų logotipu galima rodyti ir dideliame ekrane, pvz. parduotuvėje.</p>
   </div>
 </section>
 
@@ -143,11 +146,11 @@
 
 <section>
   <div class="wrap">
-    <span class="kicker">BOILIS turnyre</span>
-    <h2>Kur matomas <b>rėmėjas</b></h2>
+    <span class="kicker">Generalinis rėmėjas</span>
+    <h2>Kur matomas <b>BOILIS</b></h2>
     <ul class="list">
-      <li><span class="tick">✓</span><span><b>Turnyro pavadinimas ir puslapis</b> – pvz. „BOILIS Metų karpis“, logotipas ir nuoroda į Karpininkams.lt.</span></li>
-      <li><span class="tick">✓</span><span><b>Rezultatų lentelė</b> – „Lentelę remia BOILIS“ kiekvieną kartą, kai žvejys tikrina savo vietą.</span></li>
+      <li><span class="tick">✓</span><span><b>Turnyro pavadinimas ir puslapis</b> – pvz. „BOILIS Metų karpis“, generalinio rėmėjo logotipas ir nuoroda į Karpininkams.lt.</span></li>
+      <li><span class="tick">✓</span><span><b>Rezultatų lentelė</b> – „Lentelę remia“ su jūsų logotipu kiekvieną kartą, kai žvejys tikrina savo vietą.</span></li>
       <li><span class="tick">✓</span><span><b>Prizai</b> – prizų skiltyje nurodoma, kad prizus skiria BOILIS.</span></li>
       <li><span class="tick">✓</span><span><b>Pasiūlymas dalyviams</b> – pvz. nuolaidos kodas turnyro dalyviams.</span></li>
       <li><span class="tick">✓</span><span><b>Statistika</b> – kiek kartų logotipas parodytas ir kiek kartų paspausta nuoroda.</span></li>
